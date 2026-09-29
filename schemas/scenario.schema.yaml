@@ -1,0 +1,117 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://example.com/jatszoter/scenario.schema.yaml
+title: jatszoter scenario
+type: object
+additionalProperties: false
+required: [id, version, title, description, image, steps, check]
+
+properties:
+  id:
+    description: Matches the scenario directory name.
+    type: string
+    pattern: ^[a-z0-9][a-z0-9-]{1,62}$
+  version:
+    type: integer
+    minimum: 1
+  title:
+    type: string
+    minLength: 1
+    maxLength: 120
+  summary:
+    type: string
+    maxLength: 300
+  description:
+    description: Markdown task text shown to the trainee.
+    $ref: '#/$defs/file'
+  difficulty:
+    enum: [easy, medium, hard]
+  tags:
+    type: array
+    uniqueItems: true
+    items:
+      type: string
+      pattern: ^[a-z0-9-]+$
+  image:
+    description: Name of an image registered in the API.
+    type: string
+    pattern: ^[a-z0-9][a-z0-9.-]*$
+
+  resources:
+    type: object
+    additionalProperties: false
+    properties:
+      cpus:
+        type: integer
+        minimum: 1
+        maximum: 16
+      memory_mib:
+        type: integer
+        minimum: 256
+        maximum: 65536
+      disk_gib:
+        type: integer
+        minimum: 1
+        maximum: 256
+
+  timeouts:
+    type: object
+    additionalProperties: false
+    properties:
+      bootstrap_seconds:
+        type: integer
+        minimum: 30
+        maximum: 7200
+      check_seconds:
+        type: integer
+        minimum: 1
+        maximum: 600
+      session_minutes:
+        type: integer
+        minimum: 5
+        maximum: 1440
+
+  trainee:
+    type: object
+    additionalProperties: false
+    properties:
+      user:
+        type: string
+        pattern: ^[a-z_][a-z0-9_-]{0,31}$
+      sudo:
+        type: boolean
+
+  packages:
+    description: Installed by cloud-init before the steps run.
+    type: array
+    uniqueItems: true
+    items:
+      type: string
+
+  steps:
+    description: Scripts run as root in this order, then removed from the VM.
+    type: object
+    additionalProperties: false
+    required: [break]
+    properties:
+      install:
+        $ref: '#/$defs/file'
+      configure:
+        $ref: '#/$defs/file'
+      break:
+        $ref: '#/$defs/file'
+
+  check:
+    description: Exit 0 means solved. Sent to the VM per check, never stored there.
+    $ref: '#/$defs/file'
+
+  hints:
+    type: array
+    items:
+      type: string
+      minLength: 1
+
+$defs:
+  file:
+    description: File name next to scenario.yaml.
+    type: string
+    pattern: ^[A-Za-z0-9._-]+$

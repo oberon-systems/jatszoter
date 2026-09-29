@@ -5,11 +5,17 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "jatszoter-api"
 version = "0.0.0"
-description = "Control plane for jatszoter: agents, scenarios, deployments, share links and recordings"
+description = "Control plane for jatszoter: agents, scenarios, deployments, links and recordings"
 requires-python = ">=3.12"
 dependencies = [
+  "alembic",
+  "fakeredis",
   "fastapi",
   "jatszoter-common",
+  "pydantic-settings",
+  "python-statemachine",
+  "sqlmodel",
+  "valkey",
 ]
 
 [project.optional-dependencies]
@@ -17,4 +23,4 @@ dependencies = [
 server = ["uvicorn[standard]"]
 
 [tool.setuptools.package-data]
-jatszoter_api = ["py.typed"]
+jatszoter_api = ["py.typed", "migrations/*.py", "migrations/*.mako", "migrations/versions/*.py"]

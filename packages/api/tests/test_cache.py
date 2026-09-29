@@ -1,33 +1,22 @@
-import uuid
-
 import pytest
 from sqlmodel import Session
 
 from jatszoter_api.models import Agent, Role, State, User
-from jatszoter_api.models._cache import cache_client, cached
+from jatszoter_api.models._cache import Cached
 
 DAY = 24 * 60 * 60
 
 
-class Box:
-    def __init__(self) -> None:
-        self.id = uuid.uuid4()
-        self.loads = 0
-
-    @cached()
-    def value(self) -> int:
-        self.loads += 1
-        return 42
-
-    @cached(key=lambda box: f"box:{box.id}", ttl=60)
-    def named(self) -> str:
-        return "alpha"
-
-
 def ttl(key: str) -> int:
-    seconds = cache_client().ttl(key)
+    seconds = Cached._client().ttl(key)
     assert isinstance(seconds, int)
     return seconds
+
+
+def viewer(session: Session) -> User:
+    user = User(session=session, name="alpha", role=Role.VIEWER)
+    user.save()
+    return user
 
 
 def enabled_agent(session: Session) -> Agent:
@@ -37,54 +26,73 @@ def enabled_agent(session: Session) -> Agent:
 
 
 def test_nothing_is_cached_unless_asked(session: Session) -> None:
-    user = User(session=session, name="alpha", role=Role.VIEWER)
-    user.save()
+    user = viewer(session)
 
     user.load(id=user.id)
 
-    assert cache_client().dbsize() == 0
+    assert Cached._client().dbsize() == 0
 
 
-def test_a_property_is_served_from_the_cache() -> None:
-    box = Box()
+def test_cached_keeps_a_value_under_its_key_for_its_ttl() -> None:
+    cache = Cached()
 
-    assert box.value == box.value == 42
-    assert box.loads == 1
+    cache._set("alpha", {"beta": 1}, 60)
 
-
-def test_the_default_key_is_the_id_and_the_default_ttl_ten_seconds() -> None:
-    box = Box()
-    assert box.value
-
-    assert 0 < ttl(str(box.id)) <= 10
+    assert cache._get("alpha") == {"beta": 1}
+    assert 50 < ttl("alpha") <= 60
 
 
-def test_the_key_and_ttl_are_parameters() -> None:
-    box = Box()
-    assert box.named == "alpha"
-
-    assert 50 < ttl(f"box:{box.id}") <= 60
+def test_cached_misses_with_none() -> None:
+    assert Cached()._get("gamma") is None
 
 
-def test_a_hit_extends_the_ttl() -> None:
-    box = Box()
-    assert box.value
-    cache_client().expire(str(box.id), 1)
+def test_cached_extends_and_deletes_an_entry() -> None:
+    cache = Cached()
+    cache._set("alpha", 1, 60)
 
-    assert box.value
+    assert cache._ttl("alpha", 120)
+    assert ttl("alpha") > 110
+    assert cache._delete("alpha")
+    assert not cache._delete("alpha")
+    assert not cache._ttl("alpha", 60)
 
-    assert ttl(str(box.id)) > 5
+
+def test_a_miss_loads_once_under_the_owner_for_ten_seconds(session: Session) -> None:
+    user = viewer(session)
+    loads: list[int] = []
+
+    def load() -> int:
+        loads.append(1)
+        return 42
+
+    assert user._get("alpha", load) == user._get("alpha", load) == 42
+    assert len(loads) == 1
+    assert 0 < ttl(f"alpha:{user.id}") <= 10
 
 
-def test_del_drops_the_entry() -> None:
-    box = Box()
-    assert box.value
+def test_a_miss_without_a_loader_stores_nothing(session: Session) -> None:
+    user = viewer(session)
 
-    del box.value
+    assert user._get("alpha") is None
+    assert not Cached._client().exists(f"alpha:{user.id}")
 
-    assert not cache_client().exists(str(box.id))
-    assert box.value == 42
-    assert box.loads == 2
+
+def test_a_hit_extends_the_ttl(session: Session) -> None:
+    user = viewer(session)
+    user._set("alpha", 1, 60)
+    Cached._client().expire(f"alpha:{user.id}", 1)
+
+    assert user._get("alpha", ttl=60) == 1
+
+    assert ttl(f"alpha:{user.id}") > 50
+
+
+def test_delete_drops_the_owner_entry(session: Session) -> None:
+    user = viewer(session)
+    user._set("alpha", 1)
+
+    assert user._delete("alpha")
+    assert not Cached._client().exists(f"alpha:{user.id}")
 
 
 def test_an_owner_secret_is_cached_under_its_owner(session: Session) -> None:
@@ -92,7 +100,7 @@ def test_an_owner_secret_is_cached_under_its_owner(session: Session) -> None:
     agent.issue(2 * DAY)
 
     assert agent.secret is not None
-    assert cache_client().exists(f"secret:{agent.id}")
+    assert Cached._client().exists(f"secret:{agent.id}")
 
 
 @pytest.mark.parametrize("refreshes", [1, 2])
@@ -104,6 +112,6 @@ def test_a_refresh_drops_the_cached_secret(session: Session, refreshes: int) -> 
     for _ in range(refreshes):
         agent.issue(2 * DAY)
 
-    assert not cache_client().exists(f"secret:{agent.id}")
+    assert not Cached._client().exists(f"secret:{agent.id}")
     assert agent.secret is not None
     assert agent.secret.pending_generation == 1 + refreshes

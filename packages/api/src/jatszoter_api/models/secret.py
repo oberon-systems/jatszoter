@@ -8,7 +8,6 @@ from typing import Any, Self
 from sqlmodel import Field
 
 from jatszoter_api.models._base import Base, State
-from jatszoter_api.models._cache import cached
 from jatszoter_api.settings import get_settings
 
 SIGNATURE_WINDOW_SECONDS = 300
@@ -77,9 +76,13 @@ class SecretOwner(Base):
     def save(self) -> None:
         self._save()
 
-    @cached(key=lambda owner: f"secret:{owner.id}")
+    @property
     def secret(self) -> Generations | None:
-        """The owner's generations, cached for `verify`; `del owner.secret` drops the copy."""
+        """The owner's generations for `verify`, loaded into the cache on a miss."""
+        generations: Generations | None = self._get("secret", self._stored_generations)
+        return generations
+
+    def _stored_generations(self) -> Generations | None:
         stored = self._stored_secret()
         if stored is None:
             return None
@@ -95,7 +98,7 @@ class SecretOwner(Base):
             generation = max(record.generation, record.pending_generation or 0) + 1
             record.pending_generation = generation
             record._save()
-        del self.secret
+        self._delete("secret")
         credential = Credential(
             owner_id=self.id,
             kid=get_settings().master_kid,
@@ -137,7 +140,7 @@ class SecretOwner(Base):
                 stored.generation = credential.generation
                 stored.pending_generation = None
                 stored._save()
-            del self.secret
+            self._delete("secret")
             return True
         if credential.generation < record.generation:
             # A superseded generation in use means two parties hold it; only an operator

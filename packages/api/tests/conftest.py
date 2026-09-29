@@ -9,7 +9,7 @@ from alembic.config import Config
 from sqlmodel import Session, create_engine
 
 import jatszoter_api
-from jatszoter_api.models._cache import cache_client
+from jatszoter_api.models._cache import Cached
 from jatszoter_api.settings import get_settings
 
 MIGRATIONS = Path(jatszoter_api.__file__).parent / "migrations"
@@ -28,10 +28,10 @@ def settings(monkeypatch: pytest.MonkeyPatch, database_dsn: str) -> Iterator[Non
     monkeypatch.setenv("JATSZOTER_MASTER_KEYS", json.dumps(MASTER_KEYS))
     monkeypatch.setenv("JATSZOTER_MASTER_KID", "current")
     get_settings.cache_clear()
-    cache_client.cache_clear()
+    Cached._client.cache_clear()
     yield
     get_settings.cache_clear()
-    cache_client.cache_clear()
+    Cached._client.cache_clear()
 
 
 @pytest.fixture

@@ -1,0 +1,31 @@
+# Agents Related
+.mcp.json
+CLAUDE.local.md
+GEMINI.md
+.gemini
+.claude
+.codex/
+
+# Local environments
+.venv
+.pre-commit
+.env
+
+# Build and tool caches
+__pycache__/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+target/
+build/
+*.egg-info/
+
+# Local stack, tokens and agent state
+dev/stack/local/
+
+# Local databases
+*.db
+*.sqlite3
+
+# ide
+.idea

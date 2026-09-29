@@ -1,0 +1,6 @@
+check-jsonschema==0.38.2
+commitizen==4.18.0
+penpot-local-stack==0.1.1
+pre_commit==4.6.2
+pytest==9.1.1
+wyld-cz==0.3.1

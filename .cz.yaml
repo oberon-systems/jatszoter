@@ -1,0 +1,13 @@
+# Commits only. Every package carries its own .cz.yaml with a version, so
+# `cz bump` here fails on the version this file does not hold.
+commitizen:
+  allowed_prefixes:
+    - Merge
+    - Revert
+    - Pull request
+    - fixup!
+    - squash!
+    - amend!
+    - 'bump:'
+  major_version_zero: true
+  name: wyld_cz

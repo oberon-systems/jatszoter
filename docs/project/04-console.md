@@ -1,13 +1,12 @@
 # 04 - Console
 
 The console is the VM's serial port, carried from the agent through the API
-to every open terminal. Operators always see it; a trainee sees it through a
-share link; one party at a time holds the keyboard.
+to every open terminal. Operators always see it; everyone else sees it
+through a link; one party at a time holds the keyboard.
 
 - [Pipeline](#pipeline)
 - [Viewers](#viewers)
-- [Share links](#share-links)
-- [Sessions](#sessions)
+- [Links](#links)
 - [Take control](#take-control)
 - [Resize](#resize)
 - [Backpressure](#backpressure)
@@ -28,8 +27,9 @@ share link; one party at a time holds the keyboard.
   `{"offset": n}` with how far it holds. A reconnect resumes from that
   offset, so no byte is lost or duplicated.
 - The API appends the bytes to the deployment's console buffer, up to
-  `JATSZOTER_CONSOLE_LIMIT_BYTES`, feeds the open session's recording and
-  fans them out to every attached viewer.
+  `JATSZOTER_CONSOLE_LIMIT_BYTES`, fans them out to every attached viewer
+  and streams the same bytes into the trainee link's recording in
+  SeaweedFS; see [05](05-recording.md#writing).
 - Keys and resize requests travel back on the same socket. Keys are never
   stored, logged or recorded.
 - Bytes produced before READY belong to the operator's bootstrap log only.
@@ -38,7 +38,7 @@ share link; one party at a time holds the keyboard.
 ## Viewers
 
 `WS /api/v1/deployments/{id}/attach` is the live view. It accepts either the
-operator token or a share-link session cookie, sends the buffer from the
+operator token or a link session cookie, sends the buffer from the
 viewer's start offset, then every new byte raw.
 
 A viewer sends:
@@ -51,34 +51,39 @@ A viewer sends:
 The API sends text frames `{"control": "operator" | "trainee"}` whenever
 control changes, so every terminal can show who is typing.
 
-## Share links
+## Links
 
-- The operator issues a link for a READY deployment:
-  `https://jatszoter.example.com/s/<token>`.
+A link is `https://jatszoter.example.com/s/<token>`, opens the one
+deployment it names and belongs to one user. The user's `role` says what the
+link can do:
+
+| Role       | What it can do                                    |
+| ---------- | ------------------------------------------------- |
+| `trainee`  | works in the terminal while it holds control      |
+| `operator` | watches, and takes or gives back control          |
+| `viewer`   | only watches; its keys and resizes are dropped    |
+
+- Every deployment is registered together with its trainee and that
+  trainee's link; the operator issues links to operators and viewers on
+  demand.
 - The token is 32 random bytes, base64url. The API stores only its sha256
   and returns the plain value once.
-- A link opens one deployment, expires at the deployment's session end by
-  default, and can be revoked at any time. At most one live link per
-  deployment; issuing a new one revokes the old.
+- A link has no expiry of its own. It can be revoked at any time, and the
+  deployment reaching COMPLETED, FAILED or CANCELLED revokes all its links.
 - Opening the link exchanges it for an HttpOnly, SameSite=Strict session
   cookie and redirects to a URL without the token.
-- Revoking the link, stopping the deployment or its expiry closes every
-  trainee socket at once.
-
-## Sessions
-
-The first open of a share link creates a Session and its Recording. Later
-opens of the same link, from any tab, join the same session. Revoking the
-link or stopping the deployment closes the session; a new link starts a new
-session.
+- Revoking a link closes every socket opened through it at once.
+- The first open of the trainee link stamps its `opened_at` and starts its
+  recording. Later opens, from any tab, join the same recording; revoking
+  the link closes it, and a new trainee link starts a new one.
 
 ## Take control
 
-- Control is a field of the session, `trainee` by default, stored in the
-  database and enforced by the API.
+- Only the operator decides who has the keyboard, and the API enforces it.
+  The current holder is console state, not a database column.
 - `POST /api/v1/deployments/{id}/control` with `{"holder": "operator"}`
-  takes it; `{"holder": "trainee"}` gives it back. Only the operator may
-  call it.
+  takes it; `{"holder": "trainee"}` gives it back. Only the operator token
+  or an operator link may call it.
 - While the operator holds control, trainee keys and resize frames are
   dropped in the API, whatever the browser shows.
 - Every change is written as a marker into the recording.

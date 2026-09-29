@@ -20,7 +20,7 @@ broken server plus a check script is a good way to teach and to test
 troubleshooting. They run someone else's scenarios on someone else's
 machines. jatszoter runs your own scenarios on your own hosts, and puts an
 operator next to the trainee: the operator watches live, takes the keyboard
-when needed and replays the session later.
+when needed and replays the recording later.
 
 ## Goals
 
@@ -30,7 +30,7 @@ when needed and replays the session later.
 - The operator can take control and give it back at any moment, and the
   trainee cannot type while the operator holds it.
 - The check result is decided by the scenario's own script, not by a person.
-- Every trainee session is recorded and can be replayed.
+- Every trainee link's terminal is recorded and can be replayed.
 - A scenario is a directory of plain files that lives in git and is
   validated before it is registered.
 - One agent host runs several VMs at once; more hosts add capacity.
@@ -49,9 +49,10 @@ when needed and replays the session later.
 | Role     | How it authenticates | What it can do                                |
 | -------- | -------------------- | --------------------------------------------- |
 | Operator | operator token       | everything: agents, scenarios, deployments    |
-| Trainee  | share link           | one deployment's terminal and its check       |
+| Trainee  | trainee link         | one deployment's terminal and its check       |
+| Viewer   | viewer link          | watches one deployment's terminal             |
 | Author   | git                  | writes scenarios, registers them via the API  |
-| Agent    | agent token          | its lease, its deployments, their consoles    |
+| Agent    | signed requests      | its lease, its deployments, their consoles    |
 
 ## How it works
 
@@ -60,11 +61,11 @@ when needed and replays the session later.
 3. The agent boots a VM from the scenario image and bootstraps it with
    [cloud-init](https://cloud-init.io/): packages, install, configure,
    break.
-4. The deployment turns READY. The operator opens the terminal and issues a
-   share link.
+4. The deployment turns READY. The operator opens the terminal and hands
+   the trainee link out; it was issued when the deployment was created.
 5. The trainee opens the link, repairs the VM and runs the check.
 6. The operator stops the deployment; the VM is destroyed, the recording and
-   check results stay.
+   checks stay.
 
 ## Glossary
 
@@ -74,9 +75,9 @@ when needed and replays the session later.
 | Deployment | one VM started from one scenario version on one agent        |
 | Agent      | host daemon that runs VMs for the API                        |
 | Lease      | the agent's time-limited right to hold deployments           |
-| Share link | a credential that opens one deployment for a trainee         |
-| Session    | one trainee's time on a deployment, from first open to end   |
-| Recording  | the asciicast of one session                                 |
+| Link       | a credential that opens one deployment: trainee, operator,   |
+|            | or viewer                                                    |
+| Recording  | the asciicast of one trainee link, from first open to revoke |
 | Check      | one run of the scenario's check script and its result        |
 
 ## Acceptance criteria

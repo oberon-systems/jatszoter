@@ -18,12 +18,12 @@ API.
  browser (operator / trainee)
       |  HTTP + WebSocket
       v
- +---------+   HTTP + WS    +---------+   SQL    +------------+
- |   web   | -------------> |   api   | <------> | PostgreSQL |
- +---------+                +---------+          +------------+
-                              ^     |
-            HTTP + WS (agent) |     | recordings on disk
-                              |     v
+ +---------+   HTTP + WS    +---------+   SQL    +----------+
+ |   web   | -------------> |   api   | <------> | database |
+ +---------+                +---------+          +----------+
+                              ^     |  recordings, stream  +-----------+
+            HTTP + WS (agent) |     +--------------------> | SeaweedFS |
+                              |                            +-----------+
                          +---------+
                          |  agent  |  one per host
                          +---------+
@@ -33,8 +33,8 @@ API.
 ```
 
 - `api` - control plane: agents, leases, images, scenarios, deployments,
-  share links, sessions, recordings, check results. It is the only writer to
-  the database and the only component browsers and agents talk to.
+  links, recordings, checks. It is the only writer to the database and to
+  SeaweedFS, and the only component browsers and agents talk to.
 - `agent` - host daemon: registers, keeps its lease, starts and destroys
   VMs, bootstraps them, runs checks inside them, ships their consoles.
 - `web` - operator and trainee pages. It holds no state of its own and
@@ -44,8 +44,16 @@ API.
 
 - API and web: Python 3.12+, [FastAPI](https://fastapi.tiangolo.com/),
   [Pydantic](https://docs.pydantic.dev/), [SQLModel](https://sqlmodel.tiangolo.com/),
-  [Alembic](https://alembic.sqlalchemy.org/), [httpx](https://www.python-httpx.org/).
-- Database: [PostgreSQL](https://www.postgresql.org/).
+  [python-statemachine](https://github.com/fgmacedo/python-statemachine),
+  [httpx](https://www.python-httpx.org/).
+- Database: any SQL database SQLModel can reach through its URL; the rules are
+  in [02](02-domain-model.md#storage-rules). Migrations:
+  [Alembic](https://alembic.sqlalchemy.org/).
+- Files: [SeaweedFS](https://github.com/seaweedfs/seaweedfs); a local `weed`
+  binary or an in-memory mock in development and tests.
+- Ephemeral state: [Valkey](https://valkey.io/), or an in-memory
+  [fakeredis](https://github.com/cunla/fakeredis-py) when none is configured;
+  see [02](02-domain-model.md#ephemeral-state).
 - Web UI: Jinja2, [HTMX](https://htmx.org/), [xterm.js](https://xtermjs.org/),
   [asciinema-player](https://github.com/asciinema/asciinema-player); no
   JavaScript build step, vendored static files.
@@ -60,26 +68,34 @@ agent.
 
 ```text
 POST /api/v1/agents/register                              enrollment token
-POST /api/v1/agents/{agent_id}/heartbeat                  agent token
-GET  /api/v1/agents/{agent_id}/deployments                agent token
-POST /api/v1/agents/{agent_id}/deployments/{id}/transition agent token
-POST /api/v1/agents/{agent_id}/deployments/{id}/checks/{check_id} agent token
-WS   /api/v1/agents/{agent_id}/deployments/{id}/console   agent token
+POST /api/v1/agents/{agent_id}/heartbeat                  signed
+GET  /api/v1/agents/{agent_id}/deployments                signed
+POST /api/v1/agents/{agent_id}/deployments/{id}/transition signed
+POST /api/v1/agents/{agent_id}/deployments/{id}/checks/{check_id} signed
+WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
 ```
 
-- Registration exchanges the enrollment token for a rotating agent token.
+- Registration queues the agent `disabled` and returns a one-time claim
+  code. Once an operator sets it `enabled` in the web UI, the agent claims
+  its id, credential and signing key with that code, in a response signed by
+  the API.
+- Every agent request, its reports included, is signed with that key, see
+  [06](06-security.md#credentials). The lease is not a credential: it only
+  says the agent is alive and which deployments it holds.
 - A heartbeat renews the agent's single lease and reports its capacity N,
   the number of VMs it may run at once. The API assigns PENDING deployments
   up to that capacity, compare-and-swap, so a deployment never lands on two
-  leases.
+  agents.
 - `GET .../deployments` is the desired state: every non-terminal deployment
-  on the live lease with its scenario version, image URL and digest, and any
-  pending check.
-- Transitions are compare-and-swap on status and lease; a stale lease gets
-  409 and a repeated transition is a no-op.
-- A lease that expires fails its STARTING, BOOTSTRAPPING, READY and STOPPING
-  deployments; its PENDING ones return to the pool. The agent fences itself:
-  once its local lease deadline passes, it destroys its VMs.
+  of the agent with its scenario version, image URL and digest, and any
+  pending check. It answers only while the agent's lease is live.
+- Transitions are compare-and-swap on status and `agent_id`, accepted only
+  while the agent's lease is live; anything else gets 409 and a repeated
+  transition is a no-op.
+- When a lease expires, the API fails the agent's STARTING, BOOTSTRAPPING,
+  READY and STOPPING deployments before it grants that agent a new lease. The
+  agent fences itself: once its local lease deadline passes, it destroys its
+  VMs.
 
 ## VM runtime
 
@@ -112,7 +128,7 @@ Console: see [04](04-console.md). Recording: see [05](05-recording.md).
 Check:
 
 1. Operator or trainee `POST /api/v1/deployments/{id}/checks`; the API
-   stores a CheckResult `pending`.
+   stores a Check `pending`.
 2. The agent sees it in its desired state, copies the check script into the
    guest, runs it with the scenario's `check_seconds` timeout, deletes it.
 3. The agent posts exit code and the first stdout line; the API stores the
@@ -123,7 +139,8 @@ Stop:
 1. Operator stops the deployment; READY moves to STOPPING, PENDING to
    CANCELLED.
 2. The agent destroys the VM and its directory, then moves it to COMPLETED.
-3. The API closes the open session and finalizes its recording.
+3. COMPLETED revokes the deployment's links; the API closes the recording
+   stream and stores its final size and duration.
 
 ## Reconciliation
 

@@ -18,7 +18,7 @@ In build order; each item is one or more implementation prompts.
 5. Scenario registry ([03](03-scenario-format.md)).
 6. cloud-init bootstrap and the bootstrap marker.
 7. Console pipeline with bounded viewer queues ([04](04-console.md)).
-8. Share links, sessions, take control.
+8. Links, take control.
 9. Recording and replay ([05](05-recording.md)).
 10. Checks through the guest agent.
 11. Web UI, design-first in Penpot: design system, then each screen.

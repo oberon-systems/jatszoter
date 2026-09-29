@@ -16,8 +16,8 @@ fixed the problem. Every terminal session is recorded for replay.
 ## Components
 
 - `packages/api` - the control plane, [FastAPI](https://fastapi.tiangolo.com/)
-  over [PostgreSQL](https://www.postgresql.org/): agents, leases, scenarios,
-  deployments, share links, recordings and check results.
+  over [SQLModel](https://sqlmodel.tiangolo.com/): agents, leases, scenarios,
+  deployments, links, recordings and checks.
 - `packages/agent` - the host daemon in Rust: leases deployments, runs up to N
   [QEMU](https://www.qemu.org/) VMs, bootstraps them with
   [cloud-init](https://cloud-init.io/) and ships their consoles.

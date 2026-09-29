@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jatszoter-api"
+version = "0.0.0"
+description = "Control plane for jatszoter: agents, scenarios, deployments, share links and recordings"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi",
+  "jatszoter-common",
+]
+
+[project.optional-dependencies]
+# What serves the app in a container; the library itself needs neither.
+server = ["uvicorn[standard]"]
+
+[tool.setuptools.package-data]
+jatszoter_api = ["py.typed"]

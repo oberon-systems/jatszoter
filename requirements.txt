@@ -1,6 +1,12 @@
+-e packages/api
+-e packages/common
+-e packages/web
 check-jsonschema==0.38.2
 commitizen==4.18.0
+fastapi==0.141.1
+httpx==0.28.1
 penpot-local-stack==0.1.1
 pre_commit==4.6.2
 pytest==9.1.1
+uvicorn==0.52.4
 wyld-cz==0.3.1

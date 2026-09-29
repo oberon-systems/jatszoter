@@ -1,0 +1,12 @@
+[package]
+name = "jatszoter-agent"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Host daemon for jatszoter: leases deployments and runs them in QEMU VMs"
+
+[dependencies]
+
+[lints]
+workspace = true

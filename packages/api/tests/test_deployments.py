@@ -1,10 +1,11 @@
 import hashlib
 import uuid
+from typing import Any
 
 import pytest
 from sqlmodel import Session
 
-from jatszoter_api.errors import InvalidTransitionError, NotFoundError
+from jatszoter_api.errors import InvalidTransitionError
 from jatszoter_api.lifecycle import Actor, DeploymentStatus
 from jatszoter_api.models import Deployment, Link, Role, User
 
@@ -12,43 +13,38 @@ S = DeploymentStatus
 AGENT = uuid.uuid4()
 OTHER_AGENT = uuid.uuid4()
 SCENARIO = uuid.uuid4()
+FIELDS: dict[str, Any] = {
+    "scenario_id": SCENARIO,
+    "cpus": 1,
+    "memory_mib": 512,
+    "disk_gib": 4,
+    "bootstrap_seconds": 600,
+    "check_seconds": 30,
+    "session_minutes": 60,
+}
 
 
 def deploy(
     session: Session, status: S = S.PENDING, agent_id: uuid.UUID | None = AGENT
 ) -> Deployment:
-    trainee = User(name="alpha", role=Role.TRAINEE)
-    deployment, _ = Deployment.register(
-        trainee,
-        scenario_id=SCENARIO,
-        agent_id=agent_id,
-        status=status,
-        cpus=1,
-        memory_mib=512,
-        disk_gib=4,
-        bootstrap_seconds=600,
-        check_seconds=30,
-        session_minutes=60,
-    )
+    trainee = User(session=session, name="alpha", role=Role.TRAINEE)
+    trainee.save()
+    deployment = Deployment(session=session, status=status, agent_id=agent_id, **FIELDS)
+    deployment.save()
+    Link.issue(session, deployment.id, trainee.id)
     return deployment
 
 
-def test_registering_stores_the_deployment_with_its_trainee_link(session: Session) -> None:
-    trainee = User(name="alpha", role=Role.TRAINEE)
-    deployment, token = Deployment.register(
-        trainee,
-        scenario_id=SCENARIO,
-        cpus=1,
-        memory_mib=512,
-        disk_gib=4,
-        bootstrap_seconds=600,
-        check_seconds=30,
-        session_minutes=60,
-    )
+def test_saving_stores_the_deployment_and_its_trainee_link(session: Session) -> None:
+    trainee = User(session=session, name="alpha", role=Role.TRAINEE)
+    trainee.save()
+    deployment = Deployment(session=session, **FIELDS)
+    deployment.save()
+    _, token = Link.issue(session, deployment.id, trainee.id)
     deployment_id, trainee_id = deployment.id, trainee.id
     session.expunge_all()
 
-    stored = Deployment.get(id=deployment_id)
+    stored = deployment.load(id=deployment_id)
     [link] = stored.links
     assert stored.status is S.PENDING
     assert link.user_id == trainee_id
@@ -57,29 +53,17 @@ def test_registering_stores_the_deployment_with_its_trainee_link(session: Sessio
     assert link.recording is None
 
 
-def test_opening_by_id_returns_the_stored_row(session: Session) -> None:
+def test_loading_by_id_returns_the_stored_row(session: Session) -> None:
     deployment = deploy(session, S.READY)
 
-    assert Deployment.get(id=deployment.id) is deployment
+    assert deployment.load(id=deployment.id) is deployment
 
 
-def test_opening_an_unknown_id_fails(session: Session) -> None:
-    with pytest.raises(NotFoundError):
-        Deployment.get(id=uuid.uuid4())
-
-
-def test_opening_by_a_unique_field_returns_the_stored_row(session: Session) -> None:
+def test_loading_an_unknown_id_fails(session: Session) -> None:
     deployment = deploy(session)
-    [link] = deployment.links
 
-    assert Link.get(token_hash=link.token_hash) is link
-
-
-def test_a_deployment_needs_a_trainee(session: Session) -> None:
-    operator = User(name="gamma", role=Role.OPERATOR)
-
-    with pytest.raises(ValueError, match="trainee"):
-        Deployment.register(operator, scenario_id=SCENARIO)
+    with pytest.raises(IndexError):
+        deployment.load(id=uuid.uuid4())
 
 
 def test_agent_moves_its_deployment(session: Session) -> None:
@@ -151,9 +135,9 @@ def test_wrong_actor_is_refused_before_any_write(session: Session) -> None:
 
 def test_ending_a_deployment_revokes_every_link(session: Session) -> None:
     deployment = deploy(session, S.STOPPING)
-    viewer = User(name="beta", role=Role.VIEWER)
-    viewer_link, _ = Link.issue(deployment.id, viewer.id)
-    session.commit()
+    viewer = User(session=session, name="beta", role=Role.VIEWER)
+    viewer.save()
+    Link.issue(session, deployment.id, viewer.id)
 
     deployment.transition("destroy", S.STOPPING, actor=Actor.AGENT, agent_id=AGENT)
 

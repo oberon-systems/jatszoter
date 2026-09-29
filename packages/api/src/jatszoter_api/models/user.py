@@ -1,8 +1,7 @@
 from enum import StrEnum
 
-from sqlmodel import col, select
+from pydantic import PrivateAttr
 
-from jatszoter_api.models._base import session_of
 from jatszoter_api.models.link import Link
 from jatszoter_api.models.secret import SecretOwner
 
@@ -19,8 +18,10 @@ class User(SecretOwner, table=True):
     name: str
     role: Role
     comment: str | None = None
+    _links: list[Link] | None = PrivateAttr(default=None)
 
     @property
     def links(self) -> list[Link]:
-        statement = select(Link).where(col(Link.user_id) == self.id)
-        return list(session_of(self).exec(statement))
+        if not self._links:
+            self._links = Link._load(self._session, user_id=self.id)
+        return self._links

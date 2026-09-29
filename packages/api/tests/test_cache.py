@@ -31,16 +31,16 @@ def ttl(key: str) -> int:
 
 
 def enabled_agent(session: Session) -> Agent:
-    agent = Agent(name="alpha", state=State.ENABLED)
-    session.commit()
+    agent = Agent(session=session, name="alpha", state=State.ENABLED)
+    agent.save()
     return agent
 
 
 def test_nothing_is_cached_unless_asked(session: Session) -> None:
-    user = User(name="alpha", role=Role.VIEWER)
-    session.commit()
+    user = User(session=session, name="alpha", role=Role.VIEWER)
+    user.save()
 
-    User.get(id=user.id)
+    user.load(id=user.id)
 
     assert cache_client().dbsize() == 0
 

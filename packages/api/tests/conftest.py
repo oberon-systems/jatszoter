@@ -9,7 +9,6 @@ from alembic.config import Config
 from sqlmodel import Session, create_engine
 
 import jatszoter_api
-from jatszoter_api.models._base import use_session
 from jatszoter_api.models._cache import cache_client
 from jatszoter_api.settings import get_settings
 
@@ -47,6 +46,6 @@ def alembic_config(database_dsn: str) -> Config:
 def session(database_dsn: str, alembic_config: Config) -> Iterator[Session]:
     command.upgrade(alembic_config, "head")
     engine = create_engine(database_dsn)
-    with Session(engine) as session, use_session(session):
+    with Session(engine) as session:
         yield session
     engine.dispose()

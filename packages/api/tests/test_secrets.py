@@ -16,8 +16,8 @@ BODY = b'{"expected": "BOOTSTRAPPING", "target": "READY"}'
 
 
 def enabled_agent(session: Session) -> Agent:
-    agent = Agent(name="alpha", state=State.ENABLED)
-    session.commit()
+    agent = Agent(session=session, name="alpha", state=State.ENABLED)
+    agent.save()
     return agent
 
 
@@ -28,8 +28,8 @@ def signed(owner: Agent | User, credential: Credential) -> bool:
 
 
 def test_a_registered_agent_waits_disabled(session: Session) -> None:
-    agent = Agent(name="alpha")
-    session.commit()
+    agent = Agent(session=session, name="alpha")
+    agent.save()
 
     assert agent.state is State.DISABLED
     assert agent.secret is None
@@ -177,8 +177,8 @@ def test_credentials_of_a_previous_master_key_keep_working(
 
 
 def test_a_user_owns_secrets_the_same_way(session: Session) -> None:
-    user = User(name="beta", role=Role.OPERATOR)
-    session.commit()
+    user = User(session=session, name="beta", role=Role.OPERATOR)
+    user.save()
     credential, _ = user.issue(3600)
 
     assert user.state is State.DISABLED

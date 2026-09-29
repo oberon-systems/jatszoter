@@ -3,10 +3,11 @@ import hmac
 import time
 import uuid
 from dataclasses import dataclass
+from typing import Any, Self
 
-from sqlmodel import Field, col, select
+from sqlmodel import Field
 
-from jatszoter_api.models._base import Base, State, session_of
+from jatszoter_api.models._base import Base, State
 from jatszoter_api.models._cache import cached
 from jatszoter_api.settings import get_settings
 
@@ -59,24 +60,41 @@ class Secret(Base, table=True):
     pending_generation: int | None = None
 
 
+@dataclass(frozen=True)
+class Generations:
+    """What `verify` reads of a `Secret`, kept in the cache."""
+
+    generation: int
+    pending_generation: int | None
+
+
 class SecretOwner(Base):
     state: State = State.DISABLED
 
+    def load(self, **key: Any) -> Self:
+        return self._load(self._session, **key)[0]
+
+    def save(self) -> None:
+        self._save()
+
     @cached(key=lambda owner: f"secret:{owner.id}")
-    def secret(self) -> Secret | None:
+    def secret(self) -> Generations | None:
         """The owner's generations, cached for `verify`; `del owner.secret` drops the copy."""
-        return self._stored_secret()
+        stored = self._stored_secret()
+        if stored is None:
+            return None
+        return Generations(stored.generation, stored.pending_generation)
 
     def issue(self, ttl: int) -> tuple[Credential, str]:
         """First call opens generation 1; later calls hand out a fresh pending generation."""
         record = self._stored_secret()
         if record is None:
             generation = 1
-            Secret(owner_id=self.id, generation=generation)
-            session_of(self).commit()
+            Secret(session=self._session, owner_id=self.id, generation=generation)._save()
         else:
             generation = max(record.generation, record.pending_generation or 0) + 1
-            record.set(pending_generation=generation)
+            record.pending_generation = generation
+            record._save()
         del self.secret
         credential = Credential(
             owner_id=self.id,
@@ -116,15 +134,17 @@ class SecretOwner(Base):
         if credential.generation == record.pending_generation:
             stored = self._stored_secret()
             if stored is not None:
-                stored.set(generation=credential.generation, pending_generation=None)
+                stored.generation = credential.generation
+                stored.pending_generation = None
+                stored._save()
             del self.secret
             return True
         if credential.generation < record.generation:
             # A superseded generation in use means two parties hold it; only an operator
             # re-enables the owner.
-            self.set(state=State.DISABLED)
+            self.state = State.DISABLED
+            self._save()
         return False
 
     def _stored_secret(self) -> Secret | None:
-        statement = select(Secret).where(col(Secret.owner_id) == self.id)
-        return session_of(self).exec(statement).first()
+        return next(iter(Secret._load(self._session, owner_id=self.id)), None)

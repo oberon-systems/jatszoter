@@ -1,5 +1,6 @@
 import uuid
 from enum import StrEnum
+from typing import Any, Self
 
 from sqlmodel import Field
 
@@ -24,3 +25,6 @@ class Check(Base, table=True):
     exit_code: int | None = None
     message: str | None = None
     finished_at: int | None = None
+
+    def load(self, **key: Any) -> Self:
+        return self._load(self._session, **key)[0]

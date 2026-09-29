@@ -1,11 +1,11 @@
 import hashlib
 import secrets
 import uuid
-from typing import Self
+from typing import Any, Self
 
-from sqlmodel import Field, col, select
+from sqlmodel import Field, Session
 
-from jatszoter_api.models._base import Base, session_of
+from jatszoter_api.models._base import Base
 from jatszoter_api.models.recording import Recording
 
 
@@ -20,16 +20,22 @@ class Link(Base, table=True):
 
     @property
     def recording(self) -> Recording | None:
-        statement = select(Recording).where(col(Recording.link_id) == self.id)
-        return session_of(self).exec(statement).first()
+        return next(iter(Recording._load(self._session, link_id=self.id)), None)
+
+    def load(self, **key: Any) -> list[Self]:
+        return self._load(self._session, **key)
 
     @classmethod
-    def issue(cls, deployment_id: uuid.UUID, user_id: uuid.UUID) -> tuple[Self, str]:
-        """Build a link; the plain token exists only in this return value."""
+    def issue(
+        cls, session: Session, deployment_id: uuid.UUID, user_id: uuid.UUID
+    ) -> tuple[Self, str]:
+        """Store a link; the plain token exists only in this return value."""
         token = secrets.token_urlsafe(32)
         link = cls(
+            session=session,
             deployment_id=deployment_id,
             user_id=user_id,
             token_hash=hashlib.sha256(token.encode()).hexdigest(),
         )
+        link._save()
         return link, token

@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     valkey_dsn: ValkeyDsn | None = None
     master_keys: dict[str, str] = {}
     master_kid: str = ""
+    auto_register_agents: bool = False
 
 
 @cache

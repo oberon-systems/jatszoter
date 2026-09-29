@@ -5,13 +5,14 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Self
 
-from sqlmodel import Field
+from sqlmodel import Field, Session
 
 from jatszoter_api.models._base import Base, State
 from jatszoter_api.settings import get_settings
 
 SIGNATURE_WINDOW_SECONDS = 300
-REFRESH_BEFORE_SECONDS = 24 * 60 * 60
+CREDENTIAL_SECONDS = 60 * 60
+REFRESH_BEFORE_SECONDS = 15 * 60
 
 
 @dataclass(frozen=True)
@@ -70,8 +71,9 @@ class Generations:
 class SecretOwner(Base):
     state: State = State.DISABLED
 
-    def load(self, **key: Any) -> Self:
-        return self._load(self._session, **key)[0]
+    @classmethod
+    def load(cls, session: Session, **key: Any) -> Self:
+        return cls._load(session, **key)[0]
 
     def save(self) -> None:
         self._save()

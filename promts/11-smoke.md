@@ -30,7 +30,6 @@ The script is the work itself; no helper scripts.
 
 - Up front, fail with one clear line if `qemu-system-x86_64`, `qemu-img`,
   `openssl`, `jq` or `curl` is missing.
-- `JATSZOTER_FILES_DIR=$TEMP_DIR/files` for the API.
 - Build `$TEMP_DIR/www/`: `qemu-img create -f qcow2 base.qcow2 64M` and
   `tar -czf nginx-502.tar.gz -C "$ROOT/scenarios" nginx-502`; serve it with
   `"$VENV/bin/python" -m http.server --bind 127.0.0.1 8081 --directory ...`

@@ -23,7 +23,8 @@ build/
 # Local stack, tokens and agent state
 dev/stack/local/
 
-# Local databases
+# Local file store and databases
+data/
 *.db
 *.sqlite3
 

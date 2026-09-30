@@ -9,6 +9,7 @@ from alembic.config import Config
 from sqlmodel import Session, create_engine
 
 import jatszoter_api
+from jatszoter_api.files import get_files
 from jatszoter_api.models._cache import Cached
 from jatszoter_api.settings import get_settings
 
@@ -22,16 +23,20 @@ def database_dsn(tmp_path: Path) -> str:
 
 
 @pytest.fixture(autouse=True)
-def settings(monkeypatch: pytest.MonkeyPatch, database_dsn: str) -> Iterator[None]:
+def settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, database_dsn: str) -> Iterator[None]:
     monkeypatch.setenv("JATSZOTER_DATABASE_DSN", database_dsn)
     monkeypatch.delenv("JATSZOTER_VALKEY_DSN", raising=False)
+    monkeypatch.delenv("JATSZOTER_SEAWEED_URL", raising=False)
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("JATSZOTER_MASTER_KEYS", json.dumps(MASTER_KEYS))
     monkeypatch.setenv("JATSZOTER_MASTER_KID", "current")
     get_settings.cache_clear()
     Cached._client.cache_clear()
+    get_files.cache_clear()
     yield
     get_settings.cache_clear()
     Cached._client.cache_clear()
+    get_files.cache_clear()
 
 
 @pytest.fixture

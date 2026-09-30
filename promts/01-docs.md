@@ -75,7 +75,7 @@ what is written here, so be precise about routes, fields and states.
   `/dev/kvm` is usable, TCG otherwise.
 - Data flows, Stop: STARTING, BOOTSTRAPPING and READY move to STOPPING.
 - Stack, Files: SeaweedFS filer at `JATSZOTER_SEAWEED_URL`; without it the
-  API writes to the local directory `JATSZOTER_FILES_DIR`, same layout.
+  API writes the same layout under `data/storage/` in its working directory.
 
 ### Scenario format (`03-scenario-format.md`)
 
@@ -97,8 +97,8 @@ what is written here, so be precise about routes, fields and states.
 
 ### Recording storage (`05-recording.md`)
 
-Replace "an in-process mock of it" with the local directory
-`JATSZOTER_FILES_DIR` used when `JATSZOTER_SEAWEED_URL` is unset.
+Replace "an in-process mock of it" with `data/storage/` under the API's
+working directory, used when `JATSZOTER_SEAWEED_URL` is unset.
 
 ### Security (`06-security.md`)
 

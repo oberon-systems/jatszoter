@@ -11,6 +11,7 @@ dependencies = [
   "alembic",
   "fakeredis",
   "fastapi",
+  "httpx",
   "pydantic-settings",
   "python-statemachine",
   "sqlmodel",

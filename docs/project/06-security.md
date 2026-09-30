@@ -21,18 +21,28 @@ operator has not taken control.
 | Other trainees' terminals | a trainee with a link        | link scoped to one deployment    |
 | Operator control          | a trainee with a modified UI | enforced in the API              |
 | Agent identity            | an open registration         | operator enables, signed calls   |
+| Operator login            | password guessing            | scrypt, same 401, rate limit     |
+| The API's outbound fetch  | a scenario URL               | operators only, fetch rules      |
 | The host                  | a hostile guest              | not protected beyond QEMU itself |
 
 ## Credentials
 
-- **Operator** - logs in as a user; the first login as `admin` / `admin`
-  must change the password. OIDC is on the [roadmap](07-roadmap.md).
+- **Operator** - logs in with name and password at `POST
+  /api/v1/auth/login` and gets a credential and signing key, like an agent's
+  claim. On first start, when no operator exists, the API creates `admin` /
+  `admin` with `password_change_required`; such a login is refused until it
+  sends `new_password`. OIDC is on the [roadmap](07-roadmap.md).
+- **Passwords** - stored as scrypt hashes, the parameters kept with the
+  hash. An unknown user and a wrong password get the same 401. Ten failures
+  for one name within 15 minutes get 429 until the window passes; the
+  counter lives in Valkey.
 - **Auto registration** - `JATSZOTER_AUTO_REGISTER_AGENTS=true` stores every
   registering agent `enabled` without an operator. It is off by default and
   belongs on a smoke stand, never on an API others can reach.
-- **Credential** - agents now, and users once authentication exists, sign
-  every request. A request carries the credential in the open - owner id,
-  `kid`, `generation`, `expires_at` - plus `X-Timestamp` and `X-Signature`:
+- **Credential** - agents and users sign every request. A request carries
+  the credential in the open - owner id (the path for an agent, `X-Owner`
+  for a user), `kid`, `generation`, `expires_at` - plus `X-Timestamp` and
+  `X-Signature`:
   the HMAC-SHA256 of the timestamp, method, path and sha256 of the body, one
   per line. The signing key is never stored: it is the HMAC of `owner id :
   generation : expires_at` under the master key named by `kid`, so the API
@@ -52,6 +62,9 @@ operator has not taken control.
   the owner turns `disabled` at once, and only an operator enables it again.
   A stolen key therefore lasts at most until the next refresh.
 - **Link** - see [04](04-console.md#links).
+- **Scenario URLs** - the API fetches them, so only an operator can name
+  one, and the fetch rules in
+  [03](03-scenario-format.md#registering) bound it.
 - No token, link or key ever reaches a log line, an audit record or a
   recording.
 

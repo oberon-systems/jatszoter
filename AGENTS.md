@@ -35,9 +35,11 @@ detail. Identifiers: `agent_id`, `lease_id`, `scenario_id`, `deployment_id`,
 Lifecycle:
 PENDING -> STARTING -> BOOTSTRAPPING -> READY -> STOPPING -> COMPLETED
 
-Any non-terminal state may move to FAILED. Stopping a PENDING deployment
-moves it to CANCELLED. A READY deployment past its session TTL moves to
-STOPPING with reason `expired`. COMPLETED, FAILED and CANCELLED are terminal.
+Any non-terminal state may move to FAILED. The operator stops a STARTING,
+BOOTSTRAPPING or READY deployment: it moves to STOPPING. Stopping a PENDING
+deployment moves it to CANCELLED. A READY deployment past its session TTL
+moves to STOPPING with reason `expired`. COMPLETED, FAILED and CANCELLED are
+terminal.
 
 ## Architecture
 

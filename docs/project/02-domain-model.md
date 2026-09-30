@@ -24,8 +24,10 @@ holding that entity's UUID.
 
 - **User** - a person: name, `role` (`operator`, `trainee` or `viewer`,
   used like a group), comment, `state` (`disabled` until an operator enables
-  it, like an agent). The role says what every link of that user can do. A
-  user owns a secret.
+  it, like an agent), `password_hash` (scrypt, its parameters stored with
+  the hash) and `password_change_required`. The role says what every link of
+  that user can do. A user owns a secret. See
+  [06](06-security.md#credentials).
 - **Agent** - a registered host: name, placement labels, `state`
   (`disabled` while it waits for an operator or once one turns it off,
   `enabled` after approval). An agent owns a secret. Its last heartbeat and
@@ -38,20 +40,24 @@ holding that entity's UUID.
 - **Lease** - the agent's single live lease: its id, the reported capacity N,
   the last heartbeat and the deadline, ephemeral state renewed by heartbeat.
   A heartbeat after expiry opens a new lease with a new id.
-- **Image** - a base disk registered by the operator: name as used in
-  `scenario.yaml`, URL, sha256 digest. Images must ship cloud-init and
-  qemu-guest-agent.
+- **Image** - a base disk registered once by the operator: name as used in
+  `scenario.yaml`, URL, digest (sha256, 64 lowercase hex characters).
+  Registering the same name with a different URL or digest is refused.
+  Images must ship cloud-init and qemu-guest-agent.
 - **Scenario** - one registered version of a scenario directory: the slug
-  from `scenario.yaml`, `version`, the parsed document and the content of
-  every referenced file. A registered version is immutable; a change is a
-  new version.
-- **Deployment** - scenario version, agent, status, reason, timestamps,
-  `vm_id`, and the resources and timeouts copied from the scenario at create
-  time.
+  from `scenario.yaml`, `version`, the parsed `scenario.yaml` document, and
+  the file-store URL and digest of its bundle. File contents are not SQL
+  columns; they stay in the bundle, see
+  [03](03-scenario-format.md#registering). A registered version is
+  immutable; a change is a new version.
+- **Deployment** - scenario version, `image_id`, agent, status, reason,
+  timestamps, `vm_id`, and the resources and timeouts. The image, resources
+  and timeouts are copied from the scenario at create time. Trainee links
+  arrive with roadmap item 8 ([07](07-roadmap.md)).
 - **Link** - deployment, user, token hash, `opened_at` on first open,
   `revoked_at`. The link acts with its user's role; a trainee's link owns one
-  recording. A deployment is created with its trainee link, and ending
-  the deployment revokes all its links. See [04](04-console.md#links).
+  recording. From item 8 on, a deployment is created with its trainee link;
+  ending the deployment revokes all its links. See [04](04-console.md#links).
 - **Recording** - URL of the asciicast in object storage, size, duration,
   trainee link.
 - **Check** - deployment, the link it came through if any, the user who
@@ -62,12 +68,17 @@ holding that entity's UUID.
 
 ```text
  PENDING -> STARTING -> BOOTSTRAPPING -> READY -> STOPPING -> COMPLETED
-    |          |             |            |          |
-    v          +-------------+------------+----------+--> FAILED
+    |          |             |                      ^
+    |          +-------------+----------------------+  operator stop
+    v
  CANCELLED
+
+ any non-terminal state -> FAILED
 ```
 
 - Any non-terminal state may move to FAILED, always with a reason.
+- The operator stops a STARTING, BOOTSTRAPPING or READY deployment: it
+  moves to STOPPING, and the agent destroys the VM.
 - Stopping a PENDING deployment moves it to CANCELLED.
 - A READY deployment past `session_minutes` moves to STOPPING with reason
   `expired`.
@@ -84,7 +95,9 @@ holding that entity's UUID.
 | PENDING       | STARTING      | agent    | assigned by heartbeat          |
 | PENDING       | CANCELLED     | operator | stop                           |
 | STARTING      | BOOTSTRAPPING | agent    | guest agent answers            |
+| STARTING      | STOPPING      | operator | stop                           |
 | BOOTSTRAPPING | READY         | agent    | bootstrap marker `ok`          |
+| BOOTSTRAPPING | STOPPING      | operator | stop                           |
 | READY         | STOPPING      | operator | stop                           |
 | READY         | STOPPING      | api      | session TTL expired            |
 | STOPPING      | COMPLETED     | agent    | VM destroyed                   |
@@ -108,8 +121,9 @@ named or special-cased anywhere in the code.
   References are indexed id columns, and the API keeps them consistent.
 - Enums are stored as strings, documents as JSON columns, times as integer
   seconds since the epoch in UTC.
-- Recording files never go into SQL: they live in SeaweedFS and the row
-  keeps their URL, see [05](05-recording.md#storage).
+- Files never go into SQL: recordings and scenario bundles live in the file
+  store and the row keeps their URL, see [05](05-recording.md#storage) and
+  [03](03-scenario-format.md#registering).
 - Nothing that lives by a TTL is a SQL row; see below.
 
 ## Ephemeral state

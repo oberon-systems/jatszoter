@@ -1,7 +1,8 @@
 # 03 - Scenario format
 
 A scenario is a directory under `scenarios/` holding `scenario.yaml` and the
-files it names. The schema is `schemas/scenario.schema.yaml`; pre-commit
+files it names. The schema is part of the API version and lives at
+`packages/api/src/jatszoter_api/schemas/scenario.schema.yaml`; pre-commit
 validates every `scenario.yaml` against it.
 
 - [Layout](#layout)
@@ -78,16 +79,37 @@ seed ISO and moves the deployment to READY; on failure or on
 
 ## Registering
 
-```bash
-curl -X POST https://jatszoter.example.com/api/v1/scenarios \
-  -H "Authorization: Bearer $JATSZOTER_TOKEN" \
-  -F "bundle=@nginx-502.tar.gz"
-```
+An operator registers a scenario with a signed `POST /api/v1/scenarios`
+([01](01-architecture.md#operator-api)), in one of two forms:
 
-The API validates the bundle against the same schema, checks that every
-named file exists, and refuses a `version` that is already registered for
-that `id` with different content. Registering the same content again is a
-no-op.
+- multipart with a `bundle` field: a tar.gz of the scenario directory;
+- JSON naming a bundle the API fetches:
+
+  ```json
+  {"url": "https://example.com/nginx-502.tar.gz"}
+  ```
+
+Fetch rules:
+
+- `https`, or `http` to a loopback address only;
+- no redirects;
+- at most `JATSZOTER_SCENARIO_BUNDLE_LIMIT_BYTES`, 10 MiB by default;
+- a 30 second timeout.
+
+Bundle rules:
+
+- regular files only: no links, no absolute paths, no `..`;
+- files sit at the root of the archive or under one top directory named
+  like the `id`.
+
+The API validates `scenario.yaml` against the schema, checks that every
+named file exists and that the named `image` is already registered. It
+stores the bundle in the file store as `scenarios/<slug>/<version>.tar.gz`.
+The digest is sha256 over the sorted file names and their contents, so
+re-packing the same files gives the same digest.
+
+A `version` already registered for that `id` with a different digest is
+refused. Registering the same digest again is a no-op.
 
 ## Acceptance criteria
 

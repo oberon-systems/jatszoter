@@ -48,10 +48,10 @@ when needed and replays the recording later.
 
 | Role     | How it authenticates | What it can do                                |
 | -------- | -------------------- | --------------------------------------------- |
-| Operator | operator token       | everything: agents, scenarios, deployments    |
+| Operator | login, signed calls  | everything: agents, scenarios, deployments    |
 | Trainee  | trainee link         | one deployment's terminal and its check       |
 | Viewer   | viewer link          | watches one deployment's terminal             |
-| Author   | git                  | writes scenarios, registers them via the API  |
+| Author   | git                  | writes scenarios; an operator registers them  |
 | Agent    | signed requests      | its lease, its deployments, their consoles    |
 
 ## How it works

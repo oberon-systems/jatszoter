@@ -39,15 +39,16 @@ One JSON header line, then one JSON event per line:
 - Revoking the link closes the stream and writes the final size and duration
   to the Recording row. Ending the deployment revokes the link, so no
   recording outlives it.
-- In tests the API streams into a SeaweedFS mock.
+- In tests the API streams into the local directory `JATSZOTER_FILES_DIR`.
 
 ## Storage
 
 - Files live in [SeaweedFS](https://github.com/seaweedfs/seaweedfs) as
   `<deployment_id>/<recording_id>.cast`; the Recording row keeps the file's
   URL, its size and duration.
-- Development and tests use a local `weed` binary, or an in-process mock of
-  it when none is installed.
+- When `JATSZOTER_SEAWEED_URL` is unset, the API writes the same layout to
+  the local directory `JATSZOTER_FILES_DIR` instead, as in development and
+  tests.
 - A recording larger than `JATSZOTER_RECORDING_LIMIT_BYTES` stops taking
   output and gets a final marker saying so.
 - Recordings older than `JATSZOTER_RECORDING_RETENTION_DAYS` are deleted by
@@ -55,8 +56,8 @@ One JSON header line, then one JSON event per line:
 
 ## Replay
 
-- `GET /api/v1/recordings/{recording_id}.cast` returns the file, operator
-  token only.
+- `GET /api/v1/recordings/{recording_id}.cast` returns the file, signed
+  operator request only.
 - The web UI plays it with a vendored asciinema-player and lists markers as
   jump points.
 - A recording of a live link is served as far as it is written.

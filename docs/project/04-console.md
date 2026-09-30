@@ -37,8 +37,8 @@ through a link; one party at a time holds the keyboard.
 
 ## Viewers
 
-`WS /api/v1/deployments/{id}/attach` is the live view. It accepts either the
-operator token or a link session cookie, sends the buffer from the
+`WS /api/v1/deployments/{id}/attach` is the live view. It accepts either a
+signed operator request or a link session cookie, sends the buffer from the
 viewer's start offset, then every new byte raw.
 
 A viewer sends:
@@ -82,8 +82,8 @@ link can do:
 - Only the operator decides who has the keyboard, and the API enforces it.
   The current holder is console state, not a database column.
 - `POST /api/v1/deployments/{id}/control` with `{"holder": "operator"}`
-  takes it; `{"holder": "trainee"}` gives it back. Only the operator token
-  or an operator link may call it.
+  takes it; `{"holder": "trainee"}` gives it back. Only a signed operator
+  request or an operator link may call it.
 - While the operator holds control, trainee keys and resize frames are
   dropped in the API, whatever the browser shows.
 - Every change is written as a marker into the recording.

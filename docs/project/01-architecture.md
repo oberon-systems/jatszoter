@@ -6,6 +6,7 @@ API.
 
 - [Components](#components)
 - [Stack](#stack)
+- [Operator API](#operator-api)
 - [Agent protocol](#agent-protocol)
 - [VM runtime](#vm-runtime)
 - [Data flows](#data-flows)
@@ -34,7 +35,7 @@ API.
 
 - `api` - control plane: agents, leases, images, scenarios, deployments,
   links, recordings, checks. It is the only writer to the database and to
-  SeaweedFS, and the only component browsers and agents talk to.
+  the file store, and the only component browsers and agents talk to.
 - `agent` - host daemon: registers, keeps its lease, starts and destroys
   VMs, bootstraps them, runs checks inside them, ships their consoles.
 - `web` - operator and trainee pages. It holds no state of its own and
@@ -49,8 +50,9 @@ API.
 - Database: any SQL database SQLModel can reach through its URL; the rules are
   in [02](02-domain-model.md#storage-rules). Migrations:
   [Alembic](https://alembic.sqlalchemy.org/).
-- Files: [SeaweedFS](https://github.com/seaweedfs/seaweedfs); a local `weed`
-  binary or an in-memory mock in development and tests.
+- Files: the [SeaweedFS](https://github.com/seaweedfs/seaweedfs) filer at
+  `JATSZOTER_SEAWEED_URL`. Without it the API writes to the local directory
+  `JATSZOTER_FILES_DIR`, same layout; development and tests use either.
 - Ephemeral state: [Valkey](https://valkey.io/), or an in-memory
   [fakeredis](https://github.com/cunla/fakeredis-py) when none is configured;
   see [02](02-domain-model.md#ephemeral-state).
@@ -60,6 +62,31 @@ API.
 - Agent: Rust, [QEMU](https://www.qemu.org/) with KVM, cloud-init NoCloud,
   [qemu-guest-agent](https://wiki.qemu.org/Features/GuestAgent).
 - Settings: environment variables with the `JATSZOTER_` prefix.
+
+## Operator API
+
+Operators and the web UI call the API under `/api/v1`.
+
+```text
+POST /api/v1/auth/login                    open
+POST /api/v1/auth/credential               signed (user)
+POST /api/v1/images                        signed (operator)
+GET  /api/v1/images                        signed (operator)
+POST /api/v1/scenarios                     signed (operator)
+GET  /api/v1/scenarios                     signed (operator)
+POST /api/v1/deployments                   signed (operator)
+GET  /api/v1/deployments                   signed (operator)
+GET  /api/v1/deployments/{id}              signed (operator)
+POST /api/v1/deployments/{id}/stop         signed (operator)
+```
+
+- Login and the credential are described in
+  [06](06-security.md#credentials).
+- A user request carries the owner id in `X-Owner`, the rest of the
+  credential and the signature exactly like an agent request. An agent's
+  owner id is the `agent_id` in the path instead.
+- `signed (operator)` needs a user with role `operator`; any other signed
+  user gets 403.
 
 ## Agent protocol
 
@@ -100,15 +127,31 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
 - A heartbeat renews the agent's single lease and reports its capacity N,
   the number of VMs it may run at once. The answer carries the lease id, the
   heartbeat time and the deadline; the agent heartbeats every third of the
-  lease TTL. The API assigns PENDING deployments
-  up to that capacity, compare-and-swap, so a deployment never lands on two
-  agents.
+  lease TTL.
+- A heartbeat also assigns PENDING deployments to the agent: first those the
+  operator pinned to it, then unpinned ones, oldest first, up to its
+  capacity minus the non-terminal deployments it already holds. The
+  assignment is compare-and-swap on `agent_id`, so a deployment never lands
+  on two agents, and it sets `vm_id`.
+- A signed GET request signs an empty body.
 - `GET .../deployments` is the desired state: every non-terminal deployment
-  of the agent with its scenario version, image URL and digest, and any
-  pending check. It answers only while the agent's lease is live.
-- Transitions are compare-and-swap on status and `agent_id`, accepted only
-  while the agent's lease is live; anything else gets 409 and a repeated
-  transition is a no-op.
+  of the agent, and any pending check. A request without a live lease gets
+  409. One entry is:
+
+  ```text
+  id, vm_id, status
+  scenario   id, slug, version
+  image      name, url, digest
+  resources  cpus, memory_mib, disk_gib
+  timeouts   bootstrap_seconds, check_seconds, session_minutes
+  ```
+
+- A transition body is `event`, `expected` - the status the agent believes
+  the deployment is in - and an optional `reason`. The agent events are
+  `assign`, `boot`, `bootstrap`, `destroy` and `fail`.
+- Transitions are compare-and-swap on `expected` and `agent_id`, accepted
+  only while the agent's lease is live; anything else gets 409 and a
+  repeated transition is a no-op.
 - When a lease expires, the API fails the agent's STARTING, BOOTSTRAPPING,
   READY and STOPPING deployments before it grants that agent a new lease. The
   agent fences itself: once its local lease deadline passes, it destroys its
@@ -116,9 +159,24 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
 
 ## VM runtime
 
-- Each VM has its own directory: a qcow2 overlay over a cached base image
-  checked by digest, the cloud-init seed ISO, and unix sockets for QMP, the
-  serial console and qemu-guest-agent.
+- Everything lives under the agent's state directory:
+
+  ```text
+  images/<digest>.qcow2        cached base image, checked by digest
+  vms/<deployment_id>/
+    disk.qcow2                 overlay over the base image
+    vm.json                    what the VM was created from
+    qemu.pid                   pid file of the daemonized QEMU
+    qmp.sock                   QMP
+    serial.sock                serial console
+    qga.sock                   qemu-guest-agent
+  ```
+
+- QEMU is daemonized with a pid file, so a VM outlives an agent restart and
+  reconciliation adopts it. It runs with KVM when `/dev/kvm` is usable and
+  with TCG otherwise.
+- The cloud-init seed ISO joins the VM directory with item 6
+  ([03](03-scenario-format.md#bootstrap)).
 - Network is QEMU user-mode NAT: the guest reaches the internet for package
   installs, nothing reaches the guest from outside.
 - The trainee's shell is the guest's serial console `ttyS0`; no SSH and no
@@ -133,7 +191,8 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
 Create and bootstrap:
 
 1. Operator `POST /api/v1/deployments` with `scenario_id`, optional
-   `agent_id`; the API stores it PENDING.
+   `agent_id` to pin it; the API copies the scenario's image, resources and
+   timeouts and stores it PENDING.
 2. A heartbeat assigns it; the agent moves it to STARTING, fetches the
    image, builds the seed ISO ([03](03-scenario-format.md)), boots the VM.
 3. Once the guest agent answers, the deployment moves to BOOTSTRAPPING.
@@ -153,8 +212,8 @@ Check:
 
 Stop:
 
-1. Operator stops the deployment; READY moves to STOPPING, PENDING to
-   CANCELLED.
+1. Operator stops the deployment; STARTING, BOOTSTRAPPING and READY move
+   to STOPPING, PENDING to CANCELLED.
 2. The agent destroys the VM and its directory, then moves it to COMPLETED.
 3. COMPLETED revokes the deployment's links; the API closes the recording
    stream and stores its final size and duration.

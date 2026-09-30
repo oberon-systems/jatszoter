@@ -1,8 +1,11 @@
-ROOT := $(abspath ../..)
-VENV := $(ROOT)/.venv
+ROOT     := $(abspath ../..)
+VENV     := $(ROOT)/.venv
+TEMP_DIR := $(shell mktemp -dut jatszoter-XXXXX$$(date +%s))
+
+include *.mk
 
 .DEFAULT_GOAL := test
-.PHONY: test test-api test-web test-agent
+.PHONY: test test-api test-web test-agent smoke
 
 test:
 	cd $(ROOT) && $(VENV)/bin/pytest -q

@@ -11,7 +11,7 @@ SHELL := /bin/bash
 export PRE_COMMIT_HOME := $(CURDIR)/.pre-commit
 
 .DEFAULT_GOAL := shell
-.PHONY: install shell test test-api test-web test-agent lint run-api run-web design
+.PHONY: install shell test test-api test-web test-agent smoke lint run-api run-web design
 
 
 # common targets
@@ -26,7 +26,7 @@ install:
 
 
 # tests
-test test-api test-web test-agent:
+test test-api test-web test-agent smoke:
 	$(MAKE) -C make/tests $@
 
 

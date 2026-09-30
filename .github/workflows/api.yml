@@ -4,7 +4,6 @@ on:
   pull_request:
     paths:
       - packages/api/**
-      - packages/common/**
       - .github/workflows/api.yml
   push:
     branches:
@@ -24,6 +23,6 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install
-        run: pip install ./packages/common ./packages/api httpx pytest
+        run: pip install ./packages/api httpx pytest
       - name: Test
         run: pytest -q packages/api

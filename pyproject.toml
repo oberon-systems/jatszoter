@@ -18,13 +18,13 @@ select = ["E", "F", "I", "B", "UP", "S", "SIM"]
 "**/tests/**" = ["S101"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["jatszoter_api", "jatszoter_common", "jatszoter_web"]
+known-first-party = ["jatszoter_api", "jatszoter_web"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
-mypy_path = "packages/common/src:packages/api/src:packages/web/src"
+mypy_path = "packages/api/src:packages/web/src"
 explicit_package_bases = true
 
 [tool.pytest.ini_options]

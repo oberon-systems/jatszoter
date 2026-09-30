@@ -5,7 +5,8 @@ from fastapi import Depends, Header, HTTPException, Request, status
 from sqlmodel import Session
 
 from jatszoter_api.db import get_session
-from jatszoter_api.models import Agent, Credential
+from jatszoter_api.models import Agent, Credential, Role, User
+from jatszoter_api.models.secret import SecretOwner
 
 
 def unauthorized() -> HTTPException:
@@ -25,6 +26,31 @@ def _credential(owner_id: uuid.UUID, header: str) -> Credential | None:
         return None
 
 
+def _signed[T: SecretOwner](
+    model: type[T],
+    owner_id: uuid.UUID,
+    request: Request,
+    session: Session,
+    body: bytes,
+    x_credential: str,
+    x_timestamp: str,
+    x_signature: str,
+) -> T:
+    """The owner `owner_id` names, once its signed request checks out."""
+    credential = _credential(owner_id, x_credential)
+    if credential is None or not x_timestamp.isdigit():
+        raise unauthorized()
+    try:
+        owner = model.load(session, id=owner_id)
+    except IndexError:
+        raise unauthorized() from None
+    if not owner.verify(
+        credential, request.method, request.url.path, body, int(x_timestamp), x_signature
+    ):
+        raise unauthorized()
+    return owner
+
+
 def require_agent(
     agent_id: uuid.UUID,
     request: Request,
@@ -35,15 +61,28 @@ def require_agent(
     x_signature: Annotated[str, Header()] = "",
 ) -> Agent:
     """The agent named in the path, once its signed request checks out."""
-    credential = _credential(agent_id, x_credential)
-    if credential is None or not x_timestamp.isdigit():
-        raise unauthorized()
+    return _signed(Agent, agent_id, request, session, body, x_credential, x_timestamp, x_signature)
+
+
+def require_user(
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    body: Annotated[bytes, Depends(_body)],
+    x_owner: Annotated[str, Header()] = "",
+    x_credential: Annotated[str, Header()] = "",
+    x_timestamp: Annotated[str, Header()] = "",
+    x_signature: Annotated[str, Header()] = "",
+) -> User:
+    """The user named in `X-Owner`, once its signed request checks out."""
     try:
-        agent = Agent.load(session, id=agent_id)
-    except IndexError:
+        owner_id = uuid.UUID(x_owner)
+    except ValueError:
         raise unauthorized() from None
-    if not agent.verify(
-        credential, request.method, request.url.path, body, int(x_timestamp), x_signature
-    ):
-        raise unauthorized()
-    return agent
+    return _signed(User, owner_id, request, session, body, x_credential, x_timestamp, x_signature)
+
+
+def require_operator(user: Annotated[User, Depends(require_user)]) -> User:
+    """The signed user, refused with 403 unless their role is operator."""
+    if user.role is not Role.OPERATOR:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    return user

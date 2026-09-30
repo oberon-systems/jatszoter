@@ -34,6 +34,8 @@ def upgrade() -> None:
         sa.Column("comment", sa.String(), nullable=True),
         sa.Column("created_at", sa.Integer(), nullable=False),
         sa.Column("state", STATE, nullable=False),
+        sa.Column("password", sa.String(), nullable=True),
+        sa.Column("password_changed", sa.Integer(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_table(

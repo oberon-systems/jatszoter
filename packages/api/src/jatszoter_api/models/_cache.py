@@ -32,3 +32,14 @@ class Cached:
 
     def _delete(self, key: str) -> bool:
         return bool(self._client().delete(key))
+
+    def _count(self, key: str) -> int:
+        """Read a counter `_increment` wrote: a bare number `_get` cannot unpickle."""
+        raw = self._client().get(key)
+        return int(raw) if isinstance(raw, bytes) else 0
+
+    def _increment(self, key: str, ttl: int) -> int:
+        """Count one more under `key`, in a `ttl` window the first count opens."""
+        count = self._client().incr(key)
+        self._client().expire(key, ttl, nx=True)
+        return count if isinstance(count, int) else 0

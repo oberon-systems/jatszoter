@@ -24,10 +24,10 @@ holding that entity's UUID.
 
 - **User** - a person: name, `role` (`operator`, `trainee` or `viewer`,
   used like a group), comment, `state` (`disabled` until an operator enables
-  it, like an agent), `password_hash` (scrypt, its parameters stored with
-  the hash) and `password_change_required`. The role says what every link of
-  that user can do. A user owns a secret. See
-  [06](06-security.md#credentials).
+  it, like an agent), `password` (a scrypt hash, its parameters stored with
+  it) and `password_changed` (0 until the user sets their own password, then
+  when they did). The role says what every link of that user can do. A user
+  owns a secret. See [06](06-security.md#credentials).
 - **Agent** - a registered host: name, placement labels, `state`
   (`disabled` while it waits for an operator or once one turns it off,
   `enabled` after approval). An agent owns a secret. Its last heartbeat and

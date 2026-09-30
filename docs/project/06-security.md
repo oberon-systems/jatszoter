@@ -30,7 +30,7 @@ operator has not taken control.
 - **Operator** - logs in with name and password at `POST
   /api/v1/auth/login` and gets a credential and signing key, like an agent's
   claim. On first start, when no operator exists, the API creates `admin` /
-  `admin` with `password_change_required`; such a login is refused until it
+  `admin` with `password_changed` 0; such a login is refused until it
   sends `new_password`. OIDC is on the [roadmap](07-roadmap.md).
 - **Passwords** - stored as scrypt hashes, the parameters kept with the
   hash. An unknown user and a wrong password get the same 401. Ten failures

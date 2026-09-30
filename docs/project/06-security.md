@@ -17,7 +17,7 @@ operator has not taken control.
 
 | Asset                     | Protected against            | How                              |
 | ------------------------- | ---------------------------- | -------------------------------- |
-| Deployments and their VMs | anyone without a credential  | operator token, link             |
+| Deployments and their VMs | anyone without a credential  | operator login, link             |
 | Other trainees' terminals | a trainee with a link        | link scoped to one deployment    |
 | Operator control          | a trainee with a modified UI | enforced in the API              |
 | Agent identity            | an open registration         | operator enables, signed calls   |
@@ -25,8 +25,11 @@ operator has not taken control.
 
 ## Credentials
 
-- **Operator token** - bearer token; the API holds only its sha256 in
-  `JATSZOTER_OPERATOR_TOKEN_SHA256`. OIDC is on the [roadmap](07-roadmap.md).
+- **Operator** - logs in as a user; the first login as `admin` / `admin`
+  must change the password. OIDC is on the [roadmap](07-roadmap.md).
+- **Auto registration** - `JATSZOTER_AUTO_REGISTER_AGENTS=true` stores every
+  registering agent `enabled` without an operator. It is off by default and
+  belongs on a smoke stand, never on an API others can reach.
 - **Credential** - agents now, and users once authentication exists, sign
   every request. A request carries the credential in the open - owner id,
   `kid`, `generation`, `expires_at` - plus `X-Timestamp` and `X-Signature`:
@@ -41,8 +44,9 @@ operator has not taken control.
   `enabled`, the credential has not expired, the timestamp is within 300
   seconds, the signature matches. Anything else gets 401.
 - **Refresh** - the `secrets` table keeps one row per owner: the live
-  `generation` and a `pending_generation`. A credential is due for refresh a
-  day before it expires. Every refresh hands out a fresh pending generation;
+  `generation` and a `pending_generation`. A credential lives an hour and is
+  due for refresh 15 minutes before it expires. Every refresh hands out a
+  fresh pending generation;
   the live one keeps working until the pending one signs its first request.
   A superseded generation that still signs means two parties hold the key:
   the owner turns `disabled` at once, and only an operator enables it again.

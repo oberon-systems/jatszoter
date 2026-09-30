@@ -27,16 +27,17 @@ holding that entity's UUID.
   it, like an agent). The role says what every link of that user can do. A
   user owns a secret.
 - **Agent** - a registered host: name, placement labels, `state`
-  (`disabled` until an operator enables it, then `enabled`). An agent owns a
-  secret. Its last heartbeat and reported capacity N are
-  [ephemeral state](#ephemeral-state).
+  (`disabled` while it waits for an operator or once one turns it off,
+  `enabled` after approval). An agent owns a secret. Its last heartbeat and
+  reported capacity N are [ephemeral state](#ephemeral-state).
 - **Secret** - one row per owner, an agent or a user: `owner_id`, the live
   `generation` and a `pending_generation` during a refresh. No key is
   stored; signing keys are derived from a master key, and the credential
   that names them knows itself whether it is due for refresh or expired.
   See [06](06-security.md#credentials).
-- **Lease** - the agent's single live lease, ephemeral state renewed by
-  heartbeat. A heartbeat after expiry opens a new lease with a new id.
+- **Lease** - the agent's single live lease: its id, the reported capacity N,
+  the last heartbeat and the deadline, ephemeral state renewed by heartbeat.
+  A heartbeat after expiry opens a new lease with a new id.
 - **Image** - a base disk registered by the operator: name as used in
   `scenario.yaml`, URL, sha256 digest. Images must ship cloud-init and
   qemu-guest-agent.
@@ -113,15 +114,17 @@ named or special-cased anywhere in the code.
 
 ## Ephemeral state
 
-State that expires on its own lives in [Valkey](https://valkey.io/), keyed by
-agent id with a TTL, and never in SQL. When `JATSZOTER_VALKEY_DSN` is unset -
-in smoke runs and tests always - the API uses an in-memory
+State that expires on its own lives in [Valkey](https://valkey.io/) with a
+TTL, and never in SQL. When `JATSZOTER_VALKEY_DSN` is unset - in smoke runs
+and tests always - the API uses an in-memory
 [fakeredis](https://github.com/cunla/fakeredis-py) instead.
 
-- The agent's lease id, renewed with the lease TTL by every heartbeat.
-- The last heartbeat and the reported capacity N.
-- A pending registration and its claim code, until an operator approves it
-  and the agent claims it, or its TTL runs out.
+- The agent's lease under `lease:<agent id>`: its id, the reported capacity N
+  and the last heartbeat, written again with the lease TTL by every
+  heartbeat.
+- A pending registration under `registration:<agent id>`, and its claim code
+  under `claim:<sha256 of the code>`, until an operator approves it and the
+  agent claims it, or their TTL runs out.
 
 No SQL row names a lease: an expired id would only go stale there. A
 deployment names its agent, an agent write is accepted only while Valkey holds
@@ -133,14 +136,15 @@ deployments before a new one is granted.
 The same Valkey, or fakeredis without a DSN, caches the few values the hot
 path reads on every request; SQL stays the source of truth.
 
-- `@cached(key=..., ttl=...)` on a model method turns it into a property
-  served from the cache under `key`, the object's id by default, for `ttl`
-  seconds, ten by default. A hit renews the TTL; a miss runs the method and
-  stores its result; `del obj.<property>` drops the entry.
+- Every model inherits `Cached`: `_get`, `_set`, `_ttl` and `_delete` on a
+  full key. `Base` overrides them to keep entries under `<key>:<id>`, ten
+  seconds by default; its `_get` renews a hit and, given a loader, stores
+  what the loader reads on a miss. A child overrides them again or reaches
+  the plain ones through `super()`.
 - Only an owner's secret is cached today, under `secret:<owner id>`, for
-  `verify`. Every refresh and every promoted generation runs
-  `del owner.secret`, so a superseded generation is never taken for the live
-  one. Nothing scans the cache.
+  `verify`. Every refresh and every promoted generation drops it, so a
+  superseded generation is never taken for the live one. Nothing scans the
+  cache.
 
 ## Acceptance criteria
 

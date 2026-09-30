@@ -120,6 +120,8 @@ in smoke runs and tests always - the API uses an in-memory
 
 - The agent's lease id, renewed with the lease TTL by every heartbeat.
 - The last heartbeat and the reported capacity N.
+- A pending registration and its claim code, until an operator approves it
+  and the agent claims it, or its TTL runs out.
 
 No SQL row names a lease: an expired id would only go stale there. A
 deployment names its agent, an agent write is accepted only while Valkey holds

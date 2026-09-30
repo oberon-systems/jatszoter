@@ -67,7 +67,7 @@ Agents call the API under `/api/v1/agents`; the API never connects to an
 agent.
 
 ```text
-POST /api/v1/agents/register                              enrollment token
+POST /api/v1/agents/register                              open
 POST /api/v1/agents/{agent_id}/heartbeat                  signed
 GET  /api/v1/agents/{agent_id}/deployments                signed
 POST /api/v1/agents/{agent_id}/deployments/{id}/transition signed
@@ -75,10 +75,11 @@ POST /api/v1/agents/{agent_id}/deployments/{id}/checks/{check_id} signed
 WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
 ```
 
-- Registration queues the agent `disabled` and returns a one-time claim
-  code. Once an operator sets it `enabled` in the web UI, the agent claims
-  its id, credential and signing key with that code, in a response signed by
-  the API.
+- Registration is open and returns a one-time claim code. It lives only in
+  Valkey with a TTL, so a registration no operator approves in time expires
+  on its own and never reaches SQL. Once an operator approves it in the web
+  UI, the agent is stored `enabled`, and the agent claims its id, credential
+  and signing key with that code, in a response signed by the API.
 - Every agent request, its reports included, is signed with that key, see
   [06](06-security.md#credentials). The lease is not a credential: it only
   says the agent is alive and which deployments it holds.

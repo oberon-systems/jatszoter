@@ -20,15 +20,13 @@ operator has not taken control.
 | Deployments and their VMs | anyone without a credential  | operator token, link             |
 | Other trainees' terminals | a trainee with a link        | link scoped to one deployment    |
 | Operator control          | a trainee with a modified UI | enforced in the API              |
-| Agent identity            | a stolen enrollment token    | operator enables, signed calls   |
+| Agent identity            | an open registration         | operator enables, signed calls   |
 | The host                  | a hostile guest              | not protected beyond QEMU itself |
 
 ## Credentials
 
 - **Operator token** - bearer token; the API holds only its sha256 in
   `JATSZOTER_OPERATOR_TOKEN_SHA256`. OIDC is on the [roadmap](07-roadmap.md).
-- **Enrollment token** - opens registration only; stored as sha256, and
-  registration is closed while it is unset.
 - **Credential** - agents now, and users once authentication exists, sign
   every request. A request carries the credential in the open - owner id,
   `kid`, `generation`, `expires_at` - plus `X-Timestamp` and `X-Signature`:

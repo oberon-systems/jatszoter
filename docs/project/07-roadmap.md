@@ -11,16 +11,16 @@ items are listed so that version one does not close the door on them.
 
 In build order; each item is one or more implementation prompts. From 3a on,
 every item also ships the agent side of its change and extends the smoke test
-to cover it.
+to cover it. An item marked Done has landed on `main`.
 
-1. Repository skeleton: packages, tests, CI.
-2. Domain model and migrations ([02](02-domain-model.md)).
-3. Agent lifecycle in the API: register, lease, heartbeat, capacity N.
+1. Repository skeleton: packages, tests, CI. Done.
+2. Domain model and migrations ([02](02-domain-model.md)). Done.
+3. Agent lifecycle in the API: register, lease, heartbeat, capacity N. Done.
    - 3a. Agent: support what the API already offers - register, keep and
      refresh the credential, heartbeat, fence itself once the local lease
-     deadline passes.
+     deadline passes. Done.
    - 3b. Smoke test: the API and one agent against fakeredis and SQLite; the
-     agent registers, is enabled and keeps its lease.
+     agent registers, is enabled and keeps its lease. Done.
 4. QEMU runtime: image cache, VM create and destroy, reconcile.
    - Agent: the runtime itself, driven by the desired state.
    - Smoke: a deployment is assigned, started and destroyed on stop.

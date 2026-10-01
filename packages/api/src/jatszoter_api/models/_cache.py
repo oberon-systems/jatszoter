@@ -1,21 +1,24 @@
-import functools
 import pickle
 from typing import Any
 
 import fakeredis
 from valkey import Valkey as CacheClient
 
-from jatszoter_api.settings import get_settings
+_CLIENT: CacheClient | None = None
 
 
 class Cached:
     @staticmethod
-    @functools.cache
+    def connect(dsn: str | None) -> None:
+        """Open the cache once at start: Valkey at `dsn`, or an in-memory fake without one."""
+        global _CLIENT
+        _CLIENT = fakeredis.FakeValkey() if dsn is None else CacheClient.from_url(dsn)
+
+    @staticmethod
     def _client() -> CacheClient:
-        dsn = get_settings().valkey_dsn
-        if dsn is None:
-            return fakeredis.FakeValkey()
-        return CacheClient.from_url(str(dsn))
+        if _CLIENT is None:
+            raise RuntimeError("the cache is not connected")
+        return _CLIENT
 
     def _get(self, key: str) -> Any | None:
         raw = self._client().get(key)

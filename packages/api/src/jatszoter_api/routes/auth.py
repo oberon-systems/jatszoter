@@ -9,7 +9,7 @@ from jatszoter_api.errors import ForbiddenError
 from jatszoter_api.models import User
 from jatszoter_api.models.secret import CREDENTIAL_SECONDS
 from jatszoter_api.routes.agents import CredentialOut, StrictModel, credential_out
-from jatszoter_api.routes.deps import SessionDep
+from jatszoter_api.routes.deps import SessionDep, SettingsDep
 
 UserDep = Annotated[User, Depends(require_user)]
 
@@ -31,7 +31,7 @@ router = APIRouter(prefix="/auth")
 
 
 @router.post("/login")
-def login(body: LoginIn, session: SessionDep) -> LoginOut:
+def login(body: LoginIn, session: SessionDep, settings: SettingsDep) -> LoginOut:
     """Trade a name and password for a credential, changing the password when asked or due."""
     try:
         user = User(session=session).load(name=body.name)
@@ -43,13 +43,16 @@ def login(body: LoginIn, session: SessionDep) -> LoginOut:
         user.change_password(body.password, body.new_password)
     elif not user.password_changed:
         raise ForbiddenError("password change required")
-    return LoginOut(user_id=user.id, credential=credential_out(*user.issue(CREDENTIAL_SECONDS)))
+    issued = user.issue(CREDENTIAL_SECONDS, settings.master_kid, settings.master_keys)
+    return LoginOut(user_id=user.id, credential=credential_out(*issued))
 
 
 @router.post("/credential")
-def refresh(user: UserDep) -> CredentialOut:
+def refresh(user: UserDep, settings: SettingsDep) -> CredentialOut:
     """A fresh credential for a signed user before theirs expires."""
-    return credential_out(*user.issue(CREDENTIAL_SECONDS))
+    return credential_out(
+        *user.issue(CREDENTIAL_SECONDS, settings.master_kid, settings.master_keys)
+    )
 
 
 @router.post("/logout", status_code=204)

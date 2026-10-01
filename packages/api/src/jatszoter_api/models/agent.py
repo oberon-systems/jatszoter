@@ -12,7 +12,6 @@ from jatszoter_api.models._base import State
 from jatszoter_api.models._cache import Cached
 from jatszoter_api.models.deployment import Deployment
 from jatszoter_api.models.secret import SecretOwner
-from jatszoter_api.settings import get_settings
 
 LEASE_SECONDS = 30
 CLAIM_SECONDS = 24 * 60 * 60
@@ -73,11 +72,11 @@ class Agent(SecretOwner, table=True):
         self._set("lease", lease, LEASE_SECONDS)
         return lease
 
-    def claim_code(self) -> str:
+    def claim_code(self, auto_register: bool) -> str:
         """Queue the unsaved agent for an operator, or enable it at once when agents register
         themselves; returns its one-time code."""
         code = secrets.token_urlsafe(32)
-        if get_settings().auto_register_agents:
+        if auto_register:
             self.state = State.ENABLED
             self.save()
         else:

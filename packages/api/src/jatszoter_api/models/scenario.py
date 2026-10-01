@@ -22,8 +22,11 @@ class Scenario(Base, table=True):
     def load(self, **key: Any) -> Self:
         return self._load(self._session, **key)[0]
 
-    def save(self, bundle: bytes) -> None:
-        file = File(f"scenarios/{self.slug}/{self.version}.tar.gz", bundle)
+    @property
+    def bundle_path(self) -> str:
+        return f"scenarios/{self.slug}/{self.version}.tar.gz"
+
+    def save(self, file: File) -> None:
         self.bundle_url = file.url
         self._save()
         file.put()

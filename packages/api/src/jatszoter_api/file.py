@@ -5,8 +5,6 @@ from urllib.parse import quote
 
 import httpx
 
-from jatszoter_api.settings import get_settings
-
 TIMEOUT = 30.0
 DATA_DIR = Path("data/storage")
 # Where the disk filer answers; its transport never opens a connection.
@@ -58,11 +56,10 @@ class DiskFiler(httpx.BaseTransport):
 class File:
     """One file the API keeps under `path`, on the filer or on local disk."""
 
-    def __init__(self, path: str, data: bytes = b"") -> None:
-        settings = get_settings()
+    def __init__(self, path: str, data: bytes = b"", filer_url: str | None = None) -> None:
         transport: httpx.BaseTransport | None = None
-        if settings.seaweed_url is not None:
-            base = str(settings.seaweed_url).rstrip("/") + "/"
+        if filer_url is not None:
+            base = filer_url.rstrip("/") + "/"
         else:
             base, transport = DISK_BASE, DiskFiler(DATA_DIR.absolute())
         _segments(path)

@@ -1,6 +1,6 @@
-from functools import cache
 from typing import Annotated
 
+from fastapi import Request
 from pydantic import AnyHttpUrl, AnyUrl, UrlConstraints
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     scenario_bundle_limit_bytes: int = 10 * 1024 * 1024
 
 
-@cache
-def get_settings() -> Settings:
-    return Settings()
+def app_settings(request: Request) -> Settings:
+    """The settings `create_app` was built with."""
+    settings: Settings = request.app.state.settings
+    return settings

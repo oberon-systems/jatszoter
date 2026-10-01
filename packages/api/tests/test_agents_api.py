@@ -15,11 +15,12 @@ from jatszoter_api.app import create_app
 from jatszoter_api.models import Agent, State
 from jatszoter_api.models._cache import Cached
 from jatszoter_api.models.agent import LEASE_SECONDS
+from jatszoter_api.settings import Settings
 
 
 @pytest.fixture
-def client(session: Session) -> Iterator[TestClient]:
-    with TestClient(create_app()) as client:
+def client(session: Session, settings: Settings) -> Iterator[TestClient]:
+    with TestClient(create_app(settings)) as client:
         yield client
 
 
@@ -208,3 +209,14 @@ def test_a_heartbeat_needs_a_valid_capacity(
     agent = enroll(client, session)
 
     assert agent.call("POST", "/heartbeat", {"capacity": capacity}).status_code == 422
+
+
+def test_the_app_enables_agents_at_once_when_its_settings_say_so(
+    session: Session, settings: Settings
+) -> None:
+    auto = settings.model_copy(update={"auto_register_agents": True})
+
+    with TestClient(create_app(auto)) as client:
+        code = register(client)
+
+        assert claim(client, code).status_code == 200

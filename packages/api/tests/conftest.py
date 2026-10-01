@@ -1,7 +1,6 @@
 import hashlib
 import hmac
 import io
-import json
 import secrets
 import tarfile
 import time
@@ -20,7 +19,7 @@ import jatszoter_api
 from jatszoter_api.app import create_app
 from jatszoter_api.models import Role, State, User
 from jatszoter_api.models._cache import Cached
-from jatszoter_api.settings import get_settings
+from jatszoter_api.settings import Settings
 
 MIGRATIONS = Path(jatszoter_api.__file__).parent / "migrations"
 MASTER_KEYS = {"old": secrets.token_hex(32), "current": secrets.token_hex(32)}
@@ -61,18 +60,18 @@ def database_dsn(tmp_path: Path) -> str:
 
 
 @pytest.fixture(autouse=True)
-def settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, database_dsn: str) -> Iterator[None]:
-    monkeypatch.setenv("JATSZOTER_DATABASE_DSN", database_dsn)
-    monkeypatch.delenv("JATSZOTER_VALKEY_DSN", raising=False)
-    monkeypatch.delenv("JATSZOTER_SEAWEED_URL", raising=False)
+def settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, database_dsn: str) -> Settings:
+    """The settings every test runs with, built here and passed on, never read from the host."""
+    for name in (
+        "VALKEY_DSN",
+        "SEAWEED_URL",
+        "AUTO_REGISTER_AGENTS",
+        "SCENARIO_BUNDLE_LIMIT_BYTES",
+    ):
+        monkeypatch.delenv(f"JATSZOTER_{name}", raising=False)
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("JATSZOTER_MASTER_KEYS", json.dumps(MASTER_KEYS))
-    monkeypatch.setenv("JATSZOTER_MASTER_KID", "current")
-    get_settings.cache_clear()
-    Cached._client.cache_clear()
-    yield
-    get_settings.cache_clear()
-    Cached._client.cache_clear()
+    Cached.connect(None)
+    return Settings(database_dsn=database_dsn, master_keys=MASTER_KEYS, master_kid="current")
 
 
 @pytest.fixture
@@ -93,8 +92,8 @@ def session(database_dsn: str, alembic_config: Config) -> Iterator[Session]:
 
 
 @pytest.fixture
-def api(session: Session) -> Iterator[TestClient]:
-    with TestClient(create_app()) as client:
+def api(session: Session, settings: Settings) -> Iterator[TestClient]:
+    with TestClient(create_app(settings)) as client:
         yield client
 
 

@@ -10,10 +10,10 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session
 
 from jatszoter_api import bundles
-from jatszoter_api.file import DISK_BASE
+from jatszoter_api.file import DISK_BASE, File
 from jatszoter_api.models import Image, Role, Scenario
 from jatszoter_api.routes.scenarios import fetch_transport
-from jatszoter_api.settings import get_settings
+from jatszoter_api.settings import Settings
 
 SCENARIOS = "/api/v1/scenarios"
 BUNDLE_URL = "https://example.com/nginx-502.tar.gz"
@@ -58,11 +58,10 @@ def debian(session: Session) -> None:
 
 
 @pytest.fixture
-def small_limit(monkeypatch: pytest.MonkeyPatch) -> Iterator[int]:
-    monkeypatch.setenv("JATSZOTER_SCENARIO_BUNDLE_LIMIT_BYTES", "1024")
-    get_settings.cache_clear()
-    yield 1024
-    get_settings.cache_clear()
+def small_limit(settings: Settings) -> int:
+    """The app reads its settings per request, so lowering the limit here takes effect."""
+    settings.scenario_bundle_limit_bytes = 1024
+    return settings.scenario_bundle_limit_bytes
 
 
 def upload(operator: Any, bundle: bytes) -> httpx.Response:
@@ -266,13 +265,17 @@ def test_http_to_loopback_is_fetched(
 
 
 def test_a_failed_save_writes_no_bundle(
-    session: Session, pack: Pack, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    session: Session,
+    settings: Settings,
+    pack: Pack,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def fail(_: Scenario) -> None:
         raise RuntimeError("alpha")
 
     bundle = pack()
-    checked = bundles.read(bundle, get_settings().scenario_bundle_limit_bytes)
+    checked = bundles.read(bundle, settings.scenario_bundle_limit_bytes)
     scenario = Scenario(
         session=session,
         slug="nginx-502",
@@ -283,7 +286,7 @@ def test_a_failed_save_writes_no_bundle(
     monkeypatch.setattr(Scenario, "_save", fail)
 
     with pytest.raises(RuntimeError):
-        scenario.save(bundle)
+        scenario.save(File(scenario.bundle_path, bundle))
 
     assert_nothing_kept(tmp_path, session)
 

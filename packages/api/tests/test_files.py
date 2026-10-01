@@ -5,7 +5,6 @@ import httpx
 import pytest
 
 from jatszoter_api.file import DISK_BASE, File
-from jatszoter_api.settings import get_settings
 
 FILER = "http://filer.example.com:8888/buckets/"
 BAD_PATHS = [
@@ -25,7 +24,7 @@ def mode(path: Path) -> int:
 
 
 def filer(monkeypatch: pytest.MonkeyPatch, status: int = 200) -> list[httpx.Request]:
-    """Point files at the filer URL and answer its requests here; returns what it got."""
+    """Answer the filer's requests here; returns what it got."""
     requests: list[httpx.Request] = []
 
     def handle(request: httpx.Request) -> httpx.Response:
@@ -33,8 +32,6 @@ def filer(monkeypatch: pytest.MonkeyPatch, status: int = 200) -> list[httpx.Requ
         return httpx.Response(status, content=b"alpha" if request.method == "GET" else b"")
 
     client = httpx.Client
-    monkeypatch.setenv("JATSZOTER_SEAWEED_URL", FILER.rstrip("/"))
-    get_settings.cache_clear()
     monkeypatch.setattr(httpx, "Client", lambda **_: client(transport=httpx.MockTransport(handle)))
     return requests
 
@@ -76,11 +73,16 @@ def test_without_a_filer_files_go_to_the_data_dir() -> None:
     assert File("alpha.cast").url == f"{DISK_BASE}alpha.cast"
 
 
+def test_the_filer_url_it_is_given_is_used_with_or_without_a_slash() -> None:
+    assert File("alpha.cast", filer_url=FILER).url == f"{FILER}alpha.cast"
+    assert File("alpha.cast", filer_url=FILER.rstrip("/")).url == f"{FILER}alpha.cast"
+
+
 def test_the_filer_gets_put_get_and_delete_on_the_file_url(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     requests = filer(monkeypatch)
-    file = File("alpha/beta.cast", b"gamma")
+    file = File("alpha/beta.cast", b"gamma", FILER)
 
     file.put()
     file.get()
@@ -105,14 +107,14 @@ def test_a_path_that_is_not_plain_and_relative_is_refused(
 
     requests = filer(monkeypatch)
     with pytest.raises(ValueError, match="not a relative file path"):
-        File(path, b"alpha")
+        File(path, b"alpha", FILER)
     assert requests == []
 
 
 @pytest.mark.parametrize("status", [301, 404, 500])
 def test_a_filer_answer_other_than_2xx_raises(status: int, monkeypatch: pytest.MonkeyPatch) -> None:
     filer(monkeypatch, status)
-    file = File("alpha.cast", b"beta")
+    file = File("alpha.cast", b"beta", FILER)
 
     with pytest.raises(httpx.HTTPStatusError):
         file.put()

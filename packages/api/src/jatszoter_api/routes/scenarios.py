@@ -10,10 +10,11 @@ from starlette.datastructures import UploadFile
 from jatszoter_api import bundles
 from jatszoter_api.auth import require_operator
 from jatszoter_api.errors import InvalidBundleError, TooLargeError
+from jatszoter_api.file import File
 from jatszoter_api.models import Image, Scenario
 from jatszoter_api.routes.agents import StrictModel
-from jatszoter_api.routes.deps import FetchUrl, SessionDep
-from jatszoter_api.settings import get_settings
+from jatszoter_api.routes.deps import FetchUrl, SessionDep, SettingsDep
+from jatszoter_api.settings import Settings, app_settings
 
 FETCH_TIMEOUT = 30.0
 
@@ -45,9 +46,11 @@ def fetch_transport() -> httpx.BaseTransport | None:
     return None
 
 
-async def _submitted(request: Request) -> bytes | str:
+async def _submitted(
+    request: Request, settings: Annotated[Settings, Depends(app_settings)]
+) -> bytes | str:
     """The uploaded bundle, or the URL to fetch it from."""
-    limit = get_settings().scenario_bundle_limit_bytes
+    limit = settings.scenario_bundle_limit_bytes
     if request.headers.get("content-type", "").startswith("multipart/form-data"):
         form = await request.form(max_files=1, max_fields=0)
         bundle = form.get("bundle")
@@ -64,9 +67,8 @@ async def _submitted(request: Request) -> bytes | str:
         raise RequestValidationError(errors) from None
 
 
-def _fetch(url: str, transport: httpx.BaseTransport | None) -> bytes:
-    """GET a bundle without following redirects, cut off past the size limit."""
-    limit = get_settings().scenario_bundle_limit_bytes
+def _fetch(url: str, transport: httpx.BaseTransport | None, limit: int) -> bytes:
+    """GET a bundle without following redirects, cut off past `limit` bytes."""
     try:
         with (
             httpx.Client(
@@ -98,9 +100,11 @@ def create(
     submitted: Annotated[bytes | str, Depends(_submitted)],
     transport: Annotated[httpx.BaseTransport | None, Depends(fetch_transport)],
     session: SessionDep,
+    settings: SettingsDep,
 ) -> ScenarioOut:
-    bundle = submitted if isinstance(submitted, bytes) else _fetch(submitted, transport)
-    checked = bundles.read(bundle, get_settings().scenario_bundle_limit_bytes)
+    limit = settings.scenario_bundle_limit_bytes
+    bundle = submitted if isinstance(submitted, bytes) else _fetch(submitted, transport, limit)
+    checked = bundles.read(bundle, limit)
     image = checked.document["image"]
     try:
         Image(session=session).load(name=image)
@@ -113,7 +117,8 @@ def create(
         document=checked.document,
         digest=checked.digest,
     )
-    scenario.save(bundle)
+    filer_url = None if settings.seaweed_url is None else str(settings.seaweed_url)
+    scenario.save(File(scenario.bundle_path, bundle, filer_url))
     return scenario_out(scenario)
 
 

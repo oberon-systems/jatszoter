@@ -16,6 +16,7 @@ from jatszoter_api.auth import require_operator
 from jatszoter_api.models import Role, State, User
 from jatszoter_api.models.secret import SIGNATURE_WINDOW_SECONDS
 from jatszoter_api.models.user import LOGIN_FAILURES
+from jatszoter_api.settings import Settings
 
 PASSWORD = "correct horse battery"
 NEW_PASSWORD = "staple of the paddock"
@@ -23,8 +24,8 @@ PROBE = "/api/v1/probe"
 
 
 @pytest.fixture
-def client(session: Session) -> Iterator[TestClient]:
-    app = create_app()
+def client(session: Session, settings: Settings) -> Iterator[TestClient]:
+    app = create_app(settings)
 
     @app.get(PROBE)
     def probe(user: Annotated[User, Depends(require_operator)]) -> dict[str, str]:
@@ -95,9 +96,9 @@ def logged_in(client: TestClient, name: str = "alpha") -> Operator:
     return Operator(client, response.json())
 
 
-def test_the_admin_is_created_once(session: Session) -> None:
-    create_app()
-    create_app()
+def test_the_admin_is_created_once(session: Session, settings: Settings) -> None:
+    create_app(settings)
+    create_app(settings)
 
     admin = User(session=session).load(name="admin")
     assert User._load(session, role=Role.OPERATOR) == [admin]
@@ -106,21 +107,21 @@ def test_the_admin_is_created_once(session: Session) -> None:
     assert admin.check_password("admin")
 
 
-def test_no_admin_is_created_while_an_operator_exists(session: Session) -> None:
+def test_no_admin_is_created_while_an_operator_exists(session: Session, settings: Settings) -> None:
     add_user(session)
 
-    create_app()
+    create_app(settings)
 
     with pytest.raises(IndexError):
         User(session=session).load(name="admin")
 
 
 def test_the_app_logs_the_admin_once_and_never_its_password(
-    session: Session, caplog: pytest.LogCaptureFixture
+    session: Session, settings: Settings, caplog: pytest.LogCaptureFixture
 ) -> None:
     with caplog.at_level(logging.INFO, logger="jatszoter_api"):
-        create_app()
-        create_app()
+        create_app(settings)
+        create_app(settings)
 
     records = [record for record in caplog.records if record.name == "jatszoter_api.app"]
     stored = User(session=session).load(name="admin")

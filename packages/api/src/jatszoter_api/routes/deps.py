@@ -19,8 +19,10 @@ from jatszoter_api.errors import (
     ThrottledError,
     TooLargeError,
 )
+from jatszoter_api.settings import Settings, app_settings
 
 SessionDep = Annotated[Session, Depends(get_session)]
+SettingsDep = Annotated[Settings, Depends(app_settings)]
 
 _ERROR_STATUS: dict[type[Exception], int] = {
     NotAuthorizedError: 401,

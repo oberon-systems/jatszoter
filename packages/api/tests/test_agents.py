@@ -10,7 +10,6 @@ from jatszoter_api.lifecycle import DeploymentStatus
 from jatszoter_api.models import Agent, Deployment, State
 from jatszoter_api.models._cache import Cached
 from jatszoter_api.models.agent import LEASE_SECONDS
-from jatszoter_api.settings import get_settings
 
 FIELDS: dict[str, Any] = {
     "scenario_id": uuid.uuid4(),
@@ -23,9 +22,11 @@ FIELDS: dict[str, Any] = {
 }
 
 
-def pending(session: Session, name: str = "alpha") -> tuple[uuid.UUID, str]:
+def pending(
+    session: Session, name: str = "alpha", auto_register: bool = False
+) -> tuple[uuid.UUID, str]:
     agent = Agent(session=session, name=name, labels=["beta"])
-    return agent.id, agent.claim_code()
+    return agent.id, agent.claim_code(auto_register)
 
 
 def approved(session: Session, name: str = "alpha") -> Agent:
@@ -93,7 +94,7 @@ def test_an_approved_agent_is_claimed_once(session: Session) -> None:
 def test_a_known_agent_registers_again_under_its_id(session: Session) -> None:
     agent = approved(session)
     again = Agent(session=session, id=agent.id, name="gamma", labels=[])
-    code = again.claim_code()
+    code = again.claim_code(False)
 
     with pytest.raises(InvalidTransitionError):
         Agent(session=session).claimed(code)
@@ -107,13 +108,8 @@ def test_a_known_agent_registers_again_under_its_id(session: Session) -> None:
     assert claimed.state is State.ENABLED
 
 
-def test_self_registering_agents_are_enabled_at_once(
-    session: Session, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("JATSZOTER_AUTO_REGISTER_AGENTS", "true")
-    get_settings.cache_clear()
-
-    agent_id, code = pending(session)
+def test_self_registering_agents_are_enabled_at_once(session: Session) -> None:
+    agent_id, code = pending(session, auto_register=True)
 
     assert not Cached._client().exists(f"registration:{agent_id}")
     claimed = Agent(session=session).claimed(code)

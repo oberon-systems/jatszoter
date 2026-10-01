@@ -8,6 +8,7 @@ from sqlmodel import Session, create_engine
 
 from jatszoter_api.errors import DomainError
 from jatszoter_api.models import Role, State, User
+from jatszoter_api.models._cache import Cached
 from jatszoter_api.models.user import ADMIN
 from jatszoter_api.routes import (
     agents_router,
@@ -16,7 +17,7 @@ from jatszoter_api.routes import (
     images_router,
     scenarios_router,
 )
-from jatszoter_api.settings import get_settings
+from jatszoter_api.settings import Settings
 
 MIGRATIONS = Path(__file__).parent / "migrations"
 
@@ -31,10 +32,13 @@ def migrate(dsn: str) -> None:
     command.upgrade(config, "head")
 
 
-def create_app() -> FastAPI:
-    dsn = str(get_settings().database_dsn)
+def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings or Settings()
+    dsn = str(settings.database_dsn)
     migrate(dsn)
+    Cached.connect(None if settings.valkey_dsn is None else str(settings.valkey_dsn))
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    app.state.settings = settings
     app.state.engine = create_engine(dsn)
     with Session(app.state.engine) as session:
         try:

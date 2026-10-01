@@ -7,6 +7,7 @@ from sqlmodel import Session
 from jatszoter_api.db import get_session
 from jatszoter_api.models import Agent, Credential, Role, User
 from jatszoter_api.models.secret import SecretOwner
+from jatszoter_api.settings import Settings, app_settings
 
 
 def unauthorized() -> HTTPException:
@@ -31,6 +32,7 @@ def _signed[T: SecretOwner](
     owner_id: uuid.UUID,
     request: Request,
     session: Session,
+    keys: dict[str, str],
     body: bytes,
     x_credential: str,
     x_timestamp: str,
@@ -45,7 +47,7 @@ def _signed[T: SecretOwner](
     except IndexError:
         raise unauthorized() from None
     if not owner.verify(
-        credential, request.method, request.url.path, body, int(x_timestamp), x_signature
+        credential, keys, request.method, request.url.path, body, int(x_timestamp), x_signature
     ):
         raise unauthorized()
     return owner
@@ -55,18 +57,23 @@ def require_agent(
     agent_id: uuid.UUID,
     request: Request,
     session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(app_settings)],
     body: Annotated[bytes, Depends(_body)],
     x_credential: Annotated[str, Header()] = "",
     x_timestamp: Annotated[str, Header()] = "",
     x_signature: Annotated[str, Header()] = "",
 ) -> Agent:
     """The agent named in the path, once its signed request checks out."""
-    return _signed(Agent, agent_id, request, session, body, x_credential, x_timestamp, x_signature)
+    keys = settings.master_keys
+    return _signed(
+        Agent, agent_id, request, session, keys, body, x_credential, x_timestamp, x_signature
+    )
 
 
 def require_user(
     request: Request,
     session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(app_settings)],
     body: Annotated[bytes, Depends(_body)],
     x_owner: Annotated[str, Header()] = "",
     x_credential: Annotated[str, Header()] = "",
@@ -78,7 +85,10 @@ def require_user(
         owner_id = uuid.UUID(x_owner)
     except ValueError:
         raise unauthorized() from None
-    return _signed(User, owner_id, request, session, body, x_credential, x_timestamp, x_signature)
+    keys = settings.master_keys
+    return _signed(
+        User, owner_id, request, session, keys, body, x_credential, x_timestamp, x_signature
+    )
 
 
 def require_operator(user: Annotated[User, Depends(require_user)]) -> User:

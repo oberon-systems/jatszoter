@@ -10,7 +10,7 @@ from jatszoter_api.auth import require_agent, unauthorized
 from jatszoter_api.models import Agent, Credential
 from jatszoter_api.models.agent import Lease
 from jatszoter_api.models.secret import CREDENTIAL_SECONDS
-from jatszoter_api.routes.deps import SessionDep
+from jatszoter_api.routes.deps import SessionDep, SettingsDep
 
 AgentDep = Annotated[Agent, Depends(require_agent)]
 
@@ -65,18 +65,18 @@ router = APIRouter(prefix="/agents")
 
 
 @router.post("/register", status_code=201)
-def register(body: RegisterIn, session: SessionDep) -> RegisterOut:
+def register(body: RegisterIn, session: SessionDep, settings: SettingsDep) -> RegisterOut:
     known = {"id": body.agent_id} if body.agent_id is not None else {}
     agent = Agent(session=session, name=body.name, labels=list(body.labels), **known)
-    return RegisterOut(claim_code=agent.claim_code())
+    return RegisterOut(claim_code=agent.claim_code(settings.auto_register_agents))
 
 
 @router.post("/claim")
-def claim(body: ClaimIn, session: SessionDep) -> Response:
+def claim(body: ClaimIn, session: SessionDep, settings: SettingsDep) -> Response:
     agent = Agent(session=session).claimed(body.code)
     if agent is None or not agent.redeem(body.code):
         raise unauthorized()
-    credential, key = agent.issue(CREDENTIAL_SECONDS)
+    credential, key = agent.issue(CREDENTIAL_SECONDS, settings.master_kid, settings.master_keys)
     payload = ClaimOut(agent_id=agent.id, credential=credential_out(credential, key))
     content = payload.model_dump_json().encode()
     signature = hmac.new(body.code.encode(), content, hashlib.sha256).hexdigest()
@@ -89,5 +89,7 @@ def heartbeat(body: HeartbeatIn, agent: AgentDep) -> Lease:
 
 
 @router.post("/{agent_id}/credential")
-def refresh(agent: AgentDep) -> CredentialOut:
-    return credential_out(*agent.issue(CREDENTIAL_SECONDS))
+def refresh(agent: AgentDep, settings: SettingsDep) -> CredentialOut:
+    return credential_out(
+        *agent.issue(CREDENTIAL_SECONDS, settings.master_kid, settings.master_keys)
+    )

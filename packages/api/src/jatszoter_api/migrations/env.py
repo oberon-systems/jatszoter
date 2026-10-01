@@ -2,10 +2,10 @@ from alembic import context
 from sqlmodel import SQLModel, create_engine
 
 import jatszoter_api.models  # noqa: F401  registers the tables on SQLModel.metadata
-from jatszoter_api.settings import get_settings
+from jatszoter_api.settings import Settings
 
 config = context.config
-dsn = config.get_main_option("sqlalchemy.url") or str(get_settings().database_dsn)
+dsn = config.get_main_option("sqlalchemy.url") or str(Settings().database_dsn)
 
 
 def run_offline() -> None:

@@ -1,7 +1,7 @@
 import hashlib
 import hmac
 import uuid
-from typing import Annotated, Self
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
@@ -43,13 +43,13 @@ class CredentialOut(BaseModel):
     expires_at: int
     key: str
 
-    @classmethod
-    def of(cls, credential: Credential, key: str) -> Self:
-        return cls(
-            credential=f"{credential.kid}:{credential.generation}:{credential.expires_at}",
-            expires_at=credential.expires_at,
-            key=key,
-        )
+
+def credential_out(credential: Credential, key: str) -> CredentialOut:
+    return CredentialOut(
+        credential=f"{credential.kid}:{credential.generation}:{credential.expires_at}",
+        expires_at=credential.expires_at,
+        key=key,
+    )
 
 
 class ClaimOut(BaseModel):
@@ -66,19 +66,18 @@ router = APIRouter(prefix="/agents")
 
 @router.post("/register", status_code=201)
 def register(body: RegisterIn, session: SessionDep) -> RegisterOut:
-    agent = Agent(session=session, name=body.name, labels=list(body.labels))
-    if body.agent_id is not None:
-        agent.id = body.agent_id
+    known = {"id": body.agent_id} if body.agent_id is not None else {}
+    agent = Agent(session=session, name=body.name, labels=list(body.labels), **known)
     return RegisterOut(claim_code=agent.claim_code())
 
 
 @router.post("/claim")
 def claim(body: ClaimIn, session: SessionDep) -> Response:
-    agent = Agent.claimed(session, body.code)
+    agent = Agent(session=session).claimed(body.code)
     if agent is None or not agent.redeem(body.code):
         raise unauthorized()
     credential, key = agent.issue(CREDENTIAL_SECONDS)
-    payload = ClaimOut(agent_id=agent.id, credential=CredentialOut.of(credential, key))
+    payload = ClaimOut(agent_id=agent.id, credential=credential_out(credential, key))
     content = payload.model_dump_json().encode()
     signature = hmac.new(body.code.encode(), content, hashlib.sha256).hexdigest()
     return Response(content, media_type="application/json", headers={"X-Signature": signature})
@@ -91,4 +90,4 @@ def heartbeat(body: HeartbeatIn, agent: AgentDep) -> Lease:
 
 @router.post("/{agent_id}/credential")
 def refresh(agent: AgentDep) -> CredentialOut:
-    return CredentialOut.of(*agent.issue(CREDENTIAL_SECONDS))
+    return credential_out(*agent.issue(CREDENTIAL_SECONDS))

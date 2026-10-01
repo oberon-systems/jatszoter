@@ -46,9 +46,9 @@ def add_user(
         name=name,
         role=role,
         state=state,
+        password=PASSWORD,
         password_changed=int(time.time()) if changed else 0,
     )
-    user.set_password(PASSWORD)
     user.save()
     return user
 
@@ -96,22 +96,23 @@ def logged_in(client: TestClient, name: str = "alpha") -> Operator:
 
 
 def test_the_admin_is_created_once(session: Session) -> None:
-    first = User.ensure_admin(session)
-    second = User.ensure_admin(session)
+    create_app()
+    create_app()
 
-    assert first is not None
-    assert first.role is Role.OPERATOR
-    assert first.state is State.ENABLED
-    assert first.password_changed == 0
-    assert first.check_password("admin")
-    assert second is None
+    admin = User(session=session).load(name="admin")
+    assert User._load(session, role=Role.OPERATOR) == [admin]
+    assert admin.state is State.ENABLED
+    assert admin.password_changed == 0
+    assert admin.check_password("admin")
 
 
 def test_no_admin_is_created_while_an_operator_exists(session: Session) -> None:
     add_user(session)
 
-    assert User.ensure_admin(session) is None
-    assert User.by_name(session, "admin") is None
+    create_app()
+
+    with pytest.raises(IndexError):
+        User(session=session).load(name="admin")
 
 
 def test_the_app_logs_the_admin_once_and_never_its_password(
@@ -122,11 +123,11 @@ def test_the_app_logs_the_admin_once_and_never_its_password(
         create_app()
 
     records = [record for record in caplog.records if record.name == "jatszoter_api.app"]
-    admin = User.by_name(session, "admin")
-    assert admin is not None and admin.password is not None
+    stored = User(session=session).load(name="admin")
+    assert stored.password is not None
     assert len(records) == 1
     assert "password admin" not in records[0].getMessage()
-    assert admin.password not in caplog.text
+    assert stored.password not in caplog.text
 
 
 def test_the_first_login_demands_a_new_password(client: TestClient) -> None:
@@ -258,3 +259,11 @@ def test_a_malformed_login_is_refused(client: TestClient) -> None:
     body = {"name": "admin", "password": "admin", "extra": 1}
 
     assert client.post("/api/v1/auth/login", json=body).status_code == 422
+
+
+def test_a_logout_ends_the_credential(client: TestClient, session: Session) -> None:
+    add_user(session)
+    operator = logged_in(client)
+
+    assert operator.call("POST", "/api/v1/auth/logout").status_code == 204
+    assert operator.call("GET", PROBE).status_code == 401

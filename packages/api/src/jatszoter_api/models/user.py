@@ -3,7 +3,7 @@ import hmac
 import secrets
 import time
 from enum import StrEnum
-from typing import Self
+from typing import Any
 
 from pydantic import PrivateAttr
 from sqlmodel import Session
@@ -45,6 +45,13 @@ def _matches(plain: str, stored: str) -> bool:
     return scheme == "scrypt" and hmac.compare_digest(actual, expected)
 
 
+def _hashed(plain: str) -> str:
+    """A salted scrypt hash with its parameters, never the password itself."""
+    salt = secrets.token_bytes(16)
+    digest = _scrypt(plain, salt, SCRYPT_N, SCRYPT_R, SCRYPT_P)
+    return f"scrypt${SCRYPT_N}${SCRYPT_R}${SCRYPT_P}${salt.hex()}${digest.hex()}"
+
+
 def _login_key(name: str) -> str:
     """The key of a name's failure counter, hashed so no name lands in the cache."""
     return f"login:{hashlib.sha256(name.encode()).hexdigest()}"
@@ -61,47 +68,34 @@ class User(SecretOwner, table=True):
     password_changed: int = 0
     _links: list[Link] | None = PrivateAttr(default=None)
 
+    def __init__(self, session: Session, **data: Any) -> None:
+        super().__init__(session, **data)
+        if self.password is not None:
+            self.password = _hashed(self.password)
+
     @property
     def links(self) -> list[Link]:
         if not self._links:
             self._links = Link._load(self._session, user_id=self.id)
         return self._links
 
-    @classmethod
-    def by_name(cls, session: Session, name: str) -> Self | None:
-        """The user a login names, or None."""
-        return next(iter(cls._load(session, name=name)), None)
-
-    @classmethod
-    def ensure_admin(cls, session: Session) -> Self | None:
-        """Create `admin` / `admin`, due for a password change, when no operator exists."""
-        if cls._load(session, role=Role.OPERATOR):
-            return None
-        admin = cls(session=session, name=ADMIN, role=Role.OPERATOR, state=State.ENABLED)
-        admin.set_password(ADMIN)
-        admin.save()
-        return admin
-
-    @classmethod
-    def log_in(cls, session: Session, name: str, password: str) -> Self:
-        """The enabled user `name` if `password` matches; failures per name are throttled."""
-        key = _login_key(name)
-        if Cached()._count(key) >= LOGIN_FAILURES:
+    def login(self, password: str) -> None:
+        """Check `password` and the state of this user; failures per name are throttled."""
+        key = _login_key(self.name)
+        if self._count(key) >= LOGIN_FAILURES:
             raise ThrottledError("too many attempts")
-        user = cls.by_name(session, name)
-        if user is None:
-            _matches(password, _DECOY)
-        if user is None or not user.check_password(password) or user.state is not State.ENABLED:
-            Cached()._increment(key, LOGIN_WINDOW_SECONDS)
+        if not self.check_password(password) or self.state is not State.ENABLED:
+            self._increment(key, LOGIN_WINDOW_SECONDS)
             raise NotAuthorizedError("not authorized")
-        Cached()._delete(key)
-        return user
+        Cached._delete(self, key)
 
-    def set_password(self, plain: str) -> None:
-        """Keep a salted scrypt hash with its parameters, never the password itself."""
-        salt = secrets.token_bytes(16)
-        digest = _scrypt(plain, salt, SCRYPT_N, SCRYPT_R, SCRYPT_P)
-        self.password = f"scrypt${SCRYPT_N}${SCRYPT_R}${SCRYPT_P}${salt.hex()}${digest.hex()}"
+    def logout(self) -> None:
+        """End every credential issued to this user so far."""
+        secret = self.stored_secret
+        secret.generation = max(secret.generation, secret.pending_generation or 0) + 1
+        secret.pending_generation = None
+        secret.save()
+        self._delete("secret")
 
     def check_password(self, plain: str) -> bool:
         """Whether `plain` is the password; a user without one still costs a scrypt."""
@@ -113,6 +107,6 @@ class User(SecretOwner, table=True):
             raise InvalidPasswordError(
                 f"a new password needs {MIN_PASSWORD_LENGTH} characters and must differ"
             )
-        self.set_password(new)
+        self.password = _hashed(new)
         self.password_changed = int(time.time())
         self.save()

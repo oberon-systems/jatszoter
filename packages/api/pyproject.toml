@@ -12,8 +12,11 @@ dependencies = [
   "fakeredis",
   "fastapi",
   "httpx",
+  "jsonschema",
   "pydantic-settings",
+  "python-multipart",
   "python-statemachine",
+  "pyyaml",
   "sqlmodel",
   "valkey",
 ]
@@ -23,4 +26,10 @@ dependencies = [
 server = ["uvicorn[standard]"]
 
 [tool.setuptools.package-data]
-jatszoter_api = ["py.typed", "migrations/*.py", "migrations/*.mako", "migrations/versions/*.py"]
+jatszoter_api = [
+  "py.typed",
+  "migrations/*.py",
+  "migrations/*.mako",
+  "migrations/versions/*.py",
+  "schemas/*.yaml",
+]

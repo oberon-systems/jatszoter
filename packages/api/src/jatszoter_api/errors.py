@@ -24,3 +24,23 @@ class InvalidPasswordError(DomainError):
 
 class ThrottledError(DomainError):
     """Too many failed attempts within the window."""
+
+
+class ConflictError(DomainError):
+    """The request collides with what is already registered."""
+
+
+class InvalidBundleError(DomainError):
+    """A scenario bundle, or the URL naming it, is refused; the message says why."""
+
+
+class TooLargeError(DomainError):
+    """A body or a bundle is over its size limit."""
+
+
+# The driver's error code, SQLSTATE or its own name, to the domain error it means.
+DB_ERRORS: dict[str | None, type[DomainError]] = {
+    "23505": ConflictError,
+    "SQLITE_CONSTRAINT_UNIQUE": ConflictError,
+    "SQLITE_CONSTRAINT_PRIMARYKEY": ConflictError,
+}

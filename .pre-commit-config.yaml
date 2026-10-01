@@ -64,11 +64,14 @@ repos:
           - fastapi==0.141.1
           - httpx==0.28.1
           - httpx-ws==0.9.0
+          - jsonschema==4.26.0
           - pydantic==2.13.5
           - pydantic-settings==2.15.0
           - pytest==9.1.1
           - python-statemachine==3.2.1
           - sqlmodel==0.0.42
+          - types-jsonschema==4.26.0.20260518
+          - types-PyYAML==6.0.12.20260906
           - valkey==6.1.1
 
   - repo: https://github.com/djlint/djLint
@@ -101,9 +104,9 @@ repos:
       - id: check-jsonschema
         name: scenario schema
         files: ^scenarios/[^/]+/scenario\.yaml$
-        args: [--schemafile, schemas/scenario.schema.yaml]
+        args: [--schemafile, packages/api/src/jatszoter_api/schemas/scenario.schema.yaml]
       - id: check-metaschema
-        files: ^schemas/.*\.schema\.yaml$
+        files: ^packages/api/src/jatszoter_api/schemas/.*\.schema\.yaml$
 
   - repo: local
     hooks:

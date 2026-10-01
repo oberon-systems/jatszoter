@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     master_keys: dict[str, str] = {}
     master_kid: str = ""
     auto_register_agents: bool = False
+    scenario_bundle_limit_bytes: int = 10 * 1024 * 1024
 
 
 @cache

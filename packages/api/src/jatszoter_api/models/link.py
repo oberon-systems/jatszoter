@@ -3,6 +3,7 @@ import secrets
 import uuid
 from typing import Any, Self
 
+from pydantic import PrivateAttr
 from sqlmodel import Field, Session
 
 from jatszoter_api.models._base import Base
@@ -17,25 +18,27 @@ class Link(Base, table=True):
     token_hash: str = Field(unique=True)
     opened_at: int | None = None
     revoked_at: int | None = None
+    _token: str | None = PrivateAttr(default=None)
+    _recording: Recording | None = PrivateAttr(default=None)
+
+    def __init__(self, session: Session, **data: Any) -> None:
+        super().__init__(session, **data)
+        self._token = secrets.token_urlsafe(32)
+        self.token_hash = hashlib.sha256(self._token.encode()).hexdigest()
 
     @property
-    def recording(self) -> Recording | None:
-        return next(iter(Recording._load(self._session, link_id=self.id)), None)
+    def token(self) -> str | None:
+        """The plain token of a link made here; a loaded link never has it."""
+        return self._token
 
-    def load(self, **key: Any) -> list[Self]:
-        return self._load(self._session, **key)
+    @property
+    def recording(self) -> Recording:
+        if not self._recording:
+            self._recording = Recording._load(self._session, link_id=self.id)[0]
+        return self._recording
 
-    @classmethod
-    def issue(
-        cls, session: Session, deployment_id: uuid.UUID, user_id: uuid.UUID
-    ) -> tuple[Self, str]:
-        """Store a link; the plain token exists only in this return value."""
-        token = secrets.token_urlsafe(32)
-        link = cls(
-            session=session,
-            deployment_id=deployment_id,
-            user_id=user_id,
-            token_hash=hashlib.sha256(token.encode()).hexdigest(),
-        )
-        link._save()
-        return link, token
+    def load(self, **key: Any) -> Self:
+        return self._load(self._session, **key)[0]
+
+    def save(self) -> None:
+        self._save()

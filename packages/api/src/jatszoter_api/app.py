@@ -7,8 +7,15 @@ from fastapi import APIRouter, FastAPI
 from sqlmodel import Session, create_engine
 
 from jatszoter_api.errors import DomainError
-from jatszoter_api.models import User
-from jatszoter_api.routes import agents_router, auth_router, domain_error_handler
+from jatszoter_api.models import Role, State, User
+from jatszoter_api.models.user import ADMIN
+from jatszoter_api.routes import (
+    agents_router,
+    auth_router,
+    domain_error_handler,
+    images_router,
+    scenarios_router,
+)
 from jatszoter_api.settings import get_settings
 
 MIGRATIONS = Path(__file__).parent / "migrations"
@@ -30,7 +37,17 @@ def create_app() -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.engine = create_engine(dsn)
     with Session(app.state.engine) as session:
-        if User.ensure_admin(session) is not None:
+        try:
+            User(session=session).load(role=Role.OPERATOR)
+        except IndexError:
+            admin = User(
+                session=session,
+                name=ADMIN,
+                role=Role.OPERATOR,
+                state=State.ENABLED,
+                password=ADMIN,
+            )
+            admin.save()
             log.warning("no operator existed: created user admin, due for a password change")
     app.add_exception_handler(DomainError, domain_error_handler)
 
@@ -41,5 +58,7 @@ def create_app() -> FastAPI:
     v1 = APIRouter(prefix="/api/v1")
     v1.include_router(agents_router)
     v1.include_router(auth_router)
+    v1.include_router(images_router)
+    v1.include_router(scenarios_router)
     app.include_router(v1)
     return app

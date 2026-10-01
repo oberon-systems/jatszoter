@@ -28,7 +28,7 @@ def enabled_agent(session: Session) -> Agent:
 def test_nothing_is_cached_unless_asked(session: Session) -> None:
     user = viewer(session)
 
-    User.load(session, id=user.id)
+    User(session=session).load(id=user.id)
 
     assert Cached._client().dbsize() == 0
 

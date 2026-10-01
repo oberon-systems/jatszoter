@@ -41,6 +41,9 @@ class Agent(SecretOwner, table=True):
     name: str
     labels: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
 
+    def __init__(self, session: Session, **data: Any) -> None:
+        super().__init__(session, **data)
+
     @property
     def lease(self) -> Lease | None:
         """The live lease, read without renewing it; only a heartbeat does that."""
@@ -75,40 +78,32 @@ class Agent(SecretOwner, table=True):
         themselves; returns its one-time code."""
         code = secrets.token_urlsafe(32)
         if get_settings().auto_register_agents:
-            self._store_enabled()
+            self.state = State.ENABLED
+            self.save()
         else:
             pending = {"name": self.name, "labels": self.labels, "state": self.state}
             self._set("registration", pending, CLAIM_SECONDS)
         Cached._set(self, f"claim:{_digest(code)}", self.id, CLAIM_SECONDS)
         return code
 
-    @classmethod
-    def approve(cls, session: Session, agent_id: uuid.UUID) -> Self | None:
-        """The operator enables an agent waiting in the cache; None once it expired or was taken."""
-        pending: dict[str, Any] | None = Cached()._get(f"registration:{agent_id}")
-        if pending is None or not Cached()._delete(f"registration:{agent_id}"):
+    def approve(self) -> Self | None:
+        """Enable this agent waiting in the cache; None once it expired or was taken."""
+        pending: dict[str, Any] | None = Cached()._get(f"registration:{self.id}")
+        if pending is None or not Cached()._delete(f"registration:{self.id}"):
             return None
-        return cls(session=session, id=agent_id, **pending)._store_enabled()
+        self.name, self.labels = pending["name"], pending["labels"]
+        self.state = State.ENABLED
+        self.save()
+        return self
 
-    def _store_enabled(self) -> Self:
-        """Store this agent enabled; a known one is updated, not added."""
-        stored = self._load(self._session, id=self.id)
-        agent = stored[0] if stored else self
-        agent.name = self.name
-        agent.labels = self.labels
-        agent.state = State.ENABLED
-        agent.save()
-        return agent
-
-    @classmethod
-    def claimed(cls, session: Session, code: str) -> Self | None:
+    def claimed(self, code: str) -> Self | None:
         """The approved agent the code names; None for an unknown or spent code."""
         agent_id: uuid.UUID | None = Cached()._get(f"claim:{_digest(code)}")
         if agent_id is None:
             return None
         if Cached()._get(f"registration:{agent_id}") is not None:
             raise InvalidTransitionError(f"agent {agent_id} waits for an operator")
-        return cls._load(session, id=agent_id)[0]
+        return self.load(id=agent_id)
 
     def redeem(self, code: str) -> bool:
         """Spend the claim code; only the first of two racing claims gets True."""

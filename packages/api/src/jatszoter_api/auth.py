@@ -41,7 +41,7 @@ def _signed[T: SecretOwner](
     if credential is None or not x_timestamp.isdigit():
         raise unauthorized()
     try:
-        owner = model.load(session, id=owner_id)
+        owner = model(session=session).load(id=owner_id)
     except IndexError:
         raise unauthorized() from None
     if not owner.verify(

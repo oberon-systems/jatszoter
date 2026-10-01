@@ -32,7 +32,7 @@ def test_a_registered_agent_waits_disabled(session: Session) -> None:
     agent.save()
 
     assert agent.state is State.DISABLED
-    assert agent.secret is None
+    assert agent.secret.generation == 0
 
 
 def test_the_first_issue_opens_generation_one(session: Session) -> None:
@@ -185,3 +185,18 @@ def test_a_user_owns_secrets_the_same_way(session: Session) -> None:
     assert not signed(user, credential)
     user.state = State.ENABLED
     assert signed(user, credential)
+
+
+def test_logout_ends_every_credential_issued_so_far(session: Session) -> None:
+    user = User(session=session, name="beta", role=Role.OPERATOR, state=State.ENABLED)
+    user.save()
+    live, _ = user.issue(3600)
+    pending, _ = user.issue(3600)
+
+    user.logout()
+
+    assert user.secret.generation == pending.generation + 1
+    assert user.secret.pending_generation is None
+    fresh, _ = user.issue(3600)
+    assert signed(user, fresh)
+    assert not signed(user, live)

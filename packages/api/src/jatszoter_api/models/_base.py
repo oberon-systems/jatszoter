@@ -5,9 +5,16 @@ from enum import StrEnum
 from typing import Any, Self
 
 from pydantic import PrivateAttr
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Field, Session, SQLModel, select
 
+from jatszoter_api.errors import DB_ERRORS
 from jatszoter_api.models._cache import Cached
+
+
+def _code(origin: BaseException | None) -> str | None:
+    code: str | None = getattr(origin, "sqlstate", None)
+    return code or getattr(origin, "sqlite_errorname", None)
 
 
 class State(StrEnum):
@@ -36,7 +43,13 @@ class Base(SQLModel, Cached):
 
     def _save(self) -> None:
         self._session.add(self)
-        self._session.commit()
+        try:
+            self._session.commit()
+        except IntegrityError as error:
+            self._session.rollback()
+            if known := DB_ERRORS.get(_code(error.orig)):
+                raise known(str(error.orig)) from error
+            raise
 
     def _get(self, key: str, load: Callable[[], Any] | None = None, ttl: int = 10) -> Any | None:
         """`<key>:<id>` from the cache, renewed for `ttl` s on a hit; a miss stores `load()`."""

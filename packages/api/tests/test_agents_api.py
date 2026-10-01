@@ -63,7 +63,11 @@ def claim(client: TestClient, code: str) -> Response:
 def approve(session: Session, code: str) -> None:
     agent_id = Cached()._get(f"claim:{hashlib.sha256(code.encode()).hexdigest()}")
     assert agent_id is not None
-    assert Agent.approve(session, agent_id) is not None
+    try:
+        agent = Agent(session=session).load(id=agent_id)
+    except IndexError:
+        agent = Agent(session=session, id=agent_id)
+    assert agent.approve() is not None
 
 
 def enroll(client: TestClient, session: Session, name: str = "alpha") -> Enrolled:
@@ -158,7 +162,7 @@ def test_an_unknown_agent_is_refused(client: TestClient, session: Session) -> No
 
 def test_a_disabled_agent_is_refused(client: TestClient, session: Session) -> None:
     agent = enroll(client, session)
-    stored = Agent.load(session, id=uuid.UUID(agent.id))
+    stored = Agent(session=session).load(id=uuid.UUID(agent.id))
     stored.state = State.DISABLED
     stored.save()
 
@@ -180,7 +184,7 @@ def test_a_disabled_agent_registers_again_under_its_id(
     client: TestClient, session: Session
 ) -> None:
     agent = enroll(client, session)
-    stored = Agent.load(session, id=uuid.UUID(agent.id))
+    stored = Agent(session=session).load(id=uuid.UUID(agent.id))
     stored.state = State.DISABLED
     stored.save()
 

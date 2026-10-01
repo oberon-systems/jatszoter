@@ -30,7 +30,7 @@ def pending(session: Session, name: str = "alpha") -> tuple[uuid.UUID, str]:
 
 def approved(session: Session, name: str = "alpha") -> Agent:
     agent_id, _ = pending(session, name)
-    agent = Agent.approve(session, agent_id)
+    agent = Agent(session=session, id=agent_id).approve()
     assert agent is not None
     return agent
 
@@ -47,13 +47,13 @@ def test_a_registration_waits_in_the_cache_only(session: Session) -> None:
     assert list(session.exec(select(Agent))) == []
     assert Cached._client().exists(f"registration:{agent_id}")
     with pytest.raises(InvalidTransitionError):
-        Agent.claimed(session, code)
+        Agent(session=session).claimed(code)
 
 
 def test_approval_stores_the_agent_enabled(session: Session) -> None:
     agent_id, _ = pending(session)
 
-    agent = Agent.approve(session, agent_id)
+    agent = Agent(session=session, id=agent_id).approve()
 
     assert agent is not None
     assert agent.id == agent_id
@@ -65,43 +65,42 @@ def test_approval_stores_the_agent_enabled(session: Session) -> None:
 
 def test_a_registration_is_approved_once(session: Session) -> None:
     agent_id, _ = pending(session)
-    Agent.approve(session, agent_id)
+    Agent(session=session, id=agent_id).approve()
 
-    assert Agent.approve(session, agent_id) is None
+    assert Agent(session=session, id=agent_id).approve() is None
 
 
 def test_an_expired_registration_cannot_be_approved(session: Session) -> None:
     agent_id, _ = pending(session)
     Cached._client().delete(f"registration:{agent_id}")
 
-    assert Agent.approve(session, agent_id) is None
+    assert Agent(session=session, id=agent_id).approve() is None
 
 
 def test_an_approved_agent_is_claimed_once(session: Session) -> None:
     agent_id, code = pending(session)
-    Agent.approve(session, agent_id)
+    Agent(session=session, id=agent_id).approve()
 
-    agent = Agent.claimed(session, code)
+    agent = Agent(session=session).claimed(code)
 
     assert agent is not None
     assert agent.id == agent_id
     assert agent.redeem(code)
     assert not agent.redeem(code)
-    assert Agent.claimed(session, code) is None
+    assert Agent(session=session).claimed(code) is None
 
 
 def test_a_known_agent_registers_again_under_its_id(session: Session) -> None:
     agent = approved(session)
-    again = Agent(session=session, name="gamma", labels=[])
-    again.id = agent.id
+    again = Agent(session=session, id=agent.id, name="gamma", labels=[])
     code = again.claim_code()
 
     with pytest.raises(InvalidTransitionError):
-        Agent.claimed(session, code)
-    Agent.approve(session, agent.id)
+        Agent(session=session).claimed(code)
+    agent.approve()
 
     assert len(list(session.exec(select(Agent)))) == 1
-    claimed = Agent.claimed(session, code)
+    claimed = Agent(session=session).claimed(code)
     assert claimed is not None
     assert claimed.id == agent.id
     assert claimed.name == "gamma"
@@ -117,14 +116,14 @@ def test_self_registering_agents_are_enabled_at_once(
     agent_id, code = pending(session)
 
     assert not Cached._client().exists(f"registration:{agent_id}")
-    claimed = Agent.claimed(session, code)
+    claimed = Agent(session=session).claimed(code)
     assert claimed is not None
     assert claimed.id == agent_id
     assert claimed.state is State.ENABLED
 
 
 def test_an_unknown_code_claims_nothing(session: Session) -> None:
-    assert Agent.claimed(session, "gamma") is None
+    assert Agent(session=session).claimed("gamma") is None
 
 
 def test_the_first_heartbeat_opens_a_lease(session: Session) -> None:

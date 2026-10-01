@@ -32,7 +32,6 @@ How they fit together is in [docs/project/01-architecture.md](docs/project/01-ar
 | ------------ | ----------------------------------------------- |
 | `packages/`  | api, agent, web and shared Python code          |
 | `scenarios/` | scenarios, one directory each                   |
-| `schemas/`   | JSON Schema for `scenario.yaml`, in YAML        |
 | `docs/`      | project documentation                           |
 | `prompts/`   | step-by-step implementation prompts             |
 | `dev/web/`   | Penpot mockups of the Web UI                    |

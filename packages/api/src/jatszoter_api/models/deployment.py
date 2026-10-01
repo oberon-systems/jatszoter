@@ -84,4 +84,4 @@ class Deployment(Base, table=True):
             for link in self.links:
                 if link.revoked_at is None:
                     link.revoked_at = now
-        self._save()
+        self.save()

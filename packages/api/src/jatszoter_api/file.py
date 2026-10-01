@@ -1,8 +1,7 @@
-import functools
 import os
 import tempfile
 from pathlib import Path
-from urllib.parse import quote, unquote
+from urllib.parse import quote
 
 import httpx
 
@@ -56,39 +55,26 @@ class DiskFiler(httpx.BaseTransport):
             raise
 
 
-class Files:
-    """Files the API keeps, each addressed by the URL `put` returned for it."""
+class File:
+    """One file the API keeps under `path`, on the filer or on local disk."""
 
-    def __init__(self, base: str, client: httpx.Client) -> None:
-        self.base = base
-        self._client = client
-
-    def put(self, path: str, data: bytes) -> str:
+    def __init__(self, path: str, data: bytes = b"") -> None:
+        settings = get_settings()
+        transport: httpx.BaseTransport | None = None
+        if settings.seaweed_url is not None:
+            base = str(settings.seaweed_url).rstrip("/") + "/"
+        else:
+            base, transport = DISK_BASE, DiskFiler(DATA_DIR.absolute())
         _segments(path)
-        url = self.base + quote(path)
-        self._client.put(url, content=data).raise_for_status()
-        return url
+        self.url = base + quote(path)
+        self.data = data
+        self._client = httpx.Client(transport=transport, timeout=TIMEOUT)
 
-    def get(self, url: str) -> bytes:
-        return self._client.get(self._checked(url)).raise_for_status().content
+    def put(self) -> None:
+        self._client.put(self.url, content=self.data).raise_for_status()
 
-    def delete(self, url: str) -> None:
-        self._client.delete(self._checked(url)).raise_for_status()
+    def get(self) -> None:
+        self.data = self._client.get(self.url).raise_for_status().content
 
-    def _checked(self, url: str) -> str:
-        path = unquote(url.removeprefix(self.base))
-        if not url.startswith(self.base) or self.base + quote(path) != url:
-            raise ValueError("file URL outside the store")
-        _segments(path)
-        return url
-
-
-@functools.cache
-def get_files() -> Files:
-    settings = get_settings()
-    transport: httpx.BaseTransport | None
-    if settings.seaweed_url is not None:
-        base, transport = str(settings.seaweed_url).rstrip("/") + "/", None
-    else:
-        base, transport = DISK_BASE, DiskFiler(DATA_DIR.absolute())
-    return Files(base, httpx.Client(transport=transport, timeout=TIMEOUT))
+    def delete(self) -> None:
+        self._client.delete(self.url).raise_for_status()

@@ -31,7 +31,7 @@ def deploy(
     trainee.save()
     deployment = Deployment(session=session, status=status, agent_id=agent_id, **FIELDS)
     deployment.save()
-    Link.issue(session, deployment.id, trainee.id)
+    Link(session=session, deployment_id=deployment.id, user_id=trainee.id).save()
     return deployment
 
 
@@ -40,7 +40,10 @@ def test_saving_stores_the_deployment_and_its_trainee_link(session: Session) -> 
     trainee.save()
     deployment = Deployment(session=session, **FIELDS)
     deployment.save()
-    _, token = Link.issue(session, deployment.id, trainee.id)
+    issued = Link(session=session, deployment_id=deployment.id, user_id=trainee.id)
+    issued.save()
+    assert issued.token is not None
+    token = issued.token
     deployment_id, trainee_id = deployment.id, trainee.id
     session.expunge_all()
 
@@ -50,7 +53,9 @@ def test_saving_stores_the_deployment_and_its_trainee_link(session: Session) -> 
     assert link.user_id == trainee_id
     assert link.token_hash == hashlib.sha256(token.encode()).hexdigest()
     assert link.revoked_at is None
-    assert link.recording is None
+    assert link.token is None
+    with pytest.raises(IndexError):
+        _ = link.recording
 
 
 def test_loading_by_id_returns_the_stored_row(session: Session) -> None:
@@ -137,7 +142,7 @@ def test_ending_a_deployment_revokes_every_link(session: Session) -> None:
     deployment = deploy(session, S.STOPPING)
     viewer = User(session=session, name="beta", role=Role.VIEWER)
     viewer.save()
-    Link.issue(session, deployment.id, viewer.id)
+    Link(session=session, deployment_id=deployment.id, user_id=viewer.id).save()
 
     deployment.transition("destroy", S.STOPPING, actor=Actor.AGENT, agent_id=AGENT)
 

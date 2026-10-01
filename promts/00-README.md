@@ -18,6 +18,10 @@ previous ones have landed.
 | 10 | `10-agent-reconcile.md`         | agent     | the runtime driven by desired state              |
 | 11 | `11-smoke.md`                   | smoke     | assigned, started and destroyed on stop          |
 
+Prompts 01-04 have landed. Where their text disagrees with the ground rules
+below - helpers like `by_name` or `register`, new Alembic revisions,
+`get_files` or `get_settings` - the code and the ground rules win.
+
 ## Decisions behind the cut
 
 Taken with the user on 2026-09-30; prompt 01 writes them into `docs/`.
@@ -62,16 +66,26 @@ Each prompt starts by pointing here. These hold for all of them.
   - one SQLModel table per `models/<name>.py`, inheriting `Base`, re-exported
     from `models/__init__.py`; no `Relationship()`, no foreign keys, no
     server-side defaults, no database product named anywhere;
-  - `X._load(session, **key)` is `filter_by` only and is called only inside
-    model `X`; everything else calls classmethods on the model (`by_id`,
-    `held_by`, ...);
-  - domain methods live on the model; routes stay thin;
-  - a new NOT NULL column is added nullable, filled with an `UPDATE`, then
-    made NOT NULL inside `batch_alter_table`; each prompt that changes the
-    schema adds its own Alembic revision after the current head, and
+  - a model reads one row with its instance method `load(**key)`, which is
+    `self._load(self._session, **key)[0]` - a miss is `IndexError`; a list
+    is `X._load(session, **key)`, and related rows are a cached property
+    like `Deployment.links`;
+  - a model stores itself with `save()`; the caller builds the instance and
+    sets its fields, and a model never builds one of itself or of another
+    model outside `__init__`;
+  - no `@classmethod` outside `models/_base.py`, and no `by_*`, `every`,
+    `register` or similar helpers; where a prompt names one, read it as
+    `load`, `_load` or `save`;
+  - domain methods live on the model and work on `self`; routes stay thin;
+  - models never read settings: `create_app(settings)` builds `Settings`
+    once, routes take them from `SettingsDep`, and a model gets what it
+    needs (keys, flags, URLs, limits) as arguments;
+  - the project is in development: every schema change edits
+    `migrations/versions/v0001_initial.py`, no new Alembic revision, and
     `test_head_matches_the_models` must keep passing;
   - errors are `DomainError` subclasses from `errors.py`; the handler in
-    `routes/deps.py` maps them to status codes.
+    `routes/deps.py` maps them to status codes, and `DB_ERRORS` maps a
+    driver's error code on save (a duplicate key) to one.
 - Rust agent conventions: `unsafe_code` is forbidden and clippy runs with
   `-D warnings`; tests sit in `tests.rs` next to `mod.rs`; every host process
   is spawned with an argument vector, never through a shell.

@@ -20,22 +20,26 @@ well as READY.
   compare-and-swap and a repeat of the same move is a no-op.
 - `Deployment` copies `cpus`, `memory_mib`, `disk_gib`, `bootstrap_seconds`,
   `check_seconds`, `session_minutes` at create time.
-- `Scenario.by_id`, `Image.by_name` exist (prompt 04).
+- `Scenario` and `Image` read a row with `load(**key)` (prompt 04); the
+  route loads them with `Scenario(session=session).load(id=...)`.
 
 ## Scope
 
 - `lifecycle.py`: `stop` allowed from STARTING, BOOTSTRAPPING and READY, by
   the operator. Keep `expire` READY only. Update `tests/test_lifecycle.py`.
 - `models/deployment.py`:
-  - `image_id: uuid.UUID`, Alembic revision `v0004_deployment_image`;
-  - classmethods `by_id`, `every(status=None)`;
-  - `create(session, scenario, agent_id=None)`: resources and timeouts from
-    `scenario.document`, with settings fallbacks for what it leaves out;
-    `image_id` from the image the document names.
+  - `image_id: uuid.UUID`, added to `v0001_initial.py`;
+  - `fill(scenario, image, defaults)`: resources and timeouts from
+    `scenario.document`, the missing ones from `defaults` (the settings the
+    route passes), `image_id` from `image`;
+  - the route builds `Deployment(session=..., scenario_id=..., agent_id=...)`,
+    calls `fill` and then `save`; a row is read with `load(id=...)`, the
+    list with `Deployment._load(session, ...)` filtered by status.
 - Settings: `default_cpus=1`, `default_memory_mib=1024`, `default_disk_gib=10`,
   `default_bootstrap_seconds=900`, `default_check_seconds=30`,
   `default_session_minutes=60`.
-- `models/agent.py`: `by_id` classmethod if missing; nothing else here.
+- Agents are read with `Agent(session=session).load(id=...)`; nothing new in
+  `models/agent.py`.
 - `routes/deployments.py`, operator only, mounted under `/api/v1`:
   - `POST /deployments` `{scenario_id, agent_id?}`: 201; unknown scenario
     404; `agent_id` naming no enabled agent 422;

@@ -15,8 +15,8 @@ moves its deployments with signed transitions.
 - `Agent.heartbeat(capacity)` renews the lease in the cache and, when the
   previous lease had lapsed, aborts the agent's STARTING..STOPPING
   deployments first. `Agent.lease` reads it without renewing.
-- `Agent.deployments` currently calls `Deployment._load` directly, which the
-  model convention forbids; it must go through a `Deployment` classmethod.
+- `Agent.deployments` reads `Deployment._load(...)` for its agent, the way
+  related rows are read (like `Deployment.links`).
 - Deployments carry `agent_id` (the operator may pin one at create) and
   `vm_id`, both nullable.
 - `require_agent` verifies a signed request and works for GET with an empty
@@ -25,18 +25,18 @@ moves its deployments with signed transitions.
 ## Scope
 
 - `models/deployment.py`:
-  - `held_by(session, agent_id)`: non-terminal deployments of that agent;
-  - `waiting(session)`: PENDING with no agent, oldest first;
   - `assign(agent_id)`: compare-and-swap like `transition` - refresh with
     `with_for_update`, succeed only while still PENDING and `agent_id` is
     empty or already this agent; sets `agent_id` and a fresh `vm_id` when it
     has none. Returns whether it took it.
 - `models/agent.py`:
-  - `deployments` through `Deployment.held_by`;
+  - `deployments` keeps the cached-property pattern, its non-terminal rows
+    being what the agent holds;
   - `heartbeat` assigns after renewing: free slots = capacity minus held
     non-terminal deployments; pinned PENDING first (they are already held and
-    need only a `vm_id`), then `waiting`, until the slots run out; a lost CAS
-    is skipped, not an error;
+    need only a `vm_id`), then the waiting ones - `Deployment._load` of
+    PENDING with no agent, oldest first - until the slots run out; a lost
+    CAS is skipped, not an error;
   - `desired()`: the entries below for every held non-terminal deployment.
 - `routes/agents.py`:
   - `GET /agents/{agent_id}/deployments`: 409 without a live lease, else a

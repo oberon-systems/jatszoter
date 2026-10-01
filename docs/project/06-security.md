@@ -61,6 +61,10 @@ operator has not taken control.
   A superseded generation that still signs means two parties hold the key:
   the owner turns `disabled` at once, and only an operator enables it again.
   A stolen key therefore lasts at most until the next refresh.
+- **Logout** - `POST /api/v1/auth/logout` ends every credential the user
+  holds: the live generation moves past both the live and the pending one.
+  A credential issued before is then a superseded generation, so using it
+  disables the user like any other; only an operator enables them again.
 - **Link** - see [04](04-console.md#links).
 - **Scenario URLs** - the API fetches them, so only an operator can name
   one, and the fetch rules in

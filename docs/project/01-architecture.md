@@ -62,7 +62,8 @@ API.
   JavaScript build step, vendored static files.
 - Agent: Rust, [QEMU](https://www.qemu.org/) with KVM, cloud-init NoCloud,
   [qemu-guest-agent](https://wiki.qemu.org/Features/GuestAgent).
-- Settings: environment variables with the `JATSZOTER_` prefix.
+- Settings: environment variables with the `JATSZOTER_` prefix, read once
+  when the app starts and passed on explicitly; models never read them.
 
 ## Operator API
 
@@ -71,6 +72,7 @@ Operators and the web UI call the API under `/api/v1`.
 ```text
 POST /api/v1/auth/login                    open
 POST /api/v1/auth/credential               signed (user)
+POST /api/v1/auth/logout                   signed (user)
 POST /api/v1/images                        signed (operator)
 GET  /api/v1/images                        signed (operator)
 POST /api/v1/scenarios                     signed (operator)

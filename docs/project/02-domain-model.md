@@ -32,8 +32,9 @@ holding that entity's UUID.
   (`disabled` while it waits for an operator or once one turns it off,
   `enabled` after approval). An agent owns a secret. Its last heartbeat and
   reported capacity N are [ephemeral state](#ephemeral-state).
-- **Secret** - one row per owner, an agent or a user: `owner_id`, the live
-  `generation` and a `pending_generation` during a refresh. No key is
+- **Secret** - one row per owner, an agent or a user, stored with its
+  owner: `owner_id`, the live `generation` (0 until the first credential is
+  issued) and a `pending_generation` during a refresh. No key is
   stored; signing keys are derived from a master key, and the credential
   that names them knows itself whether it is due for refresh or expired.
   See [06](06-security.md#credentials).
@@ -42,7 +43,7 @@ holding that entity's UUID.
   A heartbeat after expiry opens a new lease with a new id.
 - **Image** - a base disk registered once by the operator: name as used in
   `scenario.yaml`, URL, digest (sha256, 64 lowercase hex characters).
-  Registering the same name with a different URL or digest is refused.
+  A name is registered once; registering it again is refused with 409.
   Images must ship cloud-init and qemu-guest-agent.
 - **Scenario** - one registered version of a scenario directory: the slug
   from `scenario.yaml`, `version`, the parsed `scenario.yaml` document, and
@@ -121,6 +122,8 @@ named or special-cased anywhere in the code.
   References are indexed id columns, and the API keeps them consistent.
 - Enums are stored as strings, documents as JSON columns, times as integer
   seconds since the epoch in UTC.
+- A save that breaks a unique key is refused with 409; the driver's error
+  code picks the domain error, and any other database error is passed on.
 - Files never go into SQL: recordings and scenario bundles live in the file
   store and the row keeps their URL, see [05](05-recording.md#storage) and
   [03](03-scenario-format.md#registering).

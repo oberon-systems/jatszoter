@@ -104,12 +104,15 @@ Bundle rules:
 
 The API validates `scenario.yaml` against the schema, checks that every
 named file exists and that the named `image` is already registered. It
-stores the bundle in the file store as `scenarios/<slug>/<version>.tar.gz`.
+saves the row first and then stores the bundle in the file store as
+`scenarios/<slug>/<version>.tar.gz`, so a refused version never touches a
+stored bundle.
 The digest is sha256 over the sorted file names and their contents, so
 re-packing the same files gives the same digest.
 
-A `version` already registered for that `id` with a different digest is
-refused. Registering the same digest again is a no-op.
+A `version` already registered for that `id` is refused with 409, whatever
+its digest: a registered version is immutable, and a change is a new
+version.
 
 ## Acceptance criteria
 

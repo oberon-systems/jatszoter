@@ -29,6 +29,8 @@ to cover it. An item marked Done has landed on `main`.
      and destroy, reconcile.
    - Smoke: log in, register the sample scenario by URL, deploy it; the
      deployment is assigned, started and destroyed on stop.
+   - Landed so far: user login and signed operator requests, images,
+     scenarios, and deployments the operator creates, lists and stops.
 5. Merged into 4.
 6. cloud-init bootstrap and the bootstrap marker.
    - Agent: build the seed ISO, read the marker through the guest agent,

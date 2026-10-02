@@ -6,8 +6,9 @@ import pytest
 from sqlmodel import Session
 
 from jatszoter_api.errors import InvalidTransitionError
+from jatszoter_api.file import File
 from jatszoter_api.lifecycle import Actor, DeploymentStatus
-from jatszoter_api.models import Deployment, Link, Role, User
+from jatszoter_api.models import Deployment, Image, Link, Role, Scenario, User
 
 S = DeploymentStatus
 AGENT = uuid.uuid4()
@@ -158,3 +159,76 @@ def test_a_live_deployment_keeps_its_links(session: Session) -> None:
 
     [link] = deployment.links
     assert link.revoked_at is None
+
+
+@pytest.mark.parametrize(
+    ("status", "target"),
+    [
+        (S.PENDING, S.CANCELLED),
+        (S.STARTING, S.STOPPING),
+        (S.BOOTSTRAPPING, S.STOPPING),
+        (S.READY, S.STOPPING),
+    ],
+)
+def test_stop_lands_in_the_right_state(session: Session, status: S, target: S) -> None:
+    deployment = deploy(session, status)
+
+    deployment.stop()
+
+    session.refresh(deployment)
+    assert deployment.status is target
+
+
+@pytest.mark.parametrize("status", [S.STOPPING, S.CANCELLED])
+def test_a_repeated_stop_changes_nothing(session: Session, status: S) -> None:
+    deployment = deploy(session, status)
+    updated_at = deployment.updated_at
+
+    deployment.stop()
+
+    session.refresh(deployment)
+    assert deployment.status is status
+    assert deployment.updated_at == updated_at
+
+
+@pytest.mark.parametrize("status", [S.COMPLETED, S.FAILED])
+def test_stopping_an_ended_deployment_conflicts(session: Session, status: S) -> None:
+    deployment = deploy(session, status)
+
+    with pytest.raises(InvalidTransitionError):
+        deployment.stop()
+
+
+def test_the_agent_cannot_stop_and_the_operator_cannot_boot(session: Session) -> None:
+    deployment = deploy(session, S.STARTING)
+
+    with pytest.raises(InvalidTransitionError):
+        deployment.transition("stop", S.STARTING, actor=Actor.AGENT, agent_id=AGENT)
+    with pytest.raises(InvalidTransitionError):
+        deployment.transition("boot", S.STARTING, actor=Actor.OPERATOR)
+
+    session.refresh(deployment)
+    assert deployment.status is S.STARTING
+
+
+def test_the_scenario_and_its_image_load_from_the_deployment(session: Session) -> None:
+    image = Image(session=session, name="debian-12", url="https://example.com/d", digest="a" * 64)
+    image.save()
+    scenario = Scenario(
+        session=session,
+        slug="nginx-502",
+        version=1,
+        document={"id": "nginx-502", "version": 1, "image": "debian-12"},
+        digest="b" * 64,
+    )
+    scenario.save(File(scenario.bundle_path, b"bundle"))
+    stored = Deployment(
+        session=session, **{**FIELDS, "scenario_id": scenario.id, "image_id": image.id}
+    )
+    stored.save()
+
+    deployment = Deployment(session=session).load(id=stored.id)
+
+    assert deployment.scenario.id == scenario.id
+    assert deployment.image.id == image.id
+    assert deployment.scenario.image.id == image.id

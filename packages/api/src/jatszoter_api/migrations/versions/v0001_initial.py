@@ -83,6 +83,7 @@ def upgrade() -> None:
         "deployments",
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("scenario_id", sa.Uuid(), nullable=False),
+        sa.Column("image_id", sa.Uuid(), nullable=False),
         sa.Column("agent_id", sa.Uuid(), nullable=True),
         sa.Column("vm_id", sa.Uuid(), nullable=True),
         sa.Column("status", DEPLOYMENT_STATUS, nullable=False),
@@ -100,6 +101,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_deployments_scenario_id", "deployments", ["scenario_id"])
+    op.create_index("ix_deployments_image_id", "deployments", ["image_id"])
     op.create_index("ix_deployments_agent_id", "deployments", ["agent_id"])
     op.create_index("ix_deployments_status", "deployments", ["status"])
     op.create_table(

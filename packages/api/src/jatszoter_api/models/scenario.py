@@ -1,9 +1,11 @@
 from typing import Any, Self
 
+from pydantic import PrivateAttr
 from sqlmodel import JSON, Column, Field, Session, UniqueConstraint
 
 from jatszoter_api.file import File
 from jatszoter_api.models._base import Base
+from jatszoter_api.models.image import Image
 
 
 class Scenario(Base, table=True):
@@ -15,6 +17,7 @@ class Scenario(Base, table=True):
     document: dict[str, Any] = Field(sa_column=Column(JSON, nullable=False))
     bundle_url: str
     digest: str
+    _image: Image | None = PrivateAttr(default=None)
 
     def __init__(self, session: Session, **data: Any) -> None:
         super().__init__(session, **data)
@@ -25,6 +28,12 @@ class Scenario(Base, table=True):
     @property
     def bundle_path(self) -> str:
         return f"scenarios/{self.slug}/{self.version}.tar.gz"
+
+    @property
+    def image(self) -> Image:
+        if not self._image:
+            self._image = Image(session=self._session).load(name=self.document["image"])
+        return self._image
 
     def save(self, file: File) -> None:
         self.bundle_url = file.url

@@ -35,7 +35,7 @@ class Lifecycle(StateMachine):
     cancel = s.PENDING.to(s.CANCELLED, cond="by_operator")
     boot = s.STARTING.to(s.BOOTSTRAPPING, cond="by_agent")
     bootstrap = s.BOOTSTRAPPING.to(s.READY, cond="by_agent")
-    stop = s.READY.to(s.STOPPING, cond="by_operator")
+    stop = s.STOPPING.from_(s.STARTING, s.BOOTSTRAPPING, s.READY, cond="by_operator")
     expire = s.READY.to(s.STOPPING, cond="by_api")
     destroy = s.STOPPING.to(s.COMPLETED, cond="by_agent")
     fail = s.FAILED.from_(*live, cond="by_agent")

@@ -13,6 +13,7 @@ from jatszoter_api.errors import (
     ForbiddenError,
     InvalidBundleError,
     InvalidPasswordError,
+    InvalidReferenceError,
     InvalidTransitionError,
     NotAuthorizedError,
     NotFoundError,
@@ -33,6 +34,7 @@ _ERROR_STATUS: dict[type[Exception], int] = {
     TooLargeError: 413,
     InvalidBundleError: 422,
     InvalidPasswordError: 422,
+    InvalidReferenceError: 422,
     ThrottledError: 429,
 }
 

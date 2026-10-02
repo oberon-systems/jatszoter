@@ -13,6 +13,7 @@ from jatszoter_api.models.user import ADMIN
 from jatszoter_api.routes import (
     agents_router,
     auth_router,
+    deployments_router,
     domain_error_handler,
     images_router,
     scenarios_router,
@@ -62,6 +63,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     v1 = APIRouter(prefix="/api/v1")
     v1.include_router(agents_router)
     v1.include_router(auth_router)
+    v1.include_router(deployments_router)
     v1.include_router(images_router)
     v1.include_router(scenarios_router)
     app.include_router(v1)

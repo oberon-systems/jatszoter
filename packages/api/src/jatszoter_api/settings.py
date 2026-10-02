@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     auto_register_agents: bool = False
     scenario_bundle_limit_bytes: int = 10 * 1024 * 1024
 
+    default_cpus: int = 1
+    default_memory_mib: int = 1024
+    default_disk_gib: int = 10
+    default_bootstrap_seconds: int = 900
+    default_check_seconds: int = 30
+    default_session_minutes: int = 60
+
 
 def app_settings(request: Request) -> Settings:
     """The settings `create_app` was built with."""

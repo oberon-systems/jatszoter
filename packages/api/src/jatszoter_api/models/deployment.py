@@ -3,19 +3,22 @@ import uuid
 from typing import Any, Self
 
 from pydantic import PrivateAttr
-from sqlmodel import Field
+from sqlmodel import Field, Session
 
 from jatszoter_api.errors import InvalidTransitionError
 from jatszoter_api.lifecycle import TERMINAL, Actor, DeploymentStatus, advance
 from jatszoter_api.models._base import Base
 from jatszoter_api.models.check import Check
+from jatszoter_api.models.image import Image
 from jatszoter_api.models.link import Link
+from jatszoter_api.models.scenario import Scenario
 
 
 class Deployment(Base, table=True):
     __tablename__ = "deployments"
 
     scenario_id: uuid.UUID = Field(index=True)
+    image_id: uuid.UUID = Field(index=True)
     agent_id: uuid.UUID | None = Field(default=None, index=True)
     vm_id: uuid.UUID | None = None
     status: DeploymentStatus = Field(default=DeploymentStatus.PENDING, index=True)
@@ -29,14 +32,38 @@ class Deployment(Base, table=True):
     updated_at: int = Field(default_factory=lambda: int(time.time()))
     ready_at: int | None = None
     ended_at: int | None = None
+    _scenario: Scenario | None = PrivateAttr(default=None)
+    _image: Image | None = PrivateAttr(default=None)
     _links: list[Link] | None = PrivateAttr(default=None)
     _checks: list[Check] | None = PrivateAttr(default=None)
+
+    def __init__(self, session: Session, **data: Any) -> None:
+        super().__init__(session, **data)
 
     def load(self, **key: Any) -> Self:
         return self._load(self._session, **key)[0]
 
     def save(self) -> None:
         self._save()
+
+    def stop(self) -> None:
+        """Cancel a PENDING deployment, stop a running one; a repeated stop changes nothing."""
+        if self.status in (DeploymentStatus.STOPPING, DeploymentStatus.CANCELLED):
+            return
+        event = "cancel" if self.status is DeploymentStatus.PENDING else "stop"
+        self.transition(event, self.status, actor=Actor.OPERATOR)
+
+    @property
+    def scenario(self) -> Scenario:
+        if not self._scenario:
+            self._scenario = Scenario(session=self._session).load(id=self.scenario_id)
+        return self._scenario
+
+    @property
+    def image(self) -> Image:
+        if not self._image:
+            self._image = Image(session=self._session).load(id=self.image_id)
+        return self._image
 
     @property
     def links(self) -> list[Link]:

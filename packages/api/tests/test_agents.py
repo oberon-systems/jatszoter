@@ -13,6 +13,7 @@ from jatszoter_api.models.agent import LEASE_SECONDS
 
 FIELDS: dict[str, Any] = {
     "scenario_id": uuid.uuid4(),
+    "image_id": uuid.uuid4(),
     "cpus": 1,
     "memory_mib": 512,
     "disk_gib": 4,

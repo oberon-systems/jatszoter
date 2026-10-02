@@ -38,6 +38,10 @@ class TooLargeError(DomainError):
     """A body or a bundle is over its size limit."""
 
 
+class InvalidReferenceError(DomainError):
+    """A body names a row that does not exist or cannot be used."""
+
+
 # The driver's error code, SQLSTATE or its own name, to the domain error it means.
 DB_ERRORS: dict[str | None, type[DomainError]] = {
     "23505": ConflictError,

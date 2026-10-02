@@ -12,10 +12,20 @@ from httpx import Response
 from sqlmodel import Session
 
 from jatszoter_api.app import create_app
-from jatszoter_api.models import Agent, State
+from jatszoter_api.file import File
+from jatszoter_api.models import Agent, Deployment, Image, Scenario, State
 from jatszoter_api.models._cache import Cached
 from jatszoter_api.models.agent import LEASE_SECONDS
 from jatszoter_api.settings import Settings
+
+SIZING: dict[str, int] = {
+    "cpus": 2,
+    "memory_mib": 2048,
+    "disk_gib": 8,
+    "bootstrap_seconds": 600,
+    "check_seconds": 30,
+    "session_minutes": 45,
+}
 
 
 @pytest.fixture
@@ -220,3 +230,145 @@ def test_the_app_enables_agents_at_once_when_its_settings_say_so(
         code = register(client)
 
         assert claim(client, code).status_code == 200
+
+
+@pytest.fixture
+def scenario(session: Session) -> Scenario:
+    Image(session=session, name="debian-12", url="https://example.com/a", digest="a" * 64).save()
+    scenario = Scenario(
+        session=session,
+        slug="nginx-502",
+        version=3,
+        document={"image": "debian-12"},
+        digest="b" * 64,
+    )
+    scenario.save(File(scenario.bundle_path, b"bundle"))
+    return scenario
+
+
+def deploy(session: Session, scenario: Scenario, agent_id: str | None = None) -> Deployment:
+    pinned = {} if agent_id is None else {"agent_id": uuid.UUID(agent_id)}
+    deployment = Deployment(
+        session=session,
+        scenario_id=scenario.id,
+        image_id=scenario.image.id,
+        **SIZING,
+        **pinned,
+    )
+    deployment.save()
+    return deployment
+
+
+def held(client: TestClient, session: Session, scenario: Scenario) -> tuple[Enrolled, str]:
+    """An agent with a live lease and the one deployment its heartbeat assigned."""
+    agent = enroll(client, session)
+    deployment_id = str(deploy(session, scenario).id)
+    assert agent.call("POST", "/heartbeat", {"capacity": 1}).status_code == 200
+    return agent, deployment_id
+
+
+def move(agent: Enrolled, deployment_id: str, **body: Any) -> Response:
+    return agent.call("POST", f"/deployments/{deployment_id}/transition", body)
+
+
+def test_the_desired_state_carries_the_image_of_the_deployment(
+    client: TestClient, session: Session, scenario: Scenario
+) -> None:
+    agent = enroll(client, session)
+    image = Image(session=session, name="debian-13", url="https://example.com/b", digest="c" * 64)
+    image.save()
+    deployment = deploy(session, scenario)
+    deployment.image_id = image.id
+    deployment.save()
+    agent.call("POST", "/heartbeat", {"capacity": 1})
+
+    response = agent.call("GET", "/deployments")
+
+    assert response.status_code == 200
+    [entry] = response.json()
+    session.refresh(deployment)
+    assert entry == {
+        "id": str(deployment.id),
+        "vm_id": str(deployment.vm_id),
+        "status": "PENDING",
+        "scenario": {"id": str(scenario.id), "slug": "nginx-502", "version": 3},
+        "image": {"name": "debian-13", "url": "https://example.com/b", "digest": "c" * 64},
+        "resources": {"cpus": 2, "memory_mib": 2048, "disk_gib": 8},
+        "timeouts": {"bootstrap_seconds": 600, "check_seconds": 30, "session_minutes": 45},
+    }
+
+
+def test_an_agent_assigns_then_fails_its_deployment(
+    client: TestClient, session: Session, scenario: Scenario
+) -> None:
+    agent, deployment_id = held(client, session, scenario)
+
+    assigned = move(agent, deployment_id, event="assign", expected="PENDING")
+    repeated = move(agent, deployment_id, event="assign", expected="PENDING")
+    failed = move(agent, deployment_id, event="fail", expected="STARTING", reason="no disk")
+
+    assert assigned.json() == {"id": deployment_id, "status": "STARTING"}
+    assert repeated.status_code == 200
+    assert repeated.json()["status"] == "STARTING"
+    assert failed.status_code == 200
+    assert failed.json()["status"] == "FAILED"
+    stored = Deployment(session=session).load(id=uuid.UUID(deployment_id))
+    session.refresh(stored)
+    assert stored.reason == "no disk"
+    assert agent.call("GET", "/deployments").json() == []
+
+
+def test_without_a_live_lease_nothing_is_read_or_moved(
+    client: TestClient, session: Session, scenario: Scenario
+) -> None:
+    agent, deployment_id = held(client, session, scenario)
+    Cached._client().delete(f"lease:{agent.id}")
+
+    assert agent.call("GET", "/deployments").status_code == 409
+    assert move(agent, deployment_id, event="assign", expected="PENDING").status_code == 409
+
+
+def test_an_agent_that_never_heartbeat_has_no_desired_state(
+    client: TestClient, session: Session
+) -> None:
+    agent = enroll(client, session)
+
+    assert agent.call("GET", "/deployments").status_code == 409
+
+
+@pytest.mark.parametrize(("event", "expected"), [("assign", "STARTING"), ("boot", "STARTING")])
+def test_a_transition_from_the_wrong_status_conflicts(
+    client: TestClient, session: Session, scenario: Scenario, event: str, expected: str
+) -> None:
+    agent, deployment_id = held(client, session, scenario)
+
+    assert move(agent, deployment_id, event=event, expected=expected).status_code == 409
+
+
+def test_fail_without_a_reason_is_refused(
+    client: TestClient, session: Session, scenario: Scenario
+) -> None:
+    agent, deployment_id = held(client, session, scenario)
+
+    assert move(agent, deployment_id, event="fail", expected="PENDING").status_code == 422
+
+
+@pytest.mark.parametrize("event", ["stop", "cancel", "abort", "expire"])
+def test_an_event_agents_do_not_send_is_refused(
+    client: TestClient, session: Session, scenario: Scenario, event: str
+) -> None:
+    agent, deployment_id = held(client, session, scenario)
+
+    assert move(agent, deployment_id, event=event, expected="PENDING").status_code == 422
+
+
+def test_an_unknown_or_foreign_deployment_is_not_found(
+    client: TestClient, session: Session, scenario: Scenario
+) -> None:
+    agent, _ = held(client, session, scenario)
+    beta = enroll(client, session, "beta")
+    foreign = deploy(session, scenario, beta.id)
+
+    for deployment_id in (str(foreign.id), str(uuid.uuid4())):
+        response = move(agent, deployment_id, event="assign", expected="PENDING")
+        assert response.status_code == 404

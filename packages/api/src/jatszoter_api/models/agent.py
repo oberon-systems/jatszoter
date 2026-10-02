@@ -4,10 +4,11 @@ import time
 import uuid
 from typing import Any, Self
 
+from pydantic import PrivateAttr
 from sqlmodel import JSON, Column, Field, Session, SQLModel
 
 from jatszoter_api.errors import InvalidTransitionError
-from jatszoter_api.lifecycle import Actor, DeploymentStatus
+from jatszoter_api.lifecycle import TERMINAL, Actor, DeploymentStatus
 from jatszoter_api.models._base import State
 from jatszoter_api.models._cache import Cached
 from jatszoter_api.models.deployment import Deployment
@@ -15,7 +16,7 @@ from jatszoter_api.models.secret import SecretOwner
 
 LEASE_SECONDS = 30
 CLAIM_SECONDS = 24 * 60 * 60
-HELD = (
+RUNNING = (
     DeploymentStatus.STARTING,
     DeploymentStatus.BOOTSTRAPPING,
     DeploymentStatus.READY,
@@ -39,6 +40,7 @@ class Agent(SecretOwner, table=True):
 
     name: str
     labels: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    _deployments: list[Deployment] | None = PrivateAttr(default=None)
 
     def __init__(self, session: Session, **data: Any) -> None:
         super().__init__(session, **data)
@@ -51,14 +53,17 @@ class Agent(SecretOwner, table=True):
 
     @property
     def deployments(self) -> list[Deployment]:
-        return Deployment._load(self._session, agent_id=self.id)
+        if not self._deployments:
+            self._deployments = Deployment._load(self._session, agent_id=self.id)
+        return self._deployments
 
     def heartbeat(self, capacity: int) -> Lease:
-        """Renew the lease; once it lapsed, fail what it held before a new one opens."""
+        """Renew the lease, failing what it held once it lapsed; then take waiting deployments,
+        pinned ones first, oldest first, while `capacity` has room."""
         current = self.lease
         if current is None:
             for deployment in self.deployments:
-                if deployment.status in HELD:
+                if deployment.status in RUNNING:
                     deployment.transition(
                         "abort", deployment.status, "lease expired", actor=Actor.API
                     )
@@ -70,7 +75,53 @@ class Agent(SecretOwner, table=True):
             expires_at=now + LEASE_SECONDS,
         )
         self._set("lease", lease, LEASE_SECONDS)
+
+        held = [row for row in self.deployments if row.status not in TERMINAL and row.vm_id]
+        pinned = [
+            row
+            for row in self.deployments
+            if row.status is DeploymentStatus.PENDING and row.vm_id is None
+        ]
+        waiting = Deployment._load(self._session, status=DeploymentStatus.PENDING, agent_id=None)
+        free = capacity - len(held)
+        for deployment in [
+            *sorted(pinned, key=lambda row: row.created_at),
+            *sorted(waiting, key=lambda row: row.created_at),
+        ]:
+            if free <= 0:
+                break
+            if deployment.assign(self.id):
+                free -= 1
+        self._deployments = None
         return lease
+
+    def desired(self) -> list[dict[str, Any]]:
+        """What the agent should run: every deployment it holds, with what its VM needs."""
+        return [
+            {
+                "id": row.id,
+                "vm_id": row.vm_id,
+                "status": row.status,
+                "scenario": {
+                    "id": row.scenario.id,
+                    "slug": row.scenario.slug,
+                    "version": row.scenario.version,
+                },
+                "image": {"name": row.image.name, "url": row.image.url, "digest": row.image.digest},
+                "resources": {
+                    "cpus": row.cpus,
+                    "memory_mib": row.memory_mib,
+                    "disk_gib": row.disk_gib,
+                },
+                "timeouts": {
+                    "bootstrap_seconds": row.bootstrap_seconds,
+                    "check_seconds": row.check_seconds,
+                    "session_minutes": row.session_minutes,
+                },
+            }
+            for row in self.deployments
+            if row.status not in TERMINAL and row.vm_id
+        ]
 
     def claim_code(self, auto_register: bool) -> str:
         """Queue the unsaved agent for an operator, or enable it at once when agents register

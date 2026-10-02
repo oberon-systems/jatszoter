@@ -77,6 +77,18 @@ class Deployment(Base, table=True):
             self._checks = Check._load(self._session, deployment_id=self.id)
         return self._checks
 
+    def assign(self, agent_id: uuid.UUID) -> bool:
+        """Take this PENDING deployment for `agent_id`; False once someone else got it first."""
+        self._session.refresh(self, with_for_update=True)
+        if self.status is not DeploymentStatus.PENDING or self.agent_id not in (None, agent_id):
+            return False
+        self.agent_id = agent_id
+        if self.vm_id is None:
+            self.vm_id = uuid.uuid4()
+        self.updated_at = int(time.time())
+        self.save()
+        return True
+
     def transition(
         self,
         event: str,

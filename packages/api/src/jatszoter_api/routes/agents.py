@@ -1,18 +1,30 @@
 import hashlib
 import hmac
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal, Self
 
 from fastapi import APIRouter, Depends, Response
-from pydantic import BaseModel, ConfigDict, Field, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 
 from jatszoter_api.auth import require_agent, unauthorized
-from jatszoter_api.models import Agent, Credential
+from jatszoter_api.errors import ConflictError, NotFoundError
+from jatszoter_api.lifecycle import Actor, DeploymentStatus
+from jatszoter_api.models import Agent, Credential, Deployment
 from jatszoter_api.models.agent import Lease
 from jatszoter_api.models.secret import CREDENTIAL_SECONDS
 from jatszoter_api.routes.deps import SessionDep, SettingsDep
 
 AgentDep = Annotated[Agent, Depends(require_agent)]
+
+
+def leased(agent: AgentDep) -> Agent:
+    """The signed agent, refused with 409 unless its lease is live."""
+    if agent.lease is None:
+        raise ConflictError(f"agent {agent.id} holds no live lease")
+    return agent
+
+
+LeasedDep = Annotated[Agent, Depends(leased)]
 
 Name = Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")]
 Label = Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$")]
@@ -61,6 +73,57 @@ class HeartbeatIn(StrictModel):
     capacity: Annotated[StrictInt, Field(ge=0, le=64)]
 
 
+class ScenarioRef(BaseModel):
+    id: uuid.UUID
+    slug: str
+    version: int
+
+
+class ImageRef(BaseModel):
+    name: str
+    url: str
+    digest: str
+
+
+class Resources(BaseModel):
+    cpus: int
+    memory_mib: int
+    disk_gib: int
+
+
+class Timeouts(BaseModel):
+    bootstrap_seconds: int
+    check_seconds: int
+    session_minutes: int
+
+
+class DesiredOut(BaseModel):
+    id: uuid.UUID
+    vm_id: uuid.UUID
+    status: DeploymentStatus
+    scenario: ScenarioRef
+    image: ImageRef
+    resources: Resources
+    timeouts: Timeouts
+
+
+class TransitionIn(StrictModel):
+    event: Literal["assign", "boot", "bootstrap", "destroy", "fail"]
+    expected: DeploymentStatus
+    reason: Annotated[str, Field(min_length=1, max_length=1024)] | None = None
+
+    @model_validator(mode="after")
+    def _reasoned(self) -> Self:
+        if self.event == "fail" and self.reason is None:
+            raise ValueError("fail needs a reason")
+        return self
+
+
+class TransitionOut(BaseModel):
+    id: uuid.UUID
+    status: DeploymentStatus
+
+
 router = APIRouter(prefix="/agents")
 
 
@@ -93,3 +156,22 @@ def refresh(agent: AgentDep, settings: SettingsDep) -> CredentialOut:
     return credential_out(
         *agent.issue(CREDENTIAL_SECONDS, settings.master_kid, settings.master_keys)
     )
+
+
+@router.get("/{agent_id}/deployments")
+def desired(agent: LeasedDep) -> list[DesiredOut]:
+    return [DesiredOut.model_validate(entry) for entry in agent.desired()]
+
+
+@router.post("/{agent_id}/deployments/{deployment_id}/transition")
+def transition(
+    body: TransitionIn, agent: LeasedDep, session: SessionDep, deployment_id: uuid.UUID
+) -> TransitionOut:
+    try:
+        deployment = Deployment(session=session).load(id=deployment_id, agent_id=agent.id)
+    except IndexError:
+        raise NotFoundError(f"deployment {deployment_id} is not known") from None
+    deployment.transition(
+        body.event, body.expected, body.reason, actor=Actor.AGENT, agent_id=agent.id
+    )
+    return TransitionOut(id=deployment.id, status=deployment.status)

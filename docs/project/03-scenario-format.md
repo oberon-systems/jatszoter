@@ -46,6 +46,17 @@ scenarios/nginx-502/
 
 Missing `resources`, `timeouts` and `trainee` values fall back to API
 settings. Every file reference is a bare file name next to `scenario.yaml`.
+A deployment copies resources and timeouts at create time; the fallbacks
+are:
+
+| Value               | Setting                               | Default |
+| ------------------- | ------------------------------------- | ------- |
+| `cpus`              | `JATSZOTER_DEFAULT_CPUS`              | 1       |
+| `memory_mib`        | `JATSZOTER_DEFAULT_MEMORY_MIB`        | 1024    |
+| `disk_gib`          | `JATSZOTER_DEFAULT_DISK_GIB`          | 10      |
+| `bootstrap_seconds` | `JATSZOTER_DEFAULT_BOOTSTRAP_SECONDS` | 900     |
+| `check_seconds`     | `JATSZOTER_DEFAULT_CHECK_SECONDS`     | 30      |
+| `session_minutes`   | `JATSZOTER_DEFAULT_SESSION_MINUTES`   | 60      |
 
 ## Bootstrap
 

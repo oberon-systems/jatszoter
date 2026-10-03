@@ -139,3 +139,6 @@ fn valid_digest(digest: &str) -> bool {
             .bytes()
             .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
+
+#[cfg(test)]
+mod tests;

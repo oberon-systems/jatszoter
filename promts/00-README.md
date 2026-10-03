@@ -18,7 +18,7 @@ previous ones have landed.
 | 10 | `10-agent-reconcile.md`         | agent     | the runtime driven by desired state              |
 | 11 | `11-smoke.md`                   | smoke     | assigned, started and destroyed on stop          |
 
-Prompts 01-06 have landed. Where their text disagrees with the ground rules
+Prompts 01-07 have landed. Where their text disagrees with the ground rules
 below - helpers like `by_name` or `register`, new Alembic revisions,
 `get_files` or `get_settings` - the code and the ground rules win.
 

@@ -6,6 +6,9 @@ pub enum AgentError {
     State(String),
     #[error("api: {0}")]
     Api(String),
+    #[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
+    #[error("image: {0}")]
+    Image(String),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]

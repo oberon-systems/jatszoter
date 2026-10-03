@@ -11,6 +11,9 @@ pub const MAX_CAPACITY: u32 = 64;
 const DEFAULT_CAPACITY: u32 = 1;
 const MAX_LABELS: usize = 16;
 const MAX_LABEL: usize = 32;
+const DEFAULT_IMAGE_LIMIT_GIB: u32 = 20;
+const MAX_IMAGE_LIMIT_GIB: u32 = 512;
+const GIB: u64 = 1 << 30;
 const PREFIX: &str = "JATSZOTER_AGENT_";
 const ENV_FILE: &str = "JATSZOTER_AGENT_ENV_FILE";
 
@@ -21,6 +24,8 @@ pub struct Config {
     pub labels: Vec<String>,
     pub capacity: u32,
     pub state_dir: PathBuf,
+    #[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
+    pub image_limit_bytes: u64,
 }
 
 /// The environment as read, before any of it is checked.
@@ -31,6 +36,7 @@ pub struct RawConfig {
     pub labels: Option<String>,
     pub capacity: Option<u32>,
     pub state_dir: Option<PathBuf>,
+    pub image_limit_gib: Option<u32>,
 }
 
 impl Config {
@@ -54,12 +60,16 @@ impl Config {
                 state_dir.display()
             )));
         }
+        let image_limit_gib = raw
+            .image_limit_gib
+            .map_or(Ok(DEFAULT_IMAGE_LIMIT_GIB), check_image_limit)?;
         Ok(Self {
             api_url: parse_api_url(&raw.api_url)?,
             name: parse_name(&raw.name)?,
             labels: raw.labels.as_deref().map_or(Ok(Vec::new()), parse_labels)?,
             capacity: raw.capacity.map_or(Ok(DEFAULT_CAPACITY), check_capacity)?,
             state_dir,
+            image_limit_bytes: u64::from(image_limit_gib) * GIB,
         })
     }
 
@@ -112,22 +122,31 @@ pub fn parse_api_url(raw: &str) -> Result<Url, AgentError> {
     if url.query().is_some() || url.fragment().is_some() {
         return Err(reject("must not carry a query or fragment"));
     }
-    let loopback = match url.host() {
-        Some(Host::Ipv4(ip)) => ip.is_loopback(),
-        Some(Host::Ipv6(ip)) => ip.is_loopback(),
-        Some(Host::Domain(name)) => name == "localhost",
-        None => return Err(reject("has no host")),
-    };
-    match url.scheme() {
-        "https" => {}
-        "http" if loopback => {}
-        _ => return Err(reject("must use https unless it points to loopback")),
+    if url.host().is_none() {
+        return Err(reject("has no host"));
+    }
+    if !is_https_or_loopback(&url) {
+        return Err(reject("must use https unless it points to loopback"));
     }
     if !url.path().ends_with('/') {
         let path = format!("{}/", url.path());
         url.set_path(&path);
     }
     Ok(url)
+}
+
+pub fn is_https_or_loopback(url: &Url) -> bool {
+    let loopback = match url.host() {
+        Some(Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(Host::Ipv6(ip)) => ip.is_loopback(),
+        Some(Host::Domain(name)) => name == "localhost",
+        None => return false,
+    };
+    match url.scheme() {
+        "https" => true,
+        "http" => loopback,
+        _ => false,
+    }
 }
 
 fn valid_word(word: &str, max: usize) -> bool {
@@ -170,6 +189,16 @@ fn check_capacity(capacity: u32) -> Result<u32, AgentError> {
     } else {
         Err(AgentError::Config(format!(
             "{PREFIX}CAPACITY must be an integer in 0..={MAX_CAPACITY}"
+        )))
+    }
+}
+
+fn check_image_limit(gib: u32) -> Result<u32, AgentError> {
+    if (1..=MAX_IMAGE_LIMIT_GIB).contains(&gib) {
+        Ok(gib)
+    } else {
+        Err(AgentError::Config(format!(
+            "{PREFIX}IMAGE_LIMIT_GIB must be an integer in 1..={MAX_IMAGE_LIMIT_GIB}"
         )))
     }
 }

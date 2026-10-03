@@ -1,7 +1,7 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use hmac::{Hmac, Mac};
-use reqwest::{Client, Response, StatusCode};
+use reqwest::{Client, Method, Response, StatusCode};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use url::Url;
@@ -31,6 +31,82 @@ pub enum Claim {
     },
 }
 
+#[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum Status {
+    Pending,
+    Starting,
+    Bootstrapping,
+    Ready,
+    Stopping,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+#[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Event {
+    Assign,
+    Boot,
+    Bootstrap,
+    Destroy,
+    Fail,
+}
+
+#[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct ScenarioRef {
+    pub id: String,
+    pub slug: String,
+    pub version: u32,
+}
+
+#[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct ImageRef {
+    pub name: String,
+    pub url: String,
+    pub digest: String,
+}
+
+#[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Resources {
+    pub cpus: u32,
+    pub memory_mib: u64,
+    pub disk_gib: u64,
+}
+
+#[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Timeouts {
+    pub bootstrap_seconds: u64,
+    pub check_seconds: u64,
+    pub session_minutes: u64,
+}
+
+#[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Desired {
+    pub id: String,
+    pub vm_id: String,
+    pub status: Status,
+    pub scenario: ScenarioRef,
+    pub image: ImageRef,
+    pub resources: Resources,
+    pub timeouts: Timeouts,
+}
+
+#[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
+#[derive(Debug, PartialEq, Eq)]
+pub enum Moved {
+    To(Status),
+    Conflict,
+}
+
 /// A signed call goes through, or the API no longer accepts the credential.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Signed<T> {
@@ -57,6 +133,23 @@ pub(crate) trait Api {
         agent_id: &str,
         credential: &Credential,
     ) -> Result<Signed<Credential>, AgentError>;
+    /// `None` is the 409 an agent without a live lease gets.
+    #[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
+    async fn deployments(
+        &self,
+        agent_id: &str,
+        credential: &Credential,
+    ) -> Result<Signed<Option<Vec<Desired>>>, AgentError>;
+    #[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
+    async fn transition(
+        &self,
+        agent_id: &str,
+        credential: &Credential,
+        deployment_id: &str,
+        event: Event,
+        expected: Status,
+        reason: Option<&str>,
+    ) -> Result<Signed<Moved>, AgentError>;
 }
 
 #[derive(Serialize)]
@@ -88,6 +181,21 @@ struct HeartbeatIn {
     capacity: u32,
 }
 
+#[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
+#[derive(Serialize)]
+struct TransitionIn<'a> {
+    event: Event,
+    expected: Status,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'a str>,
+}
+
+#[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
+#[derive(Deserialize)]
+struct TransitionOut {
+    status: Status,
+}
+
 pub struct HttpApi {
     client: Client,
     base: Url,
@@ -109,6 +217,7 @@ impl HttpApi {
 
     async fn signed(
         &self,
+        method: Method,
         agent_id: &str,
         credential: &Credential,
         action: &str,
@@ -116,10 +225,16 @@ impl HttpApi {
     ) -> Result<Response, AgentError> {
         let url = self.url(&format!("api/v1/agents/{agent_id}/{action}"))?;
         let timestamp = unix_now().to_string();
-        let signature = sign(&credential.key, &timestamp, "POST", url.path(), &body)?;
+        let signature = sign(
+            &credential.key,
+            &timestamp,
+            method.as_str(),
+            url.path(),
+            &body,
+        )?;
         Ok(self
             .client
-            .post(url)
+            .request(method, url)
             .header("Content-Type", "application/json")
             .header("X-Credential", &credential.credential)
             .header("X-Timestamp", timestamp)
@@ -192,7 +307,9 @@ impl Api for HttpApi {
     ) -> Result<Signed<Lease>, AgentError> {
         let body = serde_json::to_vec(&HeartbeatIn { capacity })
             .map_err(|err| AgentError::Api(err.to_string()))?;
-        let response = self.signed(agent_id, credential, "heartbeat", body).await?;
+        let response = self
+            .signed(Method::POST, agent_id, credential, "heartbeat", body)
+            .await?;
         if response.status() == StatusCode::UNAUTHORIZED {
             return Ok(Signed::Refused);
         }
@@ -207,7 +324,7 @@ impl Api for HttpApi {
         credential: &Credential,
     ) -> Result<Signed<Credential>, AgentError> {
         let response = self
-            .signed(agent_id, credential, "credential", Vec::new())
+            .signed(Method::POST, agent_id, credential, "credential", Vec::new())
             .await?;
         if response.status() == StatusCode::UNAUTHORIZED {
             return Ok(Signed::Refused);
@@ -215,6 +332,52 @@ impl Api for HttpApi {
         Ok(Signed::Accepted(
             accepted(response, StatusCode::OK)?.json().await?,
         ))
+    }
+
+    async fn deployments(
+        &self,
+        agent_id: &str,
+        credential: &Credential,
+    ) -> Result<Signed<Option<Vec<Desired>>>, AgentError> {
+        let response = self
+            .signed(Method::GET, agent_id, credential, "deployments", Vec::new())
+            .await?;
+        match response.status() {
+            StatusCode::UNAUTHORIZED => Ok(Signed::Refused),
+            StatusCode::CONFLICT => Ok(Signed::Accepted(None)),
+            _ => Ok(Signed::Accepted(Some(
+                accepted(response, StatusCode::OK)?.json().await?,
+            ))),
+        }
+    }
+
+    async fn transition(
+        &self,
+        agent_id: &str,
+        credential: &Credential,
+        deployment_id: &str,
+        event: Event,
+        expected: Status,
+        reason: Option<&str>,
+    ) -> Result<Signed<Moved>, AgentError> {
+        let body = serde_json::to_vec(&TransitionIn {
+            event,
+            expected,
+            reason,
+        })
+        .map_err(|err| AgentError::Api(err.to_string()))?;
+        let action = format!("deployments/{deployment_id}/transition");
+        let response = self
+            .signed(Method::POST, agent_id, credential, &action, body)
+            .await?;
+        match response.status() {
+            StatusCode::UNAUTHORIZED => Ok(Signed::Refused),
+            StatusCode::CONFLICT => Ok(Signed::Accepted(Moved::Conflict)),
+            _ => {
+                let out: TransitionOut = accepted(response, StatusCode::OK)?.json().await?;
+                Ok(Signed::Accepted(Moved::To(out.status)))
+            }
+        }
     }
 }
 

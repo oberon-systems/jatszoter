@@ -6,10 +6,12 @@ use tempfile::TempDir;
 use url::Url;
 
 use super::{Agent, Runtime, CLAIM_POLL};
-use crate::libs::api::{unix_now, Api, Claim, Lease, Signed};
+use crate::libs::api::{unix_now, Api, Claim, Desired, Event, Lease, Moved, Signed, Status};
 use crate::libs::config::Config;
 use crate::libs::error::AgentError;
 use crate::libs::state::{Credential, State, StateStore};
+
+type Transition = (String, Event, Status, Option<String>);
 
 #[derive(Default)]
 struct FakeApi {
@@ -18,6 +20,10 @@ struct FakeApi {
     refreshes: Mutex<VecDeque<Signed<Credential>>>,
     registered: Mutex<Vec<Option<String>>>,
     signed_with: Mutex<Vec<String>>,
+    desired: Mutex<VecDeque<Signed<Option<Vec<Desired>>>>>,
+    moves: Mutex<VecDeque<Signed<Moved>>>,
+    listed: Mutex<Vec<String>>,
+    transitions: Mutex<Vec<Transition>>,
 }
 
 impl Api for FakeApi {
@@ -77,6 +83,43 @@ impl Api for FakeApi {
             .unwrap()
             .pop_front()
             .unwrap_or(Signed::Refused))
+    }
+
+    async fn deployments(
+        &self,
+        agent_id: &str,
+        _credential: &Credential,
+    ) -> Result<Signed<Option<Vec<Desired>>>, AgentError> {
+        self.listed.lock().unwrap().push(agent_id.to_owned());
+        Ok(self
+            .desired
+            .lock()
+            .unwrap()
+            .pop_front()
+            .unwrap_or(Signed::Accepted(Some(Vec::new()))))
+    }
+
+    async fn transition(
+        &self,
+        _agent_id: &str,
+        _credential: &Credential,
+        deployment_id: &str,
+        event: Event,
+        expected: Status,
+        reason: Option<&str>,
+    ) -> Result<Signed<Moved>, AgentError> {
+        self.transitions.lock().unwrap().push((
+            deployment_id.to_owned(),
+            event,
+            expected,
+            reason.map(str::to_owned),
+        ));
+        Ok(self
+            .moves
+            .lock()
+            .unwrap()
+            .pop_front()
+            .unwrap_or(Signed::Accepted(Moved::Conflict)))
     }
 }
 

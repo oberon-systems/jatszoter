@@ -241,6 +241,18 @@ alive is adopted; one it no longer wants, or one it never knew, is destroyed.
 A deployment the API wants but whose VM is gone is moved to FAILED with
 reason `vm lost`, never silently rebooted.
 
+- The same comparison runs after every accepted heartbeat. Each start,
+  stop, lost VM or stale directory runs as its own task, so downloads and
+  boots never delay a heartbeat, and a deployment is never worked on twice.
+- A start moves the deployment to STARTING first and stops quietly when that
+  transition conflicts. A failed start moves it to FAILED with a short reason
+  and leaves no VM directory behind.
+- Starts count against the capacity together with the running VMs and the
+  starts in flight.
+- Tasks sign with the agent's live credential, and each request holds it for
+  at most 15 seconds, so a refresh never waits on a long task. Fencing aborts
+  every task, then destroys every VM on the host.
+
 ## Acceptance criteria
 
 - Every arrow in the component diagram has an owner and an authentication

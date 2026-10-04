@@ -33,7 +33,8 @@ to cover it. An item marked Done has landed on `main`.
      scenarios, deployments the operator creates, lists and stops, and the
      API side of the agent loop: assignment on heartbeat, desired state and
      agent transitions, the agent's client for both, the agent's image
-     cache, and one QEMU VM created, listed and destroyed.
+     cache, one QEMU VM created, listed and destroyed, and the reconcile
+     loop that drives VMs from the desired state.
 5. Merged into 4.
 6. cloud-init bootstrap and the bootstrap marker.
    - Agent: build the seed ISO, read the marker through the guest agent,

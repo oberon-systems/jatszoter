@@ -6,10 +6,11 @@ use std::time::Duration;
 use tokio::signal::unix::{signal, SignalKind};
 use tracing_subscriber::EnvFilter;
 
-use libs::agent::{Agent, NoRuntime};
+use libs::agent::Agent;
 use libs::api::HttpApi;
 use libs::config::{self, Config};
 use libs::error::AgentError;
+use libs::runtime::QemuRuntime;
 
 const RETRY: Duration = Duration::from_secs(5);
 
@@ -46,7 +47,8 @@ fn run() -> Result<(), AgentError> {
 async fn serve(config: Config) -> Result<(), AgentError> {
     config.prepare()?;
     let api = HttpApi::new(config.api_url.clone())?;
-    let mut agent = Agent::new(&config, api, NoRuntime)?;
+    let runtime = QemuRuntime::new(&config, api.clone())?;
+    let mut agent = Agent::new(&config, api, runtime)?;
     let mut terminate = signal(SignalKind::terminate())?;
     tracing::info!(name = %config.name, capacity = config.capacity, "{} started", banner());
 

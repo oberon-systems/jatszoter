@@ -26,11 +26,8 @@ pub struct Config {
     pub labels: Vec<String>,
     pub capacity: u32,
     pub state_dir: PathBuf,
-    #[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
     pub image_limit_bytes: u64,
-    #[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
     pub qemu: PathBuf,
-    #[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
     pub qemu_img: PathBuf,
 }
 

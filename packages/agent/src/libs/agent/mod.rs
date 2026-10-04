@@ -1,30 +1,39 @@
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::libs::api::{unix_now, Api, Claim, Signed};
+use tokio::sync::RwLock;
+use tokio::time::timeout;
+
+use crate::libs::api::{unix_now, Api, Claim, Desired, Signed};
 use crate::libs::config::Config;
 use crate::libs::error::AgentError;
 use crate::libs::lease::LeaseClock;
-use crate::libs::state::{State, StateStore};
+use crate::libs::state::{Credential, State, StateStore};
 
 pub const CLAIM_POLL: Duration = Duration::from_secs(10);
 const REFRESH_BEFORE_SECONDS: i64 = 15 * 60;
+const AUTH_WAIT: Duration = Duration::from_secs(20);
 
-/// What the agent destroys when it fences; the QEMU runtime arrives with roadmap item 4.
-pub trait Runtime {
-    fn destroy_all(&mut self) -> Result<(), AgentError>;
+#[derive(Clone)]
+pub struct Signer {
+    pub agent_id: String,
+    pub credential: Credential,
 }
 
-pub struct NoRuntime;
+/// The credential the runtime's tasks sign with; a refresh swaps it under the write lock.
+pub type Auth = Arc<RwLock<Option<Signer>>>;
 
-impl Runtime for NoRuntime {
-    fn destroy_all(&mut self) -> Result<(), AgentError> {
-        Ok(())
-    }
+/// The VMs on the host: matched to the desired state, destroyed when the agent fences.
+pub(crate) trait Runtime {
+    /// Spawns the work the desired state calls for and returns at once.
+    fn reconcile(&mut self, _auth: &Auth, _desired: Vec<Desired>) {}
+    fn destroy_all(&mut self) -> Result<(), AgentError>;
 }
 
 pub struct Agent<A, R> {
     api: A,
     runtime: R,
+    auth: Auth,
     store: StateStore,
     state: State,
     clock: LeaseClock,
@@ -36,10 +45,12 @@ pub struct Agent<A, R> {
 impl<A: Api, R: Runtime> Agent<A, R> {
     pub fn new(config: &Config, api: A, runtime: R) -> Result<Self, AgentError> {
         let store = StateStore::new(&config.state_dir);
+        let state = store.load()?;
         Ok(Self {
             api,
             runtime,
-            state: store.load()?,
+            auth: Arc::new(RwLock::new(signer(&state))),
+            state,
             store,
             clock: LeaseClock::default(),
             name: config.name.clone(),
@@ -59,11 +70,16 @@ impl<A: Api, R: Runtime> Agent<A, R> {
         let credential = if credential.expires_at - unix_now() <= REFRESH_BEFORE_SECONDS {
             match self.api.refresh(&agent_id, &credential).await? {
                 Signed::Accepted(fresh) => {
+                    self.set_auth(Some(Signer {
+                        agent_id: agent_id.clone(),
+                        credential: fresh.clone(),
+                    }))
+                    .await?;
                     self.state.credential = Some(fresh.clone());
                     self.store.save(&self.state)?;
                     fresh
                 }
-                Signed::Refused => return self.forget_credential(),
+                Signed::Refused => return self.forget_credential().await,
             }
         } else {
             credential
@@ -79,9 +95,19 @@ impl<A: Api, R: Runtime> Agent<A, R> {
                 let ttl = Duration::from_secs(ttl);
                 self.clock.renewed(sent_at, ttl);
                 tracing::debug!(lease_id = %lease.id, capacity = lease.capacity, "lease renewed");
+                match self.api.deployments(&agent_id, &credential).await {
+                    Ok(Signed::Accepted(Some(desired))) => {
+                        self.runtime.reconcile(&self.auth, desired)
+                    }
+                    Ok(Signed::Accepted(None)) => {
+                        tracing::debug!("no live lease; skipping the round")
+                    }
+                    Ok(Signed::Refused) => return self.forget_credential().await,
+                    Err(err) => tracing::warn!(error = %err, "reading the desired state failed"),
+                }
                 Ok(ttl / 3)
             }
-            Signed::Refused => self.forget_credential(),
+            Signed::Refused => self.forget_credential().await,
         }
     }
 
@@ -110,19 +136,22 @@ impl<A: Api, R: Runtime> Agent<A, R> {
                 credential,
             } => {
                 tracing::info!(%agent_id, "claimed the credential");
-                self.state = State {
+                let state = State {
                     agent_id: Some(agent_id),
                     claim_code: None,
                     credential: Some(credential),
                 };
+                self.set_auth(signer(&state)).await?;
+                self.state = state;
                 self.store.save(&self.state)?;
                 Ok(Duration::ZERO)
             }
         }
     }
 
-    fn forget_credential(&mut self) -> Result<Duration, AgentError> {
+    async fn forget_credential(&mut self) -> Result<Duration, AgentError> {
         tracing::warn!("the API refused the credential; registering again");
+        self.set_auth(None).await?;
         self.state.credential = None;
         self.store.save(&self.state)?;
         Ok(Duration::ZERO)
@@ -136,6 +165,22 @@ impl<A: Api, R: Runtime> Agent<A, R> {
         }
         Ok(())
     }
+
+    // Waits only for transitions already in flight, each bounded by the runtime.
+    async fn set_auth(&self, signer: Option<Signer>) -> Result<(), AgentError> {
+        let mut auth = timeout(AUTH_WAIT, self.auth.write()).await.map_err(|_| {
+            AgentError::Api("in-flight transitions still hold the credential".into())
+        })?;
+        *auth = signer;
+        Ok(())
+    }
+}
+
+fn signer(state: &State) -> Option<Signer> {
+    Some(Signer {
+        agent_id: state.agent_id.clone()?,
+        credential: state.credential.clone()?,
+    })
 }
 
 #[cfg(test)]

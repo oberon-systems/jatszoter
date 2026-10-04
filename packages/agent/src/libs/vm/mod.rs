@@ -61,6 +61,7 @@ pub struct Record {
     pub vm_id: String,
 }
 
+#[allow(dead_code, reason = "read by the bootstrap, roadmap item 6")]
 #[derive(Debug)]
 pub struct Vm {
     pub dir: PathBuf,
@@ -394,7 +395,7 @@ fn cut(stderr: &[u8]) -> String {
         .to_owned()
 }
 
-fn valid_id(id: &str) -> bool {
+pub fn valid_id(id: &str) -> bool {
     (1..=MAX_ID).contains(&id.len())
         && id
             .bytes()

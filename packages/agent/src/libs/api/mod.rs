@@ -31,7 +31,6 @@ pub enum Claim {
     },
 }
 
-#[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum Status {
@@ -45,18 +44,18 @@ pub enum Status {
     Cancelled,
 }
 
-#[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Event {
     Assign,
+    #[allow(dead_code, reason = "sent by the bootstrap, roadmap item 6")]
     Boot,
+    #[allow(dead_code, reason = "sent by the bootstrap, roadmap item 6")]
     Bootstrap,
     Destroy,
     Fail,
 }
 
-#[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct ScenarioRef {
     pub id: String,
@@ -64,7 +63,6 @@ pub struct ScenarioRef {
     pub version: u32,
 }
 
-#[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct ImageRef {
     pub name: String,
@@ -72,7 +70,6 @@ pub struct ImageRef {
     pub digest: String,
 }
 
-#[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Resources {
     pub cpus: u32,
@@ -80,7 +77,6 @@ pub struct Resources {
     pub disk_gib: u64,
 }
 
-#[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Timeouts {
     pub bootstrap_seconds: u64,
@@ -88,7 +84,6 @@ pub struct Timeouts {
     pub session_minutes: u64,
 }
 
-#[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Desired {
     pub id: String,
@@ -100,7 +95,6 @@ pub struct Desired {
     pub timeouts: Timeouts,
 }
 
-#[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
 #[derive(Debug, PartialEq, Eq)]
 pub enum Moved {
     To(Status),
@@ -134,13 +128,11 @@ pub(crate) trait Api {
         credential: &Credential,
     ) -> Result<Signed<Credential>, AgentError>;
     /// `None` is the 409 an agent without a live lease gets.
-    #[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
     async fn deployments(
         &self,
         agent_id: &str,
         credential: &Credential,
     ) -> Result<Signed<Option<Vec<Desired>>>, AgentError>;
-    #[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
     async fn transition(
         &self,
         agent_id: &str,
@@ -181,7 +173,6 @@ struct HeartbeatIn {
     capacity: u32,
 }
 
-#[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
 #[derive(Serialize)]
 struct TransitionIn<'a> {
     event: Event,
@@ -190,12 +181,12 @@ struct TransitionIn<'a> {
     reason: Option<&'a str>,
 }
 
-#[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
 #[derive(Deserialize)]
 struct TransitionOut {
     status: Status,
 }
 
+#[derive(Clone)]
 pub struct HttpApi {
     client: Client,
     base: Url,

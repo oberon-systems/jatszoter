@@ -6,13 +6,10 @@ pub enum AgentError {
     State(String),
     #[error("api: {0}")]
     Api(String),
-    #[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
     #[error("image: {0}")]
     Image(String),
-    #[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
     #[error("vm: {0}")]
     Vm(String),
-    #[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
     #[error("qmp: {0}")]
     Qmp(String),
     #[error(transparent)]

@@ -17,7 +17,6 @@ const READ_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_REDIRECTS: usize = 10;
 const PART: &str = ".part-";
 
-#[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
 pub struct ImageCache {
     dir: PathBuf,
     limit: u64,
@@ -25,7 +24,6 @@ pub struct ImageCache {
     locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
 }
 
-#[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
 impl ImageCache {
     pub fn new(dir: &Path, limit_bytes: u64) -> Result<Self, AgentError> {
         prepare_private_dir(dir)?;

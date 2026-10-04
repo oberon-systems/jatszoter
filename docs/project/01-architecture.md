@@ -184,6 +184,12 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
 - QEMU is daemonized with a pid file, so a VM outlives an agent restart and
   reconciliation adopts it. It runs with KVM when `/dev/kvm` is usable and
   with TCG otherwise.
+- A VM is created over its cached base image as a qcow2 overlay, with QEMU
+  and `qemu-img` from `JATSZOTER_AGENT_QEMU` and `JATSZOTER_AGENT_QEMU_IMG`.
+  A VM that fails to start leaves no directory and no process. A VM is alive
+  while the pid in `qemu.pid` runs a command line carrying its vm id, so a
+  reused pid is never taken for it. Destroy asks QEMU to quit over QMP, kills
+  it if it does not, and removes the directory.
 - The cloud-init seed ISO joins the VM directory with item 6
   ([03](03-scenario-format.md#bootstrap)).
 - Network is QEMU user-mode NAT: the guest reaches the internet for package

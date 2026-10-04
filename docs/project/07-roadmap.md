@@ -32,8 +32,8 @@ to cover it. An item marked Done has landed on `main`.
    - Landed so far: user login and signed operator requests, images,
      scenarios, deployments the operator creates, lists and stops, and the
      API side of the agent loop: assignment on heartbeat, desired state and
-     agent transitions, the agent's client for both, and the agent's image
-     cache.
+     agent transitions, the agent's client for both, the agent's image
+     cache, and one QEMU VM created, listed and destroyed.
 5. Merged into 4.
 6. cloud-init bootstrap and the bootstrap marker.
    - Agent: build the seed ISO, read the marker through the guest agent,

@@ -21,7 +21,7 @@ to cover it. An item marked Done has landed on `main`.
      deadline passes. Done.
    - 3b. Smoke test: the API and one agent against fakeredis and SQLite; the
      agent registers, is enabled and keeps its lease. Done.
-4. Operator login, images, scenario registry and the QEMU runtime.
+4. Operator login, images, scenario registry and the QEMU runtime. Done.
    - API: user login and signed operator requests; images; scenarios from
      a bundle or a URL, stored in SeaweedFS or a local directory;
      deployments created, assigned and stopped.
@@ -29,12 +29,6 @@ to cover it. An item marked Done has landed on `main`.
      and destroy, reconcile.
    - Smoke: log in, register the sample scenario by URL, deploy it; the
      deployment is assigned, started and destroyed on stop.
-   - Landed so far: user login and signed operator requests, images,
-     scenarios, deployments the operator creates, lists and stops, and the
-     API side of the agent loop: assignment on heartbeat, desired state and
-     agent transitions, the agent's client for both, the agent's image
-     cache, one QEMU VM created, listed and destroyed, and the reconcile
-     loop that drives VMs from the desired state.
 5. Merged into 4.
 6. cloud-init bootstrap and the bootstrap marker.
    - Agent: build the seed ISO, read the marker through the guest agent,

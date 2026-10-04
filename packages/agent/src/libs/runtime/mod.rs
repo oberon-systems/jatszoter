@@ -285,3 +285,6 @@ fn reason(err: &AgentError, url: &str) -> String {
     }
     text.chars().take(MAX_REASON).collect()
 }
+
+#[cfg(test)]
+mod tests;

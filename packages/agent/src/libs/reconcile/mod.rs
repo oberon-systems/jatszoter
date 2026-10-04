@@ -78,3 +78,6 @@ fn dir_id(dir: &Path) -> String {
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default()
 }
+
+#[cfg(test)]
+mod tests;

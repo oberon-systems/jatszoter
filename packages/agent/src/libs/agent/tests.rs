@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use tempfile::TempDir;
 use url::Url;
 
-use super::{Agent, Runtime, CLAIM_POLL};
+use super::{Agent, Auth, Runtime, CLAIM_POLL};
 use crate::libs::api::{unix_now, Api, Claim, Desired, Event, Lease, Moved, Signed, Status};
 use crate::libs::config::Config;
 use crate::libs::error::AgentError;
@@ -126,9 +126,14 @@ impl Api for FakeApi {
 #[derive(Default)]
 struct CountingRuntime {
     destroyed: u32,
+    reconciled: Vec<Vec<Desired>>,
 }
 
 impl Runtime for CountingRuntime {
+    fn reconcile(&mut self, _auth: &Auth, desired: Vec<Desired>) {
+        self.reconciled.push(desired);
+    }
+
     fn destroy_all(&mut self) -> Result<(), AgentError> {
         self.destroyed += 1;
         Ok(())
@@ -295,4 +300,69 @@ async fn a_lapsed_lease_fences_the_agent_once() {
     agent.cycle().await.unwrap();
 
     assert_eq!(agent.runtime.destroyed, 1);
+}
+
+#[tokio::test]
+async fn an_accepted_heartbeat_hands_the_desired_state_to_the_runtime() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut agent = agent(&dir, FakeApi::default(), enrolled());
+
+    agent.cycle().await.unwrap();
+
+    assert_eq!(*agent.api.listed.lock().unwrap(), vec!["gamma".to_owned()]);
+    assert_eq!(agent.runtime.reconciled, vec![Vec::<Desired>::new()]);
+}
+
+#[tokio::test]
+async fn no_live_lease_reconciles_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let api = FakeApi::default();
+    api.desired
+        .lock()
+        .unwrap()
+        .push_back(Signed::Accepted(None));
+    let mut agent = agent(&dir, api, enrolled());
+
+    assert_eq!(agent.cycle().await.unwrap(), Duration::from_secs(10));
+    assert!(agent.runtime.reconciled.is_empty());
+}
+
+#[tokio::test]
+async fn a_refused_desired_state_forgets_the_credential() {
+    let dir = tempfile::tempdir().unwrap();
+    let api = FakeApi::default();
+    api.desired.lock().unwrap().push_back(Signed::Refused);
+    let mut agent = agent(&dir, api, enrolled());
+
+    agent.cycle().await.unwrap();
+
+    assert!(agent.runtime.reconciled.is_empty());
+    assert!(agent.auth.read().await.is_none());
+    let saved = StateStore::new(dir.path()).load().unwrap();
+    assert!(saved.credential.is_none());
+}
+
+#[tokio::test]
+async fn a_refresh_swaps_the_credential_the_runtime_signs_with() {
+    let dir = tempfile::tempdir().unwrap();
+    let api = FakeApi::default();
+    api.refreshes
+        .lock()
+        .unwrap()
+        .push_back(Signed::Accepted(credential("current:2:2", 3600)));
+    let mut agent = agent(
+        &dir,
+        api,
+        State {
+            credential: Some(credential("current:1:1", 60)),
+            ..enrolled()
+        },
+    );
+
+    agent.cycle().await.unwrap();
+
+    let auth = agent.auth.read().await;
+    let signer = auth.as_ref().unwrap();
+    assert_eq!(signer.agent_id, "gamma");
+    assert_eq!(signer.credential.credential, "current:2:2");
 }

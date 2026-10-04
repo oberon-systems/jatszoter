@@ -14,6 +14,8 @@ const MAX_LABEL: usize = 32;
 const DEFAULT_IMAGE_LIMIT_GIB: u32 = 20;
 const MAX_IMAGE_LIMIT_GIB: u32 = 512;
 const GIB: u64 = 1 << 30;
+const DEFAULT_QEMU: &str = "qemu-system-x86_64";
+const DEFAULT_QEMU_IMG: &str = "qemu-img";
 const PREFIX: &str = "JATSZOTER_AGENT_";
 const ENV_FILE: &str = "JATSZOTER_AGENT_ENV_FILE";
 
@@ -26,6 +28,10 @@ pub struct Config {
     pub state_dir: PathBuf,
     #[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
     pub image_limit_bytes: u64,
+    #[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
+    pub qemu: PathBuf,
+    #[allow(dead_code, reason = "driven by the reconcile loop, prompt 10")]
+    pub qemu_img: PathBuf,
 }
 
 /// The environment as read, before any of it is checked.
@@ -37,6 +43,8 @@ pub struct RawConfig {
     pub capacity: Option<u32>,
     pub state_dir: Option<PathBuf>,
     pub image_limit_gib: Option<u32>,
+    pub qemu: Option<PathBuf>,
+    pub qemu_img: Option<PathBuf>,
 }
 
 impl Config {
@@ -70,6 +78,8 @@ impl Config {
             capacity: raw.capacity.map_or(Ok(DEFAULT_CAPACITY), check_capacity)?,
             state_dir,
             image_limit_bytes: u64::from(image_limit_gib) * GIB,
+            qemu: raw.qemu.unwrap_or_else(|| DEFAULT_QEMU.into()),
+            qemu_img: raw.qemu_img.unwrap_or_else(|| DEFAULT_QEMU_IMG.into()),
         })
     }
 

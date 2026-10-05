@@ -31,9 +31,12 @@ to cover it. An item marked Done has landed on `main`.
      deployment is assigned, started and destroyed on stop.
 5. Merged into 4.
 6. cloud-init bootstrap and the bootstrap marker.
-   - Agent: build the seed ISO, read the marker through the guest agent,
-     eject the ISO.
-   - Smoke: the deployment reaches READY.
+   - API: the seed route renders user-data and meta-data from the stored
+     bundle.
+   - Agent: fetch the seed, pack, attach and eject the seed ISO, probe the
+     guest agent and the marker, fail on the marker or the deadline.
+   - Scenario: nginx-502 version 2 on rocky-9.
+   - Smoke: a Rocky 9 deployment reaches READY and is destroyed on stop.
 7. Console pipeline with bounded viewer queues ([04](04-console.md)).
    - Agent: ship the serial console over the agent WebSocket.
    - Smoke: a viewer receives console output.

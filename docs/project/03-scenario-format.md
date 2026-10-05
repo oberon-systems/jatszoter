@@ -57,11 +57,16 @@ are:
 | `bootstrap_seconds` | `JATSZOTER_DEFAULT_BOOTSTRAP_SECONDS` | 900     |
 | `check_seconds`     | `JATSZOTER_DEFAULT_CHECK_SECONDS`     | 30      |
 | `session_minutes`   | `JATSZOTER_DEFAULT_SESSION_MINUTES`   | 60      |
+| `trainee.user`      | `JATSZOTER_DEFAULT_TRAINEE_USER`      | trainee |
+| `trainee.sudo`      | `JATSZOTER_DEFAULT_TRAINEE_SUDO`      | false   |
 
 ## Bootstrap
 
-The agent builds a cloud-init NoCloud seed ISO (volume label `cidata`) from
-the scenario version. Its `user-data` does, in order:
+The API renders a cloud-init NoCloud seed, `user-data` and `meta-data`,
+from the stored bundle of the deployment's scenario version and serves it on
+the agent's seed route, see [01](01-architecture.md#agent-protocol). The
+agent packs it into the seed ISO, volume label `cidata`, and never parses a
+scenario. The `user-data` does, in order:
 
 1. create the trainee user, with passwordless sudo when `sudo` is true;
 2. install `packages`;
@@ -72,9 +77,32 @@ the scenario version. Its `user-data` does, in order:
    clear the screen;
 6. write the marker file: `ok`, or `failed <step> <exit code>`.
 
-The agent polls the marker through the guest agent. On `ok` it ejects the
-seed ISO and moves the deployment to READY; on failure or on
-`bootstrap_seconds` it moves it to FAILED with the marker as reason.
+The steps are carried out as follows:
+
+- `user-data` is a `#cloud-config` document. `meta-data` holds
+  `instance-id: <vm_id>` and `local-hostname: <scenario id>`.
+- The trainee user is created through cloud-config `users`, with
+  passwordless sudo when `sudo` is true, and no password.
+- `packages` always gains `qemu-guest-agent`. On RHEL-family guests the
+  seed also allows the guest agent's `guest-file-*` and `guest-exec*` calls,
+  which the distribution blocks by default, and restarts it.
+- The step scripts and one driver script are written under
+  `/var/lib/jatszoter/`, mode 0700, owned by root. `runcmd` runs the driver.
+- The driver runs `install`, `configure`, `break` in order with output to
+  `/var/lib/jatszoter/bootstrap.log` and stops at the first failure. It then
+  removes the scripts, the log and cloud-init's copies of `user-data`, sets
+  up the serial getty, and writes the marker last.
+- The marker is `/var/lib/jatszoter/marker`: `ok`, or
+  `failed <step> <exit code>`. The agent reads it with `guest-file-open`,
+  `guest-file-read` and `guest-file-close`.
+- The getty on `ttyS0` logs in as the trainee user without a password and
+  clears the screen.
+
+The agent probes the guest agent and then the marker, see
+[01](01-architecture.md#reconciliation). On `ok` it ejects the seed ISO and
+moves the deployment to READY. A `failed` marker moves it to FAILED with the
+marker as reason, and `bootstrap_seconds` passing does so with reason
+`bootstrap timeout`.
 
 ## Check
 
@@ -128,7 +156,7 @@ version.
 ## Acceptance criteria
 
 - `scenarios/nginx-502` passes the schema and bootstraps to READY on a
-  stock `debian-12` image with cloud-init and qemu-guest-agent.
+  stock Rocky Linux 9 GenericCloud image registered as `rocky-9`.
 - After READY, none of the step scripts, the check script or the
   `user-data` are left in the guest filesystem.
 - Nothing a step prints reaches the trainee's terminal.

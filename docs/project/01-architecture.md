@@ -103,6 +103,7 @@ POST /api/v1/agents/{agent_id}/heartbeat                  signed
 POST /api/v1/agents/{agent_id}/credential                 signed
 GET  /api/v1/agents/{agent_id}/deployments                signed
 POST /api/v1/agents/{agent_id}/deployments/{id}/transition signed
+GET  /api/v1/agents/{agent_id}/deployments/{id}/seed       signed
 POST /api/v1/agents/{agent_id}/deployments/{id}/checks/{check_id} signed
 WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
 ```
@@ -149,6 +150,13 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
   timeouts   bootstrap_seconds, check_seconds, session_minutes
   ```
 
+- `GET .../seed` is the deployment's cloud-init seed:
+  `{"user_data": "...", "meta_data": "..."}`, the two NoCloud files as text.
+  The API renders them from the stored bundle of the deployment's scenario
+  version, see [03](03-scenario-format.md#bootstrap).
+- The seed is served only for a deployment the agent holds, only while that
+  deployment is STARTING, and only under a live lease; anything else gets
+  409. An unknown deployment, or another agent's, gets 404.
 - A transition body is `event`, `expected` - the status the agent believes
   the deployment is in - and an optional `reason`. The agent events are
   `assign`, `boot`, `bootstrap`, `destroy` and `fail`.
@@ -168,7 +176,8 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
   images/<digest>.qcow2        cached base image, checked by digest
   vms/<deployment_id>/
     disk.qcow2                 overlay over the base image
-    vm.json                    what the VM was created from
+    vm.json                    deployment_id, vm_id, created_at
+    seed.iso                   cloud-init NoCloud seed, removed once ejected
     qemu.pid                   pid file of the daemonized QEMU
     qmp.sock                   QMP
     serial.sock                serial console
@@ -190,8 +199,13 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
   while the pid in `qemu.pid` runs a command line carrying its vm id, so a
   reused pid is never taken for it. Destroy asks QEMU to quit over QMP, kills
   it if it does not, and removes the directory.
-- The cloud-init seed ISO joins the VM directory with item 6
-  ([03](03-scenario-format.md#bootstrap)).
+- `created_at` in `vm.json` is the VM's creation time in unix seconds.
+- The agent packs the seed into `seed.iso` with `xorriso -as mkisofs`,
+  volume label `cidata`, from `JATSZOTER_AGENT_XORRISO` (default `xorriso`),
+  spawned with an argument vector like `qemu-img`. The file is 0600 and
+  holds the seed of [03](03-scenario-format.md#bootstrap).
+- QEMU attaches `seed.iso` read-only as a CD-ROM. After the marker says
+  `ok`, the agent ejects it through QMP and deletes the file.
 - Network is QEMU user-mode NAT: the guest reaches the internet for package
   installs, nothing reaches the guest from outside.
 - The trainee's shell is the guest's serial console `ttyS0`; no SSH and no
@@ -209,10 +223,13 @@ Create and bootstrap:
    `agent_id` to pin it; the API copies the scenario's image, resources and
    timeouts and stores it PENDING.
 2. A heartbeat assigns it; the agent moves it to STARTING, fetches the
-   image, builds the seed ISO ([03](03-scenario-format.md)), boots the VM.
-3. Once the guest agent answers, the deployment moves to BOOTSTRAPPING.
-4. When the bootstrap marker reports success, the agent ejects the seed ISO
-   and moves the deployment to READY.
+   image and the seed, packs the seed ISO and boots the VM.
+3. Once the guest agent answers `guest-ping`, the agent moves the
+   deployment to BOOTSTRAPPING.
+4. When the marker reads `ok`, the agent ejects the seed ISO and moves the
+   deployment to READY. A marker `failed <step> <exit code>` moves it to
+   FAILED with the marker as reason; so does `bootstrap_seconds` passing,
+   with reason `bootstrap timeout`.
 
 Console: see [04](04-console.md). Recording: see [05](05-recording.md).
 
@@ -249,6 +266,14 @@ reason `vm lost`, never silently rebooted.
   and leaves no VM directory behind.
 - Starts count against the capacity together with the running VMs and the
   starts in flight.
+- A live VM whose deployment is STARTING or BOOTSTRAPPING is probed once per
+  round: a short task pings the guest agent or reads the marker and checks
+  the deadline, then ends. Nothing waits for a guest in a long task, so a
+  stop is never held up by a bootstrap.
+- The bootstrap deadline counts from `created_at` in `vm.json`, so an agent
+  restart neither resets nor loses it.
+- A deployment the API moved to STOPPING while a start task for it is still
+  running has that task aborted; the stop then destroys whatever it left.
 - Tasks sign with the agent's live credential, and each request holds it for
   at most 15 seconds, so a refresh never waits on a long task. Fencing aborts
   every task, then destroys every VM on the host.

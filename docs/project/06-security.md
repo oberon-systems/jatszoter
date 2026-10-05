@@ -94,6 +94,9 @@ operator has not taken control.
   firewall host services accordingly.
 - The agent never passes scenario text or trainee input to a host shell;
   every host process is spawned with an argument vector.
+- The seed enables the guest agent's `guest-file-*` and `guest-exec*`
+  calls, which RHEL-family guests block by default. That is no loss, since
+  the guest is not a security boundary.
 
 ## Scenario secrecy
 
@@ -102,6 +105,13 @@ with root can inspect the disk. The bootstrap removes the obvious traces -
 step scripts, their log, cloud-init's `user-data` - and ejects the seed ISO;
 the check script is present only while it runs. Exams that need more should
 use scenarios whose fault is not readable from the disk alone.
+
+The seed carries the break step, so it is guarded on the way in:
+
+- The seed route answers only the agent holding the deployment, and only
+  while the deployment is STARTING.
+- The agent never logs a seed, keeps `seed.iso` 0600 inside the VM
+  directory, and deletes it after the eject.
 
 ## Web
 

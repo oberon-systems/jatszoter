@@ -91,19 +91,19 @@ holding that entity's UUID.
 
 ## Who moves what
 
-| From          | To            | Actor    | Trigger                        |
-| ------------- | ------------- | -------- | ------------------------------ |
-| PENDING       | STARTING      | agent    | assigned by heartbeat          |
-| PENDING       | CANCELLED     | operator | stop                           |
-| STARTING      | BOOTSTRAPPING | agent    | guest agent answers            |
-| STARTING      | STOPPING      | operator | stop                           |
-| BOOTSTRAPPING | READY         | agent    | bootstrap marker `ok`          |
-| BOOTSTRAPPING | STOPPING      | operator | stop                           |
-| READY         | STOPPING      | operator | stop                           |
-| READY         | STOPPING      | api      | session TTL expired            |
-| STOPPING      | COMPLETED     | agent    | VM destroyed                   |
-| non-terminal  | FAILED        | agent    | runtime or bootstrap error     |
-| non-terminal  | FAILED        | api      | lease expired, timeout         |
+| From          | To            | Actor    | Trigger                          |
+| ------------- | ------------- | -------- | -------------------------------- |
+| PENDING       | STARTING      | agent    | assigned by heartbeat            |
+| PENDING       | CANCELLED     | operator | stop                             |
+| STARTING      | BOOTSTRAPPING | agent    | guest agent answers `guest-ping` |
+| STARTING      | STOPPING      | operator | stop                             |
+| BOOTSTRAPPING | READY         | agent    | marker `ok`, seed ejected        |
+| BOOTSTRAPPING | STOPPING      | operator | stop                             |
+| READY         | STOPPING      | operator | stop                             |
+| READY         | STOPPING      | api      | session TTL expired              |
+| STOPPING      | COMPLETED     | agent    | VM destroyed                     |
+| non-terminal  | FAILED        | agent    | runtime or bootstrap error       |
+| non-terminal  | FAILED        | api      | lease expired, timeout           |
 
 Every write is compare-and-swap on the current status, and for agent writes
 on `agent_id` as well, under a live lease.

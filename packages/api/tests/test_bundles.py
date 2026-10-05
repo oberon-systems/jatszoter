@@ -26,7 +26,7 @@ def test_the_sample_reads_with_its_document(pack: Pack) -> None:
     bundle = bundles.read(pack(), LIMIT)
 
     assert bundle.document["id"] == "nginx-502"
-    assert bundle.document["image"] == "debian-12"
+    assert bundle.document["image"] == "rocky-9"
     assert len(bundle.digest) == 64
 
 

@@ -157,7 +157,7 @@ echo "registering the image and the scenario..."
 digest="$(sha256sum "$TEMP_DIR/www/base.qcow2" | cut -d' ' -f1)"
 signed POST /api/v1/images \
     "$(jq -cn --arg url "$www/base.qcow2" --arg digest "$digest" \
-        '{name: "debian-12", url: $url, digest: $digest}')" >/dev/null
+        '{name: "rocky-9", url: $url, digest: $digest}')" >/dev/null
 scenario="$(signed POST /api/v1/scenarios "$(jq -cn --arg url "$www/nginx-502.tar.gz" '{url: $url}')")"
 bundle="$TEMP_DIR/data/storage/scenarios/nginx-502/$(jq -r .version <<<"$scenario").tar.gz"
 if [ ! -f "$bundle" ]; then

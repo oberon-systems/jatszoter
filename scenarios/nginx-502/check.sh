@@ -6,7 +6,7 @@ if ! curl -fsS http://127.0.0.1/ | grep -q 'hello from app'; then
     echo 'nginx still does not serve the app page'
     exit 1
 fi
-if ! grep -q 'proxy_pass http://127.0.0.1:8081;' /etc/nginx/sites-available/default; then
+if ! grep -q 'proxy_pass http://127.0.0.1:8081;' /etc/nginx/conf.d/app.conf; then
     echo 'the nginx site config was changed'
     exit 1
 fi

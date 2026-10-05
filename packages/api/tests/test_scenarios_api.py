@@ -47,11 +47,11 @@ def served(api: TestClient) -> Iterator[dict[str, httpx.Response]]:
 
 
 @pytest.fixture(autouse=True)
-def debian(session: Session) -> None:
+def rocky(session: Session) -> None:
     image = Image(
         session=session,
-        name="debian-12",
-        url="https://example.com/debian-12.qcow2",
+        name="rocky-9",
+        url="https://example.com/rocky-9.qcow2",
         digest="a" * 64,
     )
     image.save()
@@ -80,7 +80,7 @@ def stored(tmp_path: Path) -> list[Path]:
     return sorted(path for path in tmp_path.joinpath("data").rglob("*") if path.is_file())
 
 
-def bundle_path(tmp_path: Path, version: int = 1) -> Path:
+def bundle_path(tmp_path: Path, version: int = 2) -> Path:
     return tmp_path / "data" / "storage" / "scenarios" / "nginx-502" / f"{version}.tar.gz"
 
 
@@ -98,9 +98,9 @@ def test_an_upload_registers_the_sample(operator: Any, pack: Pack, tmp_path: Pat
     assert response.json() == {
         "id": response.json()["id"],
         "slug": "nginx-502",
-        "version": 1,
+        "version": 2,
         "title": "Nginx answers 502",
-        "image": "debian-12",
+        "image": "rocky-9",
     }
     assert bundle_path(tmp_path).read_bytes() == bundle
 
@@ -112,9 +112,9 @@ def test_a_url_registers_the_sample(
 
     response = fetch(operator)
 
-    scenario = Scenario(session=session).load(slug="nginx-502", version=1)
+    scenario = Scenario(session=session).load(slug="nginx-502", version=2)
     assert response.status_code == 201
-    assert scenario.bundle_url == f"{DISK_BASE}scenarios/nginx-502/1.tar.gz"
+    assert scenario.bundle_url == f"{DISK_BASE}scenarios/nginx-502/2.tar.gz"
     assert scenario.document["check"] == "check.sh"
 
 
@@ -132,7 +132,7 @@ def test_the_same_version_again_conflicts_and_keeps_the_bundle(
 
 
 def test_a_new_version_registers_beside_the_old(operator: Any, pack: Pack, tmp_path: Path) -> None:
-    second = DOCUMENT.read_text().replace("version: 1\n", "version: 2\n")
+    second = DOCUMENT.read_text().replace("version: 2\n", "version: 3\n")
     upload(operator, pack())
 
     response = upload(operator, pack(changes={"scenario.yaml": second.encode()}))
@@ -140,10 +140,10 @@ def test_a_new_version_registers_beside_the_old(operator: Any, pack: Pack, tmp_p
     listed = operator.request("GET", SCENARIOS).json()
     assert response.status_code == 201
     assert {(item["slug"], item["version"]) for item in listed} == {
-        ("nginx-502", 1),
         ("nginx-502", 2),
+        ("nginx-502", 3),
     }
-    assert stored(tmp_path) == [bundle_path(tmp_path), bundle_path(tmp_path, 2)]
+    assert stored(tmp_path) == [bundle_path(tmp_path), bundle_path(tmp_path, 3)]
 
 
 def test_the_same_version_with_changed_content_conflicts(
@@ -186,7 +186,7 @@ def test_an_invalid_bundle_is_refused_and_leaves_no_trace(
 def test_an_unknown_image_is_refused(
     operator: Any, pack: Pack, tmp_path: Path, session: Session
 ) -> None:
-    document = DOCUMENT.read_text().replace("image: debian-12", "image: alpha")
+    document = DOCUMENT.read_text().replace("image: rocky-9", "image: alpha")
 
     response = upload(operator, pack(changes={"scenario.yaml": document.encode()}))
 

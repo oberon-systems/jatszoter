@@ -1,23 +1,23 @@
 id: nginx-502
-version: 1
+version: 2
 title: Nginx answers 502
 summary: The site behind nginx is down. Bring it back without reinstalling anything.
 description: description.md
 difficulty: easy
 tags: [nginx, systemd]
-image: debian-12
+image: rocky-9
 resources:
   cpus: 1
   memory_mib: 1024
-  disk_gib: 8
+  disk_gib: 12
 timeouts:
-  bootstrap_seconds: 900
+  bootstrap_seconds: 1800
   check_seconds: 30
   session_minutes: 30
 trainee:
   user: trainee
   sudo: true
-packages: [nginx, python3, curl]
+packages: [nginx, python3]
 steps:
   install: install.sh
   configure: configure.sh

@@ -1,51 +1,48 @@
-# Roadmap item 4 - implementation prompts
+# Roadmap item 6 - implementation prompts
 
-Item 4 of `docs/project/07-roadmap.md` (QEMU runtime), cut into prompts that
-run one at a time, in order, each on a clean tree. Every prompt assumes the
-previous ones have landed.
+Item 6 of `docs/project/07-roadmap.md` (cloud-init bootstrap and the
+bootstrap marker), cut into prompts that run one at a time, in order, each on
+a clean tree. Every prompt assumes the previous ones have landed. Item 4's
+prompts landed before this set was written; git history keeps them.
 
-| #  | Prompt                          | Component | Result                                           |
-| -- | ------------------------------- | --------- | ------------------------------------------------ |
-| 01 | `01-docs.md`                    | docs      | contracts below written into `docs/`             |
-| 02 | `02-api-operator-login.md`      | api       | users log in, operator requests are signed       |
-| 03 | `03-api-file-store.md`          | api       | SeaweedFS client, local directory without one    |
-| 04 | `04-api-images-scenarios.md`    | api       | images and scenario bundles (upload or URL)      |
-| 05 | `05-api-deployments.md`         | api       | operator creates, lists and stops deployments    |
-| 06 | `06-api-agent-deployments.md`   | api       | heartbeat assigns, desired state, transitions    |
-| 07 | `07-agent-api-client.md`        | agent     | the agent reads desired state, posts transitions |
-| 08 | `08-agent-image-cache.md`       | agent     | base images downloaded once, checked by digest   |
-| 09 | `09-agent-qemu-vm.md`           | agent     | one VM: create, inspect, destroy, QMP            |
-| 10 | `10-agent-reconcile.md`         | agent     | the runtime driven by desired state              |
-| 11 | `11-smoke.md`                   | smoke     | assigned, started and destroyed on stop          |
-
-Prompts 01-11 have landed. Where their text disagrees with the ground rules
-below - helpers like `by_name` or `register`, new Alembic revisions,
-`get_files` or `get_settings` - the code and the ground rules win.
+| #  | Prompt                    | Component | Result                                              |
+| -- | ------------------------- | --------- | --------------------------------------------------- |
+| 01 | `01-docs.md`              | docs      | contracts below written into `docs/`                |
+| 02 | `02-scenario-rocky.md`    | scenarios | `nginx-502` version 2 on `rocky-9`                  |
+| 03 | `03-api-seed.md`          | api       | the API renders a deployment's NoCloud seed         |
+| 04 | `04-agent-qga.md`         | agent     | guest agent client: ping, read a file               |
+| 05 | `05-agent-seed-iso.md`    | agent     | seed fetched, packed into an ISO, attached, ejected |
+| 06 | `06-agent-bootstrap.md`   | agent     | STARTING to BOOTSTRAPPING to READY, or FAILED       |
+| 07 | `07-smoke.md`             | smoke     | a Rocky 9 deployment reaches READY and is stopped   |
 
 ## Decisions behind the cut
 
-Taken with the user on 2026-09-30; prompt 01 writes them into `docs/`.
+Taken with the user on 2026-10-04; prompt 01 writes them into `docs/`.
 
-- Operator login comes first. There is no operator surface without it, so
-  item 4 opens with user login and signed operator requests.
-- The scenario registry (the API half of item 5) moves into item 4. A
-  scenario is registered from an uploaded bundle or from a URL the API
-  fetches. Bundles live in SeaweedFS like recordings; without a SeaweedFS
-  address the API writes them to a local directory.
-- The image moves into the desired state now: the operator registers an
-  image (name, URL, sha256), a deployment copies its image at create time,
-  the desired state carries URL and digest, and the agent's cache checks the
-  digest. Item 5 is marked merged into 4.
-- The operator may stop a STARTING or BOOTSTRAPPING deployment, not only a
-  READY one: it moves to STOPPING and the agent destroys the VM. Until item 6
-  a deployment never leaves STARTING, so without this nothing could stop it.
-- The smoke test runs real QEMU (`qemu-system-x86_64`, `qemu-img`) with KVM
-  when `/dev/kvm` is usable and TCG otherwise, on a blank qcow2 served from
-  loopback.
-- Trainee links are not created with a deployment yet; that is item 8.
-- The scenario schema is part of the API version and lives in the API
-  package. There is no `common` package: it was removed as never needed, so
-  no prompt adds shared code outside `api`, `web` and `agent`.
+- The API renders the seed. A signed agent route returns the NoCloud
+  `user-data` and `meta-data` of one deployment, built in Python from the
+  stored bundle the API already parses and validates. The agent never parses
+  a scenario; it packs the two files into an ISO.
+- The seed is served only while the deployment is STARTING and only to the
+  agent that holds it: it carries the break step.
+- The agent packs the ISO with `xorriso -as mkisofs`, spawned with an
+  argument vector like `qemu-img`; its path is
+  `JATSZOTER_AGENT_XORRISO`, default `xorriso`. It must be installed on every
+  agent host and on the smoke host, never in the guest.
+- The guest target is Rocky Linux 9: the image is registered as `rocky-9`
+  and comes from the GenericCloud qcow2. Rocky 10 can follow as a second
+  image later.
+- On RHEL-family guests `qemu-guest-agent` blocks `guest-file-*` and
+  `guest-exec*` by default. The seed allows them and restarts the guest
+  agent before anything polls it; item 10's checks need `guest-exec` too.
+- `scenarios/nginx-502` moves to Rocky as version 2: nginx config in
+  `conf.d`, nginx enabled, and the SELinux boolean that lets nginx proxy to
+  a local port.
+- The smoke test downloads a pinned Rocky 9 GenericCloud qcow2 once, checks
+  its sha256, keeps it in a cache outside `$TEMP_DIR`, and serves it from
+  loopback like the blank disk before.
+- The bootstrap deadline counts from the VM's creation time in `vm.json`,
+  so an agent restart neither resets nor loses it.
 
 ## Ground rules for every prompt
 
@@ -84,17 +81,19 @@ Each prompt starts by pointing here. These hold for all of them.
     `migrations/versions/v0001_initial.py`, no new Alembic revision, and
     `test_head_matches_the_models` must keep passing;
   - errors are `DomainError` subclasses from `errors.py`; the handler in
-    `routes/deps.py` maps them to status codes, and `DB_ERRORS` maps a
-    driver's error code on save (a duplicate key) to one.
+    `routes/deps.py` maps them to status codes.
 - Rust agent conventions: `unsafe_code` is forbidden and clippy runs with
   `-D warnings`; tests sit in `tests.rs` next to `mod.rs`; every host process
-  is spawned with an argument vector, never through a shell.
-- Never log a password, token, link, credential key or signature.
+  is spawned with an argument vector, never through a shell. A trait change
+  keeps the existing tests compiling unchanged where it can, for example
+  through a default method.
+- Never log a password, token, link, credential key, signature, or the
+  content of a seed: it carries the scenario's steps.
 - Checks each prompt must leave green (when an agent runs under
   `CLAUDE.local.md`, it asks the user before running them):
   - `.venv/bin/pytest -q packages/api` for API prompts;
   - `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --
     -D warnings` and `cargo test -p jatszoter-agent` for agent prompts;
-  - `make smoke` for prompt 11, and it must still pass after 02-10.
+  - `make smoke` after every prompt; prompt 07 changes what it proves.
 - Finish with a short report: files changed, tests added, and every place
   where the prompt had to be interpreted.

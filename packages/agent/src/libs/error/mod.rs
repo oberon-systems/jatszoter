@@ -12,6 +12,9 @@ pub enum AgentError {
     Vm(String),
     #[error("qmp: {0}")]
     Qmp(String),
+    #[allow(dead_code, reason = "driven by the bootstrap, prompt 06")]
+    #[error("qga: {0}")]
+    Qga(String),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]

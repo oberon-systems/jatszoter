@@ -1,16 +1,19 @@
+import base64
 import hashlib
 import hmac
 import json
 import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 from httpx import Response
 from sqlmodel import Session
 
+from jatszoter_api import bundles
 from jatszoter_api.app import create_app
 from jatszoter_api.file import File
 from jatszoter_api.models import Agent, Deployment, Image, Scenario, State
@@ -18,6 +21,8 @@ from jatszoter_api.models._cache import Cached
 from jatszoter_api.models.agent import LEASE_SECONDS
 from jatszoter_api.settings import Settings
 
+LIMIT = 1024 * 1024
+Pack = Callable[..., bytes]
 SIZING: dict[str, int] = {
     "cpus": 2,
     "memory_mib": 2048,
@@ -372,3 +377,121 @@ def test_an_unknown_or_foreign_deployment_is_not_found(
     for deployment_id in (str(foreign.id), str(uuid.uuid4())):
         response = move(agent, deployment_id, event="assign", expected="PENDING")
         assert response.status_code == 404
+
+
+@pytest.fixture
+def sample(session: Session, pack: Pack) -> Scenario:
+    """The sample scenario registered with its bundle in storage."""
+    Image(session=session, name="rocky-9", url="https://example.com/r", digest="d" * 64).save()
+    data = pack()
+    checked = bundles.read(data, LIMIT)
+    scenario = Scenario(
+        session=session,
+        slug=checked.document["id"],
+        version=checked.document["version"],
+        document=checked.document,
+        digest=checked.digest,
+    )
+    scenario.save(File(scenario.bundle_path, data))
+    return scenario
+
+
+def starting(client: TestClient, session: Session, scenario: Scenario) -> tuple[Enrolled, str]:
+    agent, deployment_id = held(client, session, scenario)
+    assert move(agent, deployment_id, event="assign", expected="PENDING").status_code == 200
+    return agent, deployment_id
+
+
+def fetch(agent: Enrolled, deployment_id: str, **headers: str) -> Response:
+    return agent.call("GET", f"/deployments/{deployment_id}/seed", **headers)
+
+
+def test_a_starting_deployment_gets_its_seed(
+    client: TestClient, session: Session, sample: Scenario, pack: Pack
+) -> None:
+    agent, deployment_id = starting(client, session, sample)
+
+    response = fetch(agent, deployment_id)
+
+    assert response.status_code == 200
+    seed = response.json()
+    assert set(seed) == {"user_data", "meta_data"}
+    deployment = Deployment(session=session).load(id=uuid.UUID(deployment_id))
+    session.refresh(deployment)
+    meta = yaml.safe_load(seed["meta_data"])
+    assert meta == {"instance-id": str(deployment.vm_id), "local-hostname": "nginx-502"}
+    assert seed["user_data"].startswith("#cloud-config\n")
+    written = {
+        entry["path"]: base64.b64decode(entry["content"])
+        for entry in yaml.safe_load(seed["user_data"])["write_files"]
+    }
+    sample_files = bundles.read(pack(), LIMIT).files
+    assert written["/var/lib/jatszoter/steps/break.sh"] == sample_files["break.sh"]
+
+
+def test_the_seed_of_an_unknown_or_foreign_deployment_is_not_found(
+    client: TestClient, session: Session, sample: Scenario
+) -> None:
+    agent, _ = starting(client, session, sample)
+    beta = enroll(client, session, "beta")
+    foreign = deploy(session, sample, beta.id)
+
+    for deployment_id in (str(foreign.id), str(uuid.uuid4())):
+        assert fetch(agent, deployment_id).status_code == 404
+
+
+@pytest.mark.parametrize("events", [[], ["boot"]], ids=["PENDING", "BOOTSTRAPPING"])
+def test_only_a_starting_deployment_has_a_seed(
+    client: TestClient, session: Session, sample: Scenario, events: list[str]
+) -> None:
+    agent, deployment_id = held(client, session, sample)
+    if events:
+        move(agent, deployment_id, event="assign", expected="PENDING")
+        assert move(agent, deployment_id, event="boot", expected="STARTING").status_code == 200
+
+    assert fetch(agent, deployment_id).status_code == 409
+
+
+def test_without_a_live_lease_there_is_no_seed(
+    client: TestClient, session: Session, sample: Scenario
+) -> None:
+    agent, deployment_id = starting(client, session, sample)
+    Cached._client().delete(f"lease:{agent.id}")
+
+    assert fetch(agent, deployment_id).status_code == 409
+
+
+def test_an_unsigned_seed_request_is_refused(
+    client: TestClient, session: Session, sample: Scenario
+) -> None:
+    agent, deployment_id = starting(client, session, sample)
+
+    assert fetch(agent, deployment_id, **{"X-Signature": "0" * 64}).status_code == 401
+
+
+@pytest.mark.parametrize(
+    ("stored", "message"),
+    [
+        (lambda pack: None, "does not read"),
+        (lambda pack: b"junk", "does not read"),
+        (lambda pack: pack(changes={"break.sh": b"exit 0\n"}), "changed"),
+    ],
+    ids=["missing", "unreadable", "changed"],
+)
+def test_a_stored_bundle_that_no_longer_holds_is_never_served(
+    client: TestClient,
+    session: Session,
+    sample: Scenario,
+    pack: Pack,
+    stored: Callable[[Pack], bytes | None],
+    message: str,
+) -> None:
+    agent, deployment_id = starting(client, session, sample)
+    data = stored(pack)
+    if data is None:
+        File(sample.bundle_path).delete()
+    else:
+        File(sample.bundle_path, data).put()
+
+    with pytest.raises(RuntimeError, match=message):
+        fetch(agent, deployment_id)

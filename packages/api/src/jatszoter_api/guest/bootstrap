@@ -1,0 +1,81 @@
+#!/bin/sh
+# Bootstrap driver, run once as root by cloud-init's runcmd.
+set -u
+
+base=/var/lib/jatszoter
+instance=/var/lib/cloud/instance
+dropin=/etc/systemd/system/serial-getty@ttyS0.service.d
+result=ok
+
+guest_agent() {
+    if [ -f /etc/sysconfig/qemu-ga ]; then
+        sed -i 's/^FILTER_RPC_ARGS=.*/FILTER_RPC_ARGS=/' /etc/sysconfig/qemu-ga
+        if command -v selinuxenabled >/dev/null && selinuxenabled; then
+            setsebool -P virt_qemu_ga_read_nonsecurity_files 1
+        fi
+        systemctl enable qemu-guest-agent
+        systemctl restart qemu-guest-agent
+    else
+        systemctl enable --now qemu-guest-agent
+    fi
+}
+
+step() {
+    [ -f "$base/steps/$1.sh" ] || return 0
+    "$base/steps/$1.sh" >>"$base/bootstrap.log" 2>&1
+    code=$?
+    [ "$code" -eq 0 ] || result="failed $1 $code"
+    return "$code"
+}
+
+clean() {
+    rm -rf "$base/steps" "$base/bootstrap.log" "$instance"/user-data.txt* \
+        "$instance/cloud-config.txt" "$instance/scripts" "$instance/obj.pkl" \
+        /run/cloud-init/combined-cloud-config.json
+}
+
+console() {
+    mkdir -p "$dropin"
+    mv "$base/autologin.conf" "$dropin/autologin.conf"
+    chmod 0644 "$dropin/autologin.conf"
+    systemctl daemon-reload
+    printf '\033[H\033[2J' >/dev/ttyS0
+    systemctl restart serial-getty@ttyS0.service
+}
+
+mark() {
+    printf '%s\n' "$result" >"$base/marker.new"
+    mv "$base/marker.new" "$base/marker"
+    rm -f "$0"
+}
+
+run() {
+    case $1 in
+    guest-agent) guest_agent ;;
+    install | configure | break) step "$1" ;;
+    clean) clean ;;
+    abort) clean && rm -f "$base/autologin.conf" ;;
+    console) console ;;
+    mark) mark ;;
+    esac
+}
+
+# The state after $1 exited with $2: a failed step aborts, nothing else is fatal.
+next() {
+    case $1:$2 in
+    guest-agent:*) echo install ;;
+    install:0) echo configure ;;
+    configure:0) echo break ;;
+    break:0) echo clean ;;
+    install:* | configure:* | break:*) echo abort ;;
+    clean:*) echo console ;;
+    console:* | abort:*) echo mark ;;
+    mark:*) echo end ;;
+    esac
+}
+
+state=guest-agent
+while [ "$state" != end ]; do
+    run "$state"
+    state=$(next "$state" $?)
+done

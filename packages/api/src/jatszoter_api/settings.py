@@ -1,12 +1,13 @@
 from typing import Annotated
 
 from fastapi import Request
-from pydantic import AnyHttpUrl, AnyUrl, UrlConstraints
+from pydantic import AnyHttpUrl, AnyUrl, Field, UrlConstraints
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ValkeyDsn = Annotated[
     AnyUrl, UrlConstraints(allowed_schemes=["redis", "rediss", "valkey", "valkeys", "unix"])
 ]
+UserName = Annotated[str, Field(pattern=r"^[a-z_][a-z0-9_-]{0,31}$")]
 
 
 class Settings(BaseSettings):
@@ -26,6 +27,8 @@ class Settings(BaseSettings):
     default_bootstrap_seconds: int = 900
     default_check_seconds: int = 30
     default_session_minutes: int = 60
+    default_trainee_user: UserName = "trainee"
+    default_trainee_sudo: bool = False
 
 
 def app_settings(request: Request) -> Settings:

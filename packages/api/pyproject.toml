@@ -32,4 +32,5 @@ jatszoter_api = [
   "migrations/*.mako",
   "migrations/versions/*.py",
   "schemas/*.yaml",
+  "guest/*",
 ]

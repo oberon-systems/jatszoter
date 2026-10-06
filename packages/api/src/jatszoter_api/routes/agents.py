@@ -3,11 +3,15 @@ import hmac
 import uuid
 from typing import Annotated, Literal, Self
 
+import httpx
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
+from sqlmodel import Session
 
+from jatszoter_api import bundles
 from jatszoter_api.auth import require_agent, unauthorized
-from jatszoter_api.errors import ConflictError, NotFoundError
+from jatszoter_api.errors import ConflictError, DomainError, NotFoundError
+from jatszoter_api.file import File
 from jatszoter_api.lifecycle import Actor, DeploymentStatus
 from jatszoter_api.models import Agent, Credential, Deployment
 from jatszoter_api.models.agent import Lease
@@ -124,7 +128,19 @@ class TransitionOut(BaseModel):
     status: DeploymentStatus
 
 
+class SeedOut(BaseModel):
+    user_data: str
+    meta_data: str
+
+
 router = APIRouter(prefix="/agents")
+
+
+def _held(session: Session, agent: Agent, deployment_id: uuid.UUID) -> Deployment:
+    try:
+        return Deployment(session=session).load(id=deployment_id, agent_id=agent.id)
+    except IndexError:
+        raise NotFoundError(f"deployment {deployment_id} is not known") from None
 
 
 @router.post("/register", status_code=201)
@@ -167,11 +183,32 @@ def desired(agent: LeasedDep) -> list[DesiredOut]:
 def transition(
     body: TransitionIn, agent: LeasedDep, session: SessionDep, deployment_id: uuid.UUID
 ) -> TransitionOut:
-    try:
-        deployment = Deployment(session=session).load(id=deployment_id, agent_id=agent.id)
-    except IndexError:
-        raise NotFoundError(f"deployment {deployment_id} is not known") from None
+    deployment = _held(session, agent, deployment_id)
     deployment.transition(
         body.event, body.expected, body.reason, actor=Actor.AGENT, agent_id=agent.id
     )
     return TransitionOut(id=deployment.id, status=deployment.status)
+
+
+@router.get("/{agent_id}/deployments/{deployment_id}/seed")
+def seed(
+    agent: LeasedDep, session: SessionDep, settings: SettingsDep, deployment_id: uuid.UUID
+) -> SeedOut:
+    deployment = _held(session, agent, deployment_id)
+    if deployment.status is not DeploymentStatus.STARTING:
+        raise ConflictError(f"deployment {deployment_id} is {deployment.status}, not STARTING")
+    scenario = deployment.scenario
+    filer_url = None if settings.seaweed_url is None else str(settings.seaweed_url)
+    stored = File(scenario.bundle_path, filer_url=filer_url)
+    # Not a DomainError: a stored bundle that no longer reads is the API's fault, a 500.
+    try:
+        stored.get()
+        bundle = bundles.read(stored.data, settings.scenario_bundle_limit_bytes)
+    except (httpx.HTTPError, DomainError):
+        raise RuntimeError(f"the stored bundle of scenario {scenario.id} does not read") from None
+    if bundle.digest != scenario.digest:
+        raise RuntimeError(f"the stored bundle of scenario {scenario.id} changed")
+    rendered = deployment.seed(
+        bundle.files, settings.default_trainee_user, settings.default_trainee_sudo
+    )
+    return SeedOut(user_data=rendered.user_data, meta_data=rendered.meta_data)

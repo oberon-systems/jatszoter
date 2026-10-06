@@ -20,10 +20,11 @@ UNPACKED_FACTOR = 4
 
 @dataclass(frozen=True)
 class Bundle:
-    """What registering keeps of a checked bundle: the parsed document and the digest."""
+    """A checked bundle: the parsed document, the digest and the files named like the document."""
 
     document: dict[str, Any]
     digest: str
+    files: dict[str, bytes]
 
 
 @functools.cache
@@ -126,4 +127,4 @@ def read(data: bytes, limit: int) -> Bundle:
     for field, name in _named(document):
         if name not in files:
             raise InvalidBundleError(f"{field} names {name!r}, which the bundle does not hold")
-    return Bundle(document=document, digest=_digest(files))
+    return Bundle(document=document, digest=_digest(files), files=files)

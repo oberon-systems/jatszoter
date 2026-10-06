@@ -12,6 +12,7 @@ from jatszoter_api.models.check import Check
 from jatszoter_api.models.image import Image
 from jatszoter_api.models.link import Link
 from jatszoter_api.models.scenario import Scenario
+from jatszoter_api.seed import Seed, render
 
 
 class Deployment(Base, table=True):
@@ -88,6 +89,12 @@ class Deployment(Base, table=True):
         self.updated_at = int(time.time())
         self.save()
         return True
+
+    def seed(self, files: dict[str, bytes], trainee_user: str, trainee_sudo: bool) -> Seed:
+        """The cloud-init seed of this deployment, from its scenario bundle's `files`."""
+        if self.vm_id is None:
+            raise ValueError(f"deployment {self.id} has no VM yet")
+        return render(self.scenario.document, files, self.vm_id, trainee_user, trainee_sudo)
 
     def transition(
         self,

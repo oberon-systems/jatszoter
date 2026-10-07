@@ -190,3 +190,6 @@ fn returned(command: &str, mut reply: Value) -> Result<Value, AgentError> {
 fn desc(reply: &Value) -> Option<&str> {
     reply.pointer("/error/desc").and_then(Value::as_str)
 }
+
+#[cfg(test)]
+mod tests;

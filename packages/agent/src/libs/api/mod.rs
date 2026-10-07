@@ -48,9 +48,7 @@ pub enum Status {
 #[serde(rename_all = "lowercase")]
 pub enum Event {
     Assign,
-    #[allow(dead_code, reason = "sent by the bootstrap, roadmap item 6")]
     Boot,
-    #[allow(dead_code, reason = "sent by the bootstrap, roadmap item 6")]
     Bootstrap,
     Destroy,
     Fail,

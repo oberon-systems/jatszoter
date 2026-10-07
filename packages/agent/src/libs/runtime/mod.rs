@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tokio::task::{JoinHandle, JoinSet};
 use tokio::time::timeout;
@@ -10,9 +10,11 @@ use url::Url;
 
 use crate::libs::agent::{Auth, Runtime};
 use crate::libs::api::{Api, Desired, Event, HttpApi, Moved, Seed, Signed, Status};
+use crate::libs::bootstrap::{self, Verdict, MARKER};
 use crate::libs::config::Config;
 use crate::libs::error::AgentError;
 use crate::libs::images::ImageCache;
+use crate::libs::qga::Qga;
 use crate::libs::reconcile::{plan, Action};
 use crate::libs::vm::{self, Tools, VmSpec};
 
@@ -20,6 +22,10 @@ use crate::libs::vm::{self, Tools, VmSpec};
 const SIGN_WAIT: Duration = Duration::from_secs(15);
 const MAX_REASON: usize = 200;
 const LOST: &str = "vm lost";
+const PROBE_WAIT: Duration = Duration::from_secs(15);
+const QGA_WAIT: Duration = Duration::from_secs(5);
+const MARKER_MAX: usize = 256;
+const OVERDUE: &str = "bootstrap timeout";
 
 struct Shared {
     api: HttpApi,
@@ -28,10 +34,32 @@ struct Shared {
     tools: Tools,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Start,
+    Stop,
+    Lost,
+    Probe,
+    Remove,
+}
+
+impl Kind {
+    fn of(action: &Action) -> Self {
+        match action {
+            Action::Start(_) => Self::Start,
+            Action::Stop(_) => Self::Stop,
+            Action::Lost(_) => Self::Lost,
+            Action::Probe(_) => Self::Probe,
+            Action::Remove(_) => Self::Remove,
+        }
+    }
+}
+
 pub struct QemuRuntime {
     shared: Arc<Shared>,
     capacity: u32,
     tasks: HashMap<String, JoinHandle<()>>,
+    kinds: HashMap<String, Kind>,
     fence: Option<JoinHandle<()>>,
 }
 
@@ -53,8 +81,28 @@ impl QemuRuntime {
             }),
             capacity: config.capacity,
             tasks: HashMap::new(),
+            kinds: HashMap::new(),
             fence: None,
         })
+    }
+
+    fn abort_stopping(&mut self, desired: &[Desired]) -> HashMap<String, JoinHandle<()>> {
+        let mut aborted = HashMap::new();
+        for item in desired
+            .iter()
+            .filter(|item| item.status == Status::Stopping)
+        {
+            if !matches!(self.kinds.get(&item.id), Some(Kind::Start | Kind::Probe)) {
+                continue;
+            }
+            self.kinds.remove(&item.id);
+            if let Some(task) = self.tasks.remove(&item.id) {
+                tracing::info!(deployment_id = %item.id, "aborting the task of a stopping deployment");
+                task.abort();
+                aborted.insert(item.id.clone(), task);
+            }
+        }
+        aborted
     }
 }
 
@@ -70,6 +118,7 @@ impl Runtime for QemuRuntime {
         }
         self.fence = None;
         self.tasks.retain(|_, task| !task.is_finished());
+        self.kinds.retain(|id, _| self.tasks.contains_key(id));
         let on_disk = match vm::list(&self.shared.root) {
             Ok(on_disk) => on_disk,
             Err(err) => {
@@ -77,11 +126,15 @@ impl Runtime for QemuRuntime {
                 return;
             }
         };
+        let mut aborted = self.abort_stopping(&desired);
         let busy: HashSet<String> = self.tasks.keys().cloned().collect();
         for action in plan(&desired, &on_disk, &busy, self.capacity) {
             let deployment_id = action.deployment_id();
             let vm_id = match &action {
-                Action::Start(item) | Action::Stop(item) | Action::Lost(item) => item.vm_id.clone(),
+                Action::Start(item)
+                | Action::Stop(item)
+                | Action::Lost(item)
+                | Action::Probe(item) => item.vm_id.clone(),
                 Action::Remove(dir) => on_disk
                     .iter()
                     .find(|vm| &vm.dir == dir)
@@ -90,7 +143,10 @@ impl Runtime for QemuRuntime {
                     .unwrap_or_default(),
             };
             let span = tracing::info_span!("deployment", %deployment_id, %vm_id);
-            let work = run(Arc::clone(&self.shared), Arc::clone(auth), action);
+            let kind = Kind::of(&action);
+            let after = aborted.remove(&deployment_id);
+            let work = run(Arc::clone(&self.shared), Arc::clone(auth), action, after);
+            self.kinds.insert(deployment_id.clone(), kind);
             self.tasks
                 .insert(deployment_id, tokio::spawn(work.instrument(span)));
         }
@@ -99,6 +155,7 @@ impl Runtime for QemuRuntime {
     // Returns at once: the fence task waits for the aborted tasks, then destroys every VM.
     fn destroy_all(&mut self) -> Result<(), AgentError> {
         let previous = self.fence.take();
+        self.kinds.clear();
         let aborted: Vec<_> = self
             .tasks
             .drain()
@@ -142,7 +199,11 @@ async fn fence(root: &Path) {
     tracing::info!("fenced");
 }
 
-async fn run(shared: Arc<Shared>, auth: Auth, action: Action) {
+async fn run(shared: Arc<Shared>, auth: Auth, action: Action, after: Option<JoinHandle<()>>) {
+    // A stop waits for the task it aborted, so the destroy never races what that task left.
+    if let Some(task) = after {
+        let _ = task.await;
+    }
     match action {
         Action::Start(item) => start(&shared, &auth, &item).await,
         Action::Stop(item) => {
@@ -173,11 +234,101 @@ async fn run(shared: Arc<Shared>, auth: Auth, action: Action) {
             )
             .await;
         }
+        Action::Probe(item) => {
+            if timeout(PROBE_WAIT, probe(&shared, &auth, &item))
+                .await
+                .is_err()
+            {
+                tracing::info!("probing the VM timed out");
+            }
+        }
         Action::Remove(dir) => match vm::destroy(&dir).await {
             Ok(()) => tracing::info!("stale VM removed"),
             Err(err) => tracing::warn!(error = %err, "removing a stale VM failed"),
         },
     }
+}
+
+async fn probe(shared: &Shared, auth: &Auth, item: &Desired) {
+    let dir = shared.root.join(&item.id);
+    let Some(record) = vm::read_record(&dir) else {
+        tracing::warn!("the VM has no readable vm.json");
+        return;
+    };
+    if bootstrap::overdue(record.created_at, item.timeouts.bootstrap_seconds, now()) {
+        tracing::warn!("the bootstrap timed out");
+        send(
+            shared,
+            auth,
+            &item.id,
+            Event::Fail,
+            item.status,
+            Some(OVERDUE),
+        )
+        .await;
+        return;
+    }
+    let mut qga = match Qga::connect(&dir.join(vm::QGA), QGA_WAIT).await {
+        Ok(qga) => qga,
+        Err(err) => {
+            tracing::debug!(error = %err, "the guest agent does not answer yet");
+            return;
+        }
+    };
+    match item.status {
+        Status::Starting => match qga.ping().await {
+            Ok(()) => {
+                tracing::info!("the guest agent answers");
+                send(shared, auth, &item.id, Event::Boot, Status::Starting, None).await;
+            }
+            Err(err) => tracing::debug!(error = %err, "the guest agent does not answer yet"),
+        },
+        Status::Bootstrapping => match qga.read_file(MARKER, MARKER_MAX).await {
+            Ok(None) => {}
+            Ok(Some(marker)) => finish(shared, auth, item, &dir, bootstrap::verdict(&marker)).await,
+            Err(err) => tracing::debug!(error = %err, "reading the marker failed"),
+        },
+        _ => {}
+    }
+}
+
+async fn finish(shared: &Shared, auth: &Auth, item: &Desired, dir: &Path, verdict: Verdict) {
+    match verdict {
+        Verdict::Ready => {
+            if let Err(err) = vm::eject_seed(dir).await {
+                tracing::warn!(error = %err, "ejecting the seed failed");
+                return;
+            }
+            tracing::info!("the VM is bootstrapped");
+            send(
+                shared,
+                auth,
+                &item.id,
+                Event::Bootstrap,
+                Status::Bootstrapping,
+                None,
+            )
+            .await;
+        }
+        Verdict::Failed(reason) => {
+            tracing::warn!(%reason, "the bootstrap failed");
+            send(
+                shared,
+                auth,
+                &item.id,
+                Event::Fail,
+                Status::Bootstrapping,
+                Some(&reason),
+            )
+            .await;
+        }
+    }
+}
+
+fn now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs())
 }
 
 async fn start(shared: &Shared, auth: &Auth, item: &Desired) {

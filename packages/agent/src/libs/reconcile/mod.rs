@@ -9,6 +9,7 @@ pub enum Action {
     Start(Desired),
     Stop(Desired),
     Lost(Desired),
+    Probe(Desired),
     Remove(PathBuf),
 }
 
@@ -16,7 +17,10 @@ impl Action {
     /// The deployment the action works on; a VM directory is named after it.
     pub fn deployment_id(&self) -> String {
         match self {
-            Self::Start(desired) | Self::Stop(desired) | Self::Lost(desired) => desired.id.clone(),
+            Self::Start(desired)
+            | Self::Stop(desired)
+            | Self::Lost(desired)
+            | Self::Probe(desired) => desired.id.clone(),
             Self::Remove(dir) => dir_id(dir),
         }
     }
@@ -51,6 +55,9 @@ pub fn plan(
                 if !vm.is_some_and(|vm| vm.alive) =>
             {
                 actions.push(Action::Lost(item.clone()));
+            }
+            (Status::Starting | Status::Bootstrapping, _) => {
+                actions.push(Action::Probe(item.clone()));
             }
             (
                 Status::Pending | Status::Completed | Status::Failed | Status::Cancelled,

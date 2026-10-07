@@ -25,7 +25,7 @@ const DISK: &str = "disk.qcow2";
 const PID_FILE: &str = "qemu.pid";
 const QMP: &str = "qmp.sock";
 const SERIAL: &str = "serial.sock";
-const QGA: &str = "qga.sock";
+pub const QGA: &str = "qga.sock";
 const SEED_ISO: &str = "seed.iso";
 const SEED_DIR: &str = "seed";
 const SEED_DEVICE: &str = "seed0";
@@ -71,7 +71,7 @@ pub struct Record {
     pub created_at: u64,
 }
 
-#[allow(dead_code, reason = "read by the bootstrap, roadmap item 6")]
+#[allow(dead_code, reason = "the fields are read by the tests")]
 #[derive(Debug)]
 pub struct Vm {
     pub dir: PathBuf,
@@ -297,7 +297,6 @@ async fn pack(dir: &Path, seed: &Seed, xorriso: &Path) -> Result<(), AgentError>
 }
 
 /// Empties the seed CD-ROM and deletes `seed.iso`; an empty tray and a missing file are fine.
-#[allow(dead_code, reason = "called by the bootstrap, prompt 06")]
 pub async fn eject_seed(dir: &Path) -> Result<(), AgentError> {
     Qmp::connect(&dir.join(QMP), QMP_TIMEOUT)
         .await?
@@ -385,7 +384,7 @@ async fn exited(dir: &Path, vm_id: &str, wait: Duration) -> bool {
     }
 }
 
-fn read_record(dir: &Path) -> Option<Record> {
+pub fn read_record(dir: &Path) -> Option<Record> {
     serde_json::from_slice(&fs::read(dir.join(RECORD)).ok()?).ok()
 }
 

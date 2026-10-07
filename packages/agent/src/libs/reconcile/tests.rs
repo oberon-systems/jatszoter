@@ -186,3 +186,43 @@ fn a_deployment_id_that_is_not_a_plain_word_is_ignored() {
 
     assert!(actions.is_empty());
 }
+
+#[test]
+fn a_live_starting_vm_is_probed() {
+    let item = desired("alpha", Status::Starting);
+
+    let actions = plan(slice::from_ref(&item), &[vm("alpha", true)], &idle(), 2);
+
+    assert_eq!(actions, vec![Action::Probe(item)]);
+}
+
+#[test]
+fn a_live_bootstrapping_vm_is_probed() {
+    let item = desired("alpha", Status::Bootstrapping);
+
+    let actions = plan(slice::from_ref(&item), &[vm("alpha", true)], &idle(), 2);
+
+    assert_eq!(actions, vec![Action::Probe(item)]);
+}
+
+#[test]
+fn a_busy_starting_vm_is_not_probed() {
+    let busy = HashSet::from(["alpha".to_owned()]);
+
+    let actions = plan(
+        &[desired("alpha", Status::Starting)],
+        &[vm("alpha", true)],
+        &busy,
+        2,
+    );
+
+    assert!(actions.is_empty());
+}
+
+#[test]
+fn a_probe_names_its_deployment() {
+    assert_eq!(
+        Action::Probe(desired("alpha", Status::Starting)).deployment_id(),
+        "alpha"
+    );
+}

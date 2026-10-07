@@ -44,6 +44,7 @@ fn vm(id: &str, alive: bool) -> OnDisk {
         record: Some(Record {
             deployment_id: id.into(),
             vm_id: format!("vm-{id}"),
+            created_at: 0,
         }),
         alive,
     }

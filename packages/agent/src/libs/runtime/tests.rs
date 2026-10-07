@@ -19,6 +19,7 @@ fn runtime(dir: &TempDir) -> QemuRuntime {
         image_limit_bytes: 1 << 30,
         qemu: "/nonexistent/qemu-system-x86_64".into(),
         qemu_img: "/nonexistent/qemu-img".into(),
+        xorriso: "/nonexistent/xorriso".into(),
     };
     QemuRuntime::new(&config, HttpApi::new(config.api_url.clone()).unwrap()).unwrap()
 }

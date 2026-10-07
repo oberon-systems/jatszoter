@@ -158,6 +158,7 @@ fn agent(dir: &TempDir, api: FakeApi, state: State) -> Agent<FakeApi, CountingRu
         image_limit_bytes: 1 << 30,
         qemu: "qemu-system-x86_64".into(),
         qemu_img: "qemu-img".into(),
+        xorriso: "xorriso".into(),
     };
     StateStore::new(dir.path()).save(&state).unwrap();
     Agent::new(&config, api, CountingRuntime::default()).unwrap()

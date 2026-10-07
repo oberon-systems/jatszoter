@@ -1,15 +1,24 @@
 use std::ffi::OsString;
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
+use std::time::Duration;
 
-use serde_json::json;
+use serde_json::{json, Value};
 use tempfile::TempDir;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::UnixListener;
+use tokio::task::JoinHandle;
 
-use super::{create, destroy, list, qemu_args, Record, Tools, VmSpec};
+use super::{
+    base_format, create, destroy, eject_seed, list, qemu_args, Record, Tools, VmSpec, GIB,
+};
+use crate::libs::api::Seed;
 use crate::libs::config::prepare_private_dir;
 use crate::libs::error::AgentError;
+use crate::libs::qmp::Qmp;
 
 fn spec(deployment_id: &str, base: &Path) -> VmSpec {
     VmSpec {
@@ -19,6 +28,14 @@ fn spec(deployment_id: &str, base: &Path) -> VmSpec {
         memory_mib: 1024,
         disk_gib: 8,
         base: base.into(),
+        seed: None,
+    }
+}
+
+fn seed() -> Seed {
+    Seed {
+        user_data: "#cloud-config\n".into(),
+        meta_data: "instance-id: alpha\n".into(),
     }
 }
 
@@ -26,6 +43,7 @@ fn missing_tools() -> Tools {
     Tools {
         qemu: "/nonexistent/qemu-system-x86_64".into(),
         qemu_img: "/nonexistent/qemu-img".into(),
+        xorriso: "/nonexistent/xorriso".into(),
     }
 }
 
@@ -63,7 +81,31 @@ fn record(deployment_id: &str) -> Option<Record> {
     Some(Record {
         deployment_id: deployment_id.into(),
         vm_id: format!("vm-{deployment_id}"),
+        created_at: 0,
     })
+}
+
+/// A QMP server that greets one client, answers every command with `{}` and returns them.
+fn qmp_server(dir: &Path) -> JoinHandle<Vec<Value>> {
+    let listener = UnixListener::bind(dir.join("qmp.sock")).unwrap();
+    tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let (reader, mut writer) = stream.into_split();
+        let mut lines = BufReader::new(reader).lines();
+        writer.write_all(b"{\"QMP\": {}}\n").await.unwrap();
+        let mut seen = Vec::new();
+        while let Ok(Some(line)) = lines.next_line().await {
+            seen.push(serde_json::from_str(&line).unwrap());
+            writer.write_all(b"{\"return\": {}}\n").await.unwrap();
+        }
+        seen
+    })
+}
+
+fn image_info(virtual_size: u64) -> Vec<u8> {
+    json!({ "format": "qcow2", "virtual-size": virtual_size })
+        .to_string()
+        .into_bytes()
 }
 
 #[test]
@@ -150,6 +192,89 @@ fn a_comma_in_a_path_is_escaped() {
 
     assert!(args.contains(&"if=virtio,format=qcow2,file=/state,,beta/vms/alpha/disk.qcow2".into()));
     assert!(args.contains(&"/state,beta/vms/alpha/qemu.pid".into()));
+}
+
+#[test]
+fn a_seed_adds_the_cdrom_and_nothing_else() {
+    let dir = Path::new("/state,beta/vms/alpha");
+    let plain = spec("alpha", Path::new("/base.qcow2"));
+    let mut seeded = plain.clone();
+    seeded.seed = Some(seed());
+
+    let without = strings(qemu_args(&plain, dir, true));
+    let mut with = strings(qemu_args(&seeded, dir, true));
+
+    let at = with.iter().position(|arg| arg.contains("id=seed")).unwrap() - 1;
+    let cdrom: Vec<String> = with.drain(at..at + 4).collect();
+    assert_eq!(
+        cdrom,
+        [
+            "-drive",
+            "if=none,id=seed,media=cdrom,readonly=on,file=/state,,beta/vms/alpha/seed.iso",
+            "-device",
+            "ide-cd,id=seed0,drive=seed,bus=ide.1",
+        ]
+    );
+    assert_eq!(with, without);
+    assert!(!without.iter().any(|arg| arg.contains("seed")));
+}
+
+#[test]
+fn a_disk_below_the_base_virtual_size_is_refused() {
+    let err = base_format(&image_info(2 * GIB + 1), 2).unwrap_err();
+
+    assert!(
+        matches!(&err, AgentError::Vm(message)
+            if message.contains("disk_gib 2") && message.contains("2147483649 bytes")),
+        "{err}"
+    );
+    assert_eq!(base_format(&image_info(2 * GIB), 2).unwrap(), "qcow2");
+}
+
+#[tokio::test]
+async fn a_missing_xorriso_fails_the_start_and_leaves_no_directory() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path().join("vms");
+    let mut spec = spec("alpha", Path::new("/base.qcow2"));
+    spec.seed = Some(seed());
+
+    let err = create(&root, &spec, &missing_tools()).await.unwrap_err();
+
+    assert!(
+        matches!(&err, AgentError::Seed(message) if message.contains("xorriso")),
+        "{err}"
+    );
+    assert!(!err.to_string().contains("cloud-config"));
+    assert!(list(&root).unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn eject_seed_sends_eject_and_removes_the_file() {
+    let tmp = TempDir::new().unwrap();
+    let iso = tmp.path().join("seed.iso");
+    fs::write(&iso, b"").unwrap();
+    let server = qmp_server(tmp.path());
+
+    eject_seed(tmp.path()).await.unwrap();
+
+    assert!(!iso.exists());
+    assert_eq!(
+        server.await.unwrap(),
+        [
+            json!({ "execute": "qmp_capabilities" }),
+            json!({ "execute": "eject", "arguments": { "id": "seed0", "force": true } }),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn eject_seed_without_a_file_is_fine() {
+    let tmp = TempDir::new().unwrap();
+    let server = qmp_server(tmp.path());
+
+    eject_seed(tmp.path()).await.unwrap();
+
+    assert_eq!(server.await.unwrap().len(), 2);
 }
 
 #[test]
@@ -260,6 +385,7 @@ async fn an_existing_directory_is_refused_and_kept() {
         Some(Record {
             deployment_id: "alpha".into(),
             vm_id: "vm-beta".into(),
+            created_at: 0,
         })
     );
     assert!(dir.exists());
@@ -325,7 +451,7 @@ async fn a_failed_start_leaves_no_directory() {
     assert!(list(&root).unwrap().is_empty());
 }
 
-// Needs qemu-system-x86_64 and qemu-img on PATH, so it runs only with `-- --ignored`.
+// Needs qemu-system-x86_64, qemu-img and xorriso on PATH, so it runs only with `-- --ignored`.
 #[tokio::test]
 #[ignore]
 async fn a_real_vm_starts_is_listed_and_is_destroyed() {
@@ -342,17 +468,39 @@ async fn a_real_vm_starts_is_listed_and_is_destroyed() {
     let tools = Tools {
         qemu: "qemu-system-x86_64".into(),
         qemu_img: "qemu-img".into(),
+        xorriso: "xorriso".into(),
     };
     let mut spec = spec("alpha", &base);
     spec.cpus = 1;
     spec.memory_mib = 128;
     spec.disk_gib = 1;
+    spec.seed = Some(seed());
 
     let vm = create(&root, &spec, &tools).await.unwrap();
     let pid = fs::read_to_string(vm.dir.join("qemu.pid")).unwrap();
     let found = list(&root).unwrap();
+    let iso = vm.dir.join("seed.iso");
+    let mode = fs::metadata(&iso).unwrap().permissions().mode() & 0o777;
+    let unpacked = vm.dir.join("seed").exists();
+    let blocks = Qmp::connect(&vm.dir.join("qmp.sock"), Duration::from_secs(5))
+        .await
+        .unwrap()
+        .execute("query-block", None)
+        .await
+        .unwrap();
+    eject_seed(&vm.dir).await.unwrap();
+    let ejected = !iso.exists();
     destroy(&vm.dir).await.unwrap();
 
+    assert_eq!(mode, 0o600);
+    assert!(!unpacked);
+    assert!(blocks
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|block| block["device"] == "seed" && block.get("inserted").is_some()));
+    assert!(ejected);
+    assert!(vm.record.created_at > 0);
     assert_eq!(found.len(), 1);
     assert!(found[0].alive);
     assert_eq!(found[0].record, Some(vm.record));

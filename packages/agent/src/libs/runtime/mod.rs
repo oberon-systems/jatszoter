@@ -9,7 +9,7 @@ use tracing::Instrument;
 use url::Url;
 
 use crate::libs::agent::{Auth, Runtime};
-use crate::libs::api::{Api, Desired, Event, HttpApi, Moved, Signed, Status};
+use crate::libs::api::{Api, Desired, Event, HttpApi, Moved, Seed, Signed, Status};
 use crate::libs::config::Config;
 use crate::libs::error::AgentError;
 use crate::libs::images::ImageCache;
@@ -48,6 +48,7 @@ impl QemuRuntime {
                 tools: Tools {
                     qemu: config.qemu.clone(),
                     qemu_img: config.qemu_img.clone(),
+                    xorriso: config.xorriso.clone(),
                 },
             }),
             capacity: config.capacity,
@@ -184,7 +185,11 @@ async fn start(shared: &Shared, auth: &Auth, item: &Desired) {
     if !matches!(assigned, Some(Moved::To(_))) {
         return;
     }
-    match launch(shared, item).await {
+    let launched = match seed(shared, auth, &item.id).await {
+        Ok(seed) => launch(shared, item, seed).await,
+        Err(err) => Err(err),
+    };
+    match launched {
         Ok(()) => tracing::info!("VM started"),
         Err(err) => {
             let reason = reason(&err, &item.image.url);
@@ -202,7 +207,26 @@ async fn start(shared: &Shared, auth: &Auth, item: &Desired) {
     }
 }
 
-async fn launch(shared: &Shared, item: &Desired) -> Result<(), AgentError> {
+async fn seed(shared: &Shared, auth: &Auth, deployment_id: &str) -> Result<Seed, AgentError> {
+    let attempt = async {
+        let signer = auth.read().await;
+        let Some(signer) = signer.as_ref() else {
+            return Ok(Signed::Refused);
+        };
+        shared
+            .api
+            .seed(&signer.agent_id, &signer.credential, deployment_id)
+            .await
+    };
+    match timeout(SIGN_WAIT, attempt).await {
+        Ok(Ok(Signed::Accepted(Some(seed)))) => Ok(seed),
+        Ok(Ok(_)) => Err(AgentError::Seed("not served".into())),
+        Ok(Err(err)) => Err(AgentError::Seed(err.to_string())),
+        Err(_) => Err(AgentError::Seed("timed out".into())),
+    }
+}
+
+async fn launch(shared: &Shared, item: &Desired, seed: Seed) -> Result<(), AgentError> {
     let url = Url::parse(&item.image.url).map_err(|err| AgentError::Image(err.to_string()))?;
     let base = shared
         .images
@@ -219,12 +243,13 @@ async fn launch(shared: &Shared, item: &Desired) -> Result<(), AgentError> {
         memory_mib: resource(item.resources.memory_mib, "memory_mib")?,
         disk_gib: resource(item.resources.disk_gib, "disk_gib")?,
         base,
+        seed: Some(seed),
     };
     vm::create(&shared.root, &spec, &shared.tools)
         .await
         .map(drop)
         .map_err(|err| match err {
-            AgentError::Vm(_) => err,
+            AgentError::Vm(_) | AgentError::Seed(_) => err,
             other => AgentError::Vm(other.to_string()),
         })
 }

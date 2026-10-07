@@ -8,6 +8,8 @@ pub enum AgentError {
     Api(String),
     #[error("image: {0}")]
     Image(String),
+    #[error("seed: {0}")]
+    Seed(String),
     #[error("vm: {0}")]
     Vm(String),
     #[error("qmp: {0}")]

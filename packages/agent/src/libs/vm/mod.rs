@@ -1,20 +1,21 @@
 use std::ffi::OsString;
-use std::fs::{self, DirBuilder, OpenOptions};
+use std::fs::{self, DirBuilder, OpenOptions, Permissions};
 use std::io::{ErrorKind, Write};
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use nix::errno::Errno;
 use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use tokio::process::Command;
 use tokio::time::{sleep, timeout, Instant};
 
+use crate::libs::api::Seed;
 use crate::libs::config::prepare_private_dir;
 use crate::libs::error::AgentError;
 use crate::libs::qmp::Qmp;
@@ -25,6 +26,10 @@ const PID_FILE: &str = "qemu.pid";
 const QMP: &str = "qmp.sock";
 const SERIAL: &str = "serial.sock";
 const QGA: &str = "qga.sock";
+const SEED_ISO: &str = "seed.iso";
+const SEED_DIR: &str = "seed";
+const SEED_DEVICE: &str = "seed0";
+const GIB: u64 = 1 << 30;
 const SOCKETS: [&str; 3] = [QMP, SERIAL, QGA];
 // sun_path holds 108 bytes, the terminating NUL included.
 const MAX_SOCKET_PATH: usize = 107;
@@ -46,12 +51,14 @@ pub struct VmSpec {
     pub memory_mib: u32,
     pub disk_gib: u32,
     pub base: PathBuf,
+    pub seed: Option<Seed>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Tools {
     pub qemu: PathBuf,
     pub qemu_img: PathBuf,
+    pub xorriso: PathBuf,
 }
 
 /// The contents of `vm.json`.
@@ -59,6 +66,9 @@ pub struct Tools {
 pub struct Record {
     pub deployment_id: String,
     pub vm_id: String,
+    /// Unix seconds; absent from a `vm.json` written before the field existed.
+    #[serde(default)]
+    pub created_at: u64,
 }
 
 #[allow(dead_code, reason = "read by the bootstrap, roadmap item 6")]
@@ -81,6 +91,8 @@ struct ImageInfo {
     format: String,
     #[serde(rename = "backing-filename")]
     backing: Option<String>,
+    #[serde(rename = "virtual-size")]
+    virtual_size: u64,
     #[serde(rename = "format-specific")]
     specific: Option<Value>,
 }
@@ -112,6 +124,17 @@ pub fn qemu_args(spec: &VmSpec, dir: &Path, kvm: bool) -> Vec<OsString> {
         "-drive",
     ]);
     args.push(option("if=virtio,format=qcow2,file=", &dir.join(DISK)));
+    if spec.seed.is_some() {
+        args.push("-drive".into());
+        args.push(option(
+            "if=none,id=seed,media=cdrom,readonly=on,file=",
+            &dir.join(SEED_ISO),
+        ));
+        args.extend(words(&[
+            "-device",
+            &format!("ide-cd,id={SEED_DEVICE},drive=seed,bus=ide.1"),
+        ]));
+    }
     args.extend(words(&[
         "-netdev",
         "user,id=net0",
@@ -179,6 +202,9 @@ pub async fn create(root: &Path, spec: &VmSpec, tools: &Tools) -> Result<Vm, Age
     let record = Record {
         deployment_id: spec.deployment_id.clone(),
         vm_id: spec.vm_id.clone(),
+        created_at: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_secs()),
     };
     if let Err(err) = start(&dir, spec, &record, tools).await {
         if let Err(cleanup) = destroy(&dir).await {
@@ -195,20 +221,25 @@ async fn start(
     record: &Record,
     tools: &Tools,
 ) -> Result<(), AgentError> {
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(dir.join(RECORD))?;
-    file.write_all(&serde_json::to_vec(record).map_err(|err| AgentError::Vm(err.to_string()))?)?;
-    file.sync_all()?;
+    write_private(
+        &dir.join(RECORD),
+        &serde_json::to_vec(record).map_err(|err| AgentError::Vm(err.to_string()))?,
+    )?;
+    if let Some(seed) = &spec.seed {
+        pack(dir, seed, &tools.xorriso)
+            .await
+            .map_err(|err| match err {
+                AgentError::Vm(message) => AgentError::Seed(message),
+                other => AgentError::Seed(other.to_string()),
+            })?;
+    }
 
     let base = std::path::absolute(&spec.base)?;
     let info = run(Command::new(&tools.qemu_img)
         .args(["info", "--output=json"])
         .arg(&base))
     .await?;
-    let format = base_format(&info)?;
+    let format = base_format(&info, spec.disk_gib)?;
     run(Command::new(&tools.qemu_img)
         .args(["create", "-f", "qcow2", "-F", format.as_str(), "-b"])
         .arg(&base)
@@ -234,6 +265,47 @@ async fn start(
         other => Err(AgentError::Vm(format!(
             "QEMU reports {other:?}, not running"
         ))),
+    }
+}
+
+fn write_private(path: &Path, content: &[u8]) -> Result<(), AgentError> {
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)?;
+    file.write_all(content)?;
+    file.sync_all()?;
+    Ok(())
+}
+
+async fn pack(dir: &Path, seed: &Seed, xorriso: &Path) -> Result<(), AgentError> {
+    let source = dir.join(SEED_DIR);
+    DirBuilder::new().mode(0o700).create(&source)?;
+    write_private(&source.join("user-data"), seed.user_data.as_bytes())?;
+    write_private(&source.join("meta-data"), seed.meta_data.as_bytes())?;
+    let iso = dir.join(SEED_ISO);
+    run(Command::new(xorriso)
+        .args(["-as", "mkisofs", "-quiet", "-o"])
+        .arg(&iso)
+        .args(["-V", "cidata", "-J", "-r"])
+        .arg(&source))
+    .await?;
+    fs::remove_dir_all(&source)?;
+    fs::set_permissions(&iso, Permissions::from_mode(0o600))?;
+    Ok(())
+}
+
+/// Empties the seed CD-ROM and deletes `seed.iso`; an empty tray and a missing file are fine.
+#[allow(dead_code, reason = "called by the bootstrap, prompt 06")]
+pub async fn eject_seed(dir: &Path) -> Result<(), AgentError> {
+    Qmp::connect(&dir.join(QMP), QMP_TIMEOUT)
+        .await?
+        .execute("eject", Some(json!({ "id": SEED_DEVICE, "force": true })))
+        .await?;
+    match fs::remove_file(dir.join(SEED_ISO)) {
+        Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
+        other => Ok(other?),
     }
 }
 
@@ -334,7 +406,7 @@ fn owner(dir: &Path, vm_id: &str) -> Option<Pid> {
         .then_some(Pid::from_raw(pid))
 }
 
-fn base_format(info: &[u8]) -> Result<String, AgentError> {
+fn base_format(info: &[u8], disk_gib: u32) -> Result<String, AgentError> {
     let info: ImageInfo = serde_json::from_slice(info)
         .map_err(|err| AgentError::Vm(format!("qemu-img info: {err}")))?;
     // A base naming another host file would hand that file to the guest.
@@ -353,6 +425,12 @@ fn base_format(info: &[u8]) -> Result<String, AgentError> {
             "base image format {:?} is not one of {}",
             info.format,
             FORMATS.join(", ")
+        )));
+    }
+    if u64::from(disk_gib) * GIB < info.virtual_size {
+        return Err(AgentError::Vm(format!(
+            "disk_gib {disk_gib} is below the base image's virtual size of {} bytes",
+            info.virtual_size
         )));
     }
     Ok(info.format)

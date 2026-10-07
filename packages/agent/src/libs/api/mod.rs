@@ -95,6 +95,19 @@ pub struct Desired {
     pub timeouts: Timeouts,
 }
 
+/// A deployment's NoCloud seed; it carries the scenario's steps, so `Debug` prints no content.
+#[derive(Clone, Deserialize)]
+pub struct Seed {
+    pub user_data: String,
+    pub meta_data: String,
+}
+
+impl std::fmt::Debug for Seed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Seed").finish_non_exhaustive()
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Moved {
     To(Status),
@@ -142,6 +155,15 @@ pub(crate) trait Api {
         expected: Status,
         reason: Option<&str>,
     ) -> Result<Signed<Moved>, AgentError>;
+    /// `None` is the 409 of a deployment that is not STARTING under a live lease.
+    async fn seed(
+        &self,
+        _agent_id: &str,
+        _credential: &Credential,
+        _deployment_id: &str,
+    ) -> Result<Signed<Option<Seed>>, AgentError> {
+        Ok(Signed::Accepted(None))
+    }
 }
 
 #[derive(Serialize)]
@@ -367,6 +389,29 @@ impl Api for HttpApi {
             _ => {
                 let out: TransitionOut = accepted(response, StatusCode::OK)?.json().await?;
                 Ok(Signed::Accepted(Moved::To(out.status)))
+            }
+        }
+    }
+
+    async fn seed(
+        &self,
+        agent_id: &str,
+        credential: &Credential,
+        deployment_id: &str,
+    ) -> Result<Signed<Option<Seed>>, AgentError> {
+        let action = format!("deployments/{deployment_id}/seed");
+        let response = self
+            .signed(Method::GET, agent_id, credential, &action, Vec::new())
+            .await?;
+        match response.status() {
+            StatusCode::UNAUTHORIZED => Ok(Signed::Refused),
+            StatusCode::CONFLICT => Ok(Signed::Accepted(None)),
+            _ => {
+                let body = accepted(response, StatusCode::OK)?.bytes().await?;
+                // A decode error may quote the body, so it is not passed on.
+                let seed = serde_json::from_slice(&body)
+                    .map_err(|_| AgentError::Api("the seed response is not a seed".into()))?;
+                Ok(Signed::Accepted(Some(seed)))
             }
         }
     }

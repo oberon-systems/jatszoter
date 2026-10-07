@@ -6,7 +6,7 @@ use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
 use super::{
     mac, sign, Api, Claim, Desired, Event, HttpApi, ImageRef, Lease, Moved, Resources, ScenarioRef,
-    Signed, Status, Timeouts,
+    Seed, Signed, Status, Timeouts,
 };
 use crate::libs::error::AgentError;
 use crate::libs::state::Credential;
@@ -426,6 +426,71 @@ async fn a_server_error_is_an_api_error() {
         .await,
         Err(AgentError::Api(_))
     ));
+}
+
+#[tokio::test]
+async fn the_seed_is_a_signed_get_and_decodes() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/agents/gamma/deployments/eta/seed"))
+        .and(|request: &Request| request.body.is_empty())
+        .and(signed_by("beta", "current:1:1790000000"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"user_data": "#cloud-config\n", "meta_data": "lambda\n"})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let seed = api(&server)
+        .seed("gamma", &credential(), "eta")
+        .await
+        .unwrap();
+
+    let Signed::Accepted(Some(seed)) = seed else {
+        panic!("no seed: {seed:?}");
+    };
+    assert_eq!(seed.user_data, "#cloud-config\n");
+    assert_eq!(seed.meta_data, "lambda\n");
+}
+
+#[tokio::test]
+async fn a_seed_is_not_served_on_a_conflict_and_refused_on_401() {
+    let conflict = answering(409, json!({"detail": "conflict"})).await;
+    let refused = answering(401, json!({})).await;
+
+    let none = api(&conflict).seed("gamma", &credential(), "eta").await;
+    let no = api(&refused).seed("gamma", &credential(), "eta").await;
+
+    assert!(matches!(none, Ok(Signed::Accepted(None))), "{none:?}");
+    assert!(matches!(no, Ok(Signed::Refused)), "{no:?}");
+}
+
+#[tokio::test]
+async fn a_seed_that_does_not_decode_is_an_error_without_its_content() {
+    let server = answering(200, json!("mu-secret")).await;
+
+    let err = api(&server)
+        .seed("gamma", &credential(), "eta")
+        .await
+        .unwrap_err();
+
+    assert!(matches!(&err, AgentError::Api(_)), "{err}");
+    assert!(!err.to_string().contains("mu-secret"));
+}
+
+#[test]
+fn the_debug_of_a_seed_shows_no_content() {
+    let seed = Seed {
+        user_data: "mu-secret".into(),
+        meta_data: "nu-secret".into(),
+    };
+
+    let shown = format!("{seed:?} {:?}", Signed::Accepted(Some(seed.clone())));
+
+    assert!(shown.starts_with("Seed { .. }"), "{shown}");
+    assert!(!shown.contains("secret"));
 }
 
 #[test]

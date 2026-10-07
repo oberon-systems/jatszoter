@@ -16,6 +16,7 @@ const MAX_IMAGE_LIMIT_GIB: u32 = 512;
 const GIB: u64 = 1 << 30;
 const DEFAULT_QEMU: &str = "qemu-system-x86_64";
 const DEFAULT_QEMU_IMG: &str = "qemu-img";
+const DEFAULT_XORRISO: &str = "xorriso";
 const PREFIX: &str = "JATSZOTER_AGENT_";
 const ENV_FILE: &str = "JATSZOTER_AGENT_ENV_FILE";
 
@@ -29,6 +30,7 @@ pub struct Config {
     pub image_limit_bytes: u64,
     pub qemu: PathBuf,
     pub qemu_img: PathBuf,
+    pub xorriso: PathBuf,
 }
 
 /// The environment as read, before any of it is checked.
@@ -42,6 +44,7 @@ pub struct RawConfig {
     pub image_limit_gib: Option<u32>,
     pub qemu: Option<PathBuf>,
     pub qemu_img: Option<PathBuf>,
+    pub xorriso: Option<PathBuf>,
 }
 
 impl Config {
@@ -77,6 +80,7 @@ impl Config {
             image_limit_bytes: u64::from(image_limit_gib) * GIB,
             qemu: raw.qemu.unwrap_or_else(|| DEFAULT_QEMU.into()),
             qemu_img: raw.qemu_img.unwrap_or_else(|| DEFAULT_QEMU_IMG.into()),
+            xorriso: raw.xorriso.unwrap_or_else(|| DEFAULT_XORRISO.into()),
         })
     }
 

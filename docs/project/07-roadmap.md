@@ -38,8 +38,12 @@ to cover it. An item marked Done has landed on `main`.
    - Scenario: nginx-502 version 2 on rocky-9.
    - Smoke: a Rocky 9 deployment reaches READY and is destroyed on stop.
 7. Console pipeline with bounded viewer queues ([04](04-console.md)).
-   - Agent: ship the serial console over the agent WebSocket.
-   - Smoke: a viewer receives console output.
+   - API: the agent console socket, the Valkey tail and the full log in the
+     file store, the hub, operator attach and the log download.
+   - Agent: QEMU logs the serial console to a file; the agent ships it over
+     one WebSocket per live VM.
+   - Smoke: an operator viewer receives console output after READY and the
+     downloaded log holds the boot.
 8. Links, take control.
    - Agent: pass terminal input and resize from the API to the guest.
    - Smoke: a trainee link opens the terminal; take control cuts its input.

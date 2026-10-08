@@ -81,6 +81,8 @@ POST /api/v1/deployments                   signed (operator)
 GET  /api/v1/deployments                   signed (operator)
 GET  /api/v1/deployments/{id}              signed (operator)
 POST /api/v1/deployments/{id}/stop         signed (operator)
+GET  /api/v1/deployments/{id}/console      signed (operator)
+WS   /api/v1/deployments/{id}/attach       signed (operator), link
 ```
 
 - Login and the credential are described in
@@ -90,6 +92,9 @@ POST /api/v1/deployments/{id}/stop         signed (operator)
   owner id is the `agent_id` in the path instead.
 - `signed (operator)` needs a user with role `operator`; any other signed
   user gets 403.
+- A WebSocket route checks the signature from the upgrade's headers over
+  `GET`, the path and an empty body. The console routes are described in
+  [04](04-console.md).
 
 ## Agent protocol
 
@@ -182,6 +187,7 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
     qemu.pid                   pid file of the daemonized QEMU
     qmp.sock                   QMP
     serial.sock                serial console
+    console.log                everything the guest printed on ttyS0
     qga.sock                   qemu-guest-agent
   ```
 
@@ -218,6 +224,8 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
   installs, nothing reaches the guest from outside.
 - The trainee's shell is the guest's serial console `ttyS0`; no SSH and no
   port forwarding are involved.
+- QEMU logs the serial console to `console.log` from boot; the agent ships
+  that file to the API, see [04](04-console.md#pipeline).
 - Work inside the guest - bootstrap status, checks, terminal resize - goes
   through qemu-guest-agent `guest-exec` and `guest-file-*`, never through
   the console.

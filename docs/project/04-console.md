@@ -5,6 +5,7 @@ to every open terminal. Operators always see it; everyone else sees it
 through a link; one party at a time holds the keyboard.
 
 - [Pipeline](#pipeline)
+- [Console store](#console-store)
 - [Viewers](#viewers)
 - [Links](#links)
 - [Take control](#take-control)
@@ -21,25 +22,68 @@ through a link; one party at a time holds the keyboard.
                                   +------------- keys, resize --------------+
 ```
 
-- The agent holds one WebSocket per READY deployment to
-  `WS /api/v1/agents/{agent_id}/deployments/{id}/console`. It sends binary
-  frames of an 8-byte offset followed by console bytes; the API answers
-  `{"offset": n}` with how far it holds. A reconnect resumes from that
-  offset, so no byte is lost or duplicated.
-- The API appends the bytes to the deployment's console buffer, up to
-  `JATSZOTER_CONSOLE_LIMIT_BYTES`, fans them out to every attached viewer
-  and streams the same bytes into the trainee link's recording in
-  SeaweedFS; see [05](05-recording.md#writing).
+- QEMU writes everything the guest prints on `ttyS0` into `console.log` in
+  the VM directory itself, through `logfile=` and `logappend=on` on the
+  serial chardev, from boot and whether or not a client is connected. The
+  file is the agent's buffer; the agent keeps no copy of its own.
+- The agent holds one WebSocket per live VM whose deployment is STARTING,
+  BOOTSTRAPPING or READY, to
+  `WS /api/v1/agents/{agent_id}/deployments/{id}/console`, signed like every
+  agent request over `GET`, the path and an empty body. It ships the file
+  from offset 0, so the operator sees the boot.
+- An agent frame is binary: an 8-byte big-endian offset, then at most
+  64 KiB read from `console.log` at that offset. The API answers the text
+  frame `{"offset": n}`, how far it holds the log, once on connect and after
+  every frame. The agent moves its offset to `n`, backwards too, and sends
+  the next frame only after that answer.
+- The agent looks at the file every 50 ms while the socket is up and
+  reconnects 5 s after it drops. There is no HTTP fallback: the bytes wait
+  in `console.log`, so a reconnect loses and duplicates nothing.
+- The API refuses the socket for a deployment that is not the agent's, not
+  under a live lease, or not STARTING, BOOTSTRAPPING or READY. A newer
+  socket for the same deployment replaces the older one.
+- The API stores the bytes, see [Console store](#console-store), fans them
+  out to every attached viewer, and streams the same bytes into the trainee
+  link's recording; see [05](05-recording.md#writing).
 - Keys and resize requests travel back on the same socket. Keys are never
-  stored, logged or recorded.
-- Bytes produced before READY belong to the operator's bootstrap log only.
-  A trainee's view starts at the READY offset.
+  stored, logged or recorded, and console bytes never reach a log line.
+
+## Console store
+
+The API keeps two copies of a deployment's console.
+
+- The tail: the last `JATSZOTER_CONSOLE_TAIL_BYTES` (8 MiB by default) in
+  Valkey, with the offsets where it starts and ends. A viewer that connects
+  gets this tail; anything older lives only in the browsers that saw it.
+- The full log: every byte appended at once to the file store as
+  `consoles/<deployment_id>.log`, in SeaweedFS or under `data/storage/`,
+  through the filer's append. It stops at
+  `JATSZOTER_CONSOLE_LIMIT_BYTES` (64 MiB by default): the API closes the
+  agent's socket with code 4413 and the agent ships nothing more for that
+  deployment.
+- Where the API holds the log is the end of the tail, or the full log's size
+  when Valkey lost the tail, so an API restart never duplicates bytes in the
+  full log.
+- The log end at the moment the `bootstrap` transition is accepted is the
+  READY offset, kept with the tail. Bytes before it are the operator's
+  bootstrap log; a trainee's view starts at it.
+- A deployment reaching COMPLETED, FAILED or CANCELLED drops its Valkey keys;
+  the full log stays until the retention sweep. Every write renews a one-day
+  TTL on the keys, so a tail whose drop was missed frees itself.
+- `GET /api/v1/deployments/{id}/console` gives an operator the full log.
 
 ## Viewers
 
 `WS /api/v1/deployments/{id}/attach` is the live view. It accepts either a
-signed operator request or a link session cookie, sends the buffer from the
-viewer's start offset, then every new byte raw.
+signed operator request, checked from the upgrade's headers, or a link
+session cookie; links arrive with roadmap item 8.
+
+- An optional query `offset` resumes a viewer that already holds the bytes
+  before it, when the tail still has it; otherwise the viewer gets the whole
+  tail.
+- The API sends a text frame `{"offset": n}` before the first bytes and
+  before any jump, then the console bytes raw as binary frames.
+- The socket closes with 1000 once the deployment is terminal.
 
 A viewer sends:
 
@@ -98,15 +142,17 @@ on `ttyS0`, and records an `r` event in the recording.
 
 Each viewer gets a queue capped by bytes held,
 `JATSZOTER_CONSOLE_VIEWER_BUFFER_BYTES`, 4 MiB by default. A viewer that
-falls behind the cap has its queue dropped and is resent from the buffer at
-its last acknowledged offset; if that is gone, the socket is closed and the
-browser reconnects. A stalled tab never grows API memory without bound.
+falls behind the cap has its queue dropped and is resent from the Valkey
+tail at the last offset it was sent; if the tail no longer has it, the
+socket closes with 4429 and the browser reconnects. A stalled tab never
+grows API memory without bound.
 
 ## Scaling
 
 The fan-out hub lives in the API process. Version one runs the console
 routes in one API process, so the agent socket and every viewer of a
-deployment meet in the same hub. Routing sockets by `deployment_id` across
+deployment meet in the same hub. The tail and the full log already live
+outside the process, in Valkey and the file store. Routing sockets by `deployment_id` across
 several processes is on the [roadmap](07-roadmap.md).
 
 ## Acceptance criteria
@@ -115,5 +161,8 @@ several processes is on the [roadmap](07-roadmap.md).
   writing it, and cannot type while the operator holds control, even with a
   modified client.
 - A revoked link closes the trainee socket and cannot be reopened.
-- An agent reconnect loses and duplicates no console byte.
+- An agent reconnect loses and duplicates no byte of the full log, and
+  neither does an agent restart.
+- An API restart with Valkey alive keeps the tail; without it, the full log
+  still has no gap and no duplicate.
 - A viewer that stops reading does not raise API memory past its cap.

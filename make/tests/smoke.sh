@@ -4,9 +4,15 @@ set -euo pipefail
 api=http://127.0.0.1:8080
 www=http://127.0.0.1:8081
 
-for tool in qemu-system-x86_64 qemu-img openssl jq curl; do
+for tool in qemu-system-x86_64 qemu-img xorriso openssl jq curl sha256sum; do
     if ! command -v "$tool" >/dev/null; then
         echo "smoke test needs $tool on PATH" >&2
+        exit 1
+    fi
+done
+for firmware in /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_VARS_4M.fd; do
+    if [ ! -r "$firmware" ]; then
+        echo "smoke test needs OVMF: $firmware is missing" >&2
         exit 1
     fi
 done
@@ -25,6 +31,7 @@ cleanup() {
         if [ -n "$group" ]; then kill -- "-$group" 2>/dev/null || true; fi
     done
     if [ -n "${logs:-}" ]; then kill "$logs" 2>/dev/null || true; fi
+    if [ -n "${part:-}" ]; then rm -f "$part"; fi
     rm -rf "$TEMP_DIR"
 }
 trap cleanup EXIT
@@ -80,14 +87,14 @@ vm_alive() {
         kill -0 "$pid" 2>/dev/null
 }
 
-vm_started() {
+vm_ready() {
     local status
     status="$(deployment_status)" || return 1
     if [ "$status" = FAILED ]; then
         echo "the deployment failed: $(signed GET "/api/v1/deployments/$deployment" | jq -r .reason)" >&2
         exit 1
     fi
-    [ "$status" = STARTING ] && vm_alive
+    [ "$status" = READY ]
 }
 
 vm_destroyed() {
@@ -95,6 +102,24 @@ vm_destroyed() {
         ! kill -0 "$qemu" 2>/dev/null &&
         [ ! -e "$TEMP_DIR/agent/vms/$deployment" ]
 }
+
+cached_sha256() {
+    sha256sum "$1" | cut -d' ' -f1
+}
+
+image="$SMOKE_CACHE/${SMOKE_IMAGE_URL##*/}"
+if [ ! -f "$image" ] || [ "$(cached_sha256 "$image")" != "$SMOKE_IMAGE_SHA256" ]; then
+    echo "downloading $SMOKE_IMAGE_URL..."
+    mkdir -p "$SMOKE_CACHE"
+    part="$image.part"
+    curl -fL --retry 3 -o "$part" "$SMOKE_IMAGE_URL"
+    if [ "$(cached_sha256 "$part")" != "$SMOKE_IMAGE_SHA256" ]; then
+        echo "the downloaded image does not match SMOKE_IMAGE_SHA256" >&2
+        exit 1
+    fi
+    mv "$part" "$image"
+    part=
+fi
 
 mkdir -m 700 "$TEMP_DIR"
 touch "$TEMP_DIR/api.log" "$TEMP_DIR/agent.log"
@@ -104,12 +129,12 @@ echo "smoke test, working dir: $TEMP_DIR"
 
 echo "serving the base image and the scenario bundle..."
 mkdir "$TEMP_DIR/www"
-qemu-img create -q -f qcow2 "$TEMP_DIR/www/base.qcow2" 64M
+ln -s "$image" "$TEMP_DIR/www/rocky-9.qcow2"
 tar -czf "$TEMP_DIR/www/nginx-502.tar.gz" -C "$ROOT/scenarios" nginx-502
 setsid "$VENV/bin/python" -m http.server --bind 127.0.0.1 8081 \
     --directory "$TEMP_DIR/www" >"$TEMP_DIR/www.log" 2>&1 &
 files=$!
-wait_for 30 curl -fs -o /dev/null "$www/base.qcow2"
+wait_for 30 curl -fs -o /dev/null "$www/nginx-502.tar.gz"
 
 # The API's local file store is data/storage under its working directory.
 echo "starting api..."
@@ -154,9 +179,8 @@ key="$(jq -r .credential.key <<<"$login")"
 unset login password
 
 echo "registering the image and the scenario..."
-digest="$(sha256sum "$TEMP_DIR/www/base.qcow2" | cut -d' ' -f1)"
 signed POST /api/v1/images \
-    "$(jq -cn --arg url "$www/base.qcow2" --arg digest "$digest" \
+    "$(jq -cn --arg url "$www/rocky-9.qcow2" --arg digest "$SMOKE_IMAGE_SHA256" \
         '{name: "rocky-9", url: $url, digest: $digest}')" >/dev/null
 scenario="$(signed POST /api/v1/scenarios "$(jq -cn --arg url "$www/nginx-502.tar.gz" '{url: $url}')")"
 bundle="$TEMP_DIR/data/storage/scenarios/nginx-502/$(jq -r .version <<<"$scenario").tar.gz"
@@ -165,10 +189,24 @@ if [ ! -f "$bundle" ]; then
     exit 1
 fi
 
-echo "deploying the scenario..."
-deployment="$(signed POST /api/v1/deployments \
-    "$(jq -cn --arg id "$(jq -r .id <<<"$scenario")" '{scenario_id: $id}')" | jq -r .id)"
-wait_for 120 vm_started
+if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+    accel=KVM
+else
+    accel="TCG, no usable /dev/kvm"
+fi
+echo "deploying the scenario under $accel; the boot takes minutes..."
+created="$(signed POST /api/v1/deployments \
+    "$(jq -cn --arg id "$(jq -r .id <<<"$scenario")" '{scenario_id: $id}')")"
+deployment="$(jq -r .id <<<"$created")"
+wait_for "$(($(jq -r .bootstrap_seconds <<<"$created") + 120))" vm_ready
+if ! vm_alive; then
+    echo "the VM is not running at READY" >&2
+    exit 1
+fi
+if [ -e "$TEMP_DIR/agent/vms/$deployment/seed.iso" ]; then
+    echo "seed.iso is still in the VM directory at READY" >&2
+    exit 1
+fi
 qemu="$(cat "$TEMP_DIR/agent/vms/$deployment/qemu.pid")"
 
 echo "stopping the deployment..."

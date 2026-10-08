@@ -178,6 +178,7 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
     disk.qcow2                 overlay over the base image
     vm.json                    deployment_id, vm_id, created_at
     seed.iso                   cloud-init NoCloud seed, removed once ejected
+    efivars.fd                 the VM's own UEFI variable store
     qemu.pid                   pid file of the daemonized QEMU
     qmp.sock                   QMP
     serial.sock                serial console
@@ -193,6 +194,13 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
 - QEMU is daemonized with a pid file, so a VM outlives an agent restart and
   reconciliation adopts it. It runs with KVM when `/dev/kvm` is usable and
   with TCG otherwise.
+- A VM boots through UEFI: QEMU maps the
+  [OVMF](https://github.com/tianocore/tianocore.github.io/wiki/OVMF) code
+  from `JATSZOTER_AGENT_OVMF_CODE` read-only and a 0600 copy of
+  `JATSZOTER_AGENT_OVMF_VARS` as `efivars.fd`. The defaults are
+  `/usr/share/OVMF/OVMF_CODE_4M.fd` and `/usr/share/OVMF/OVMF_VARS_4M.fd`,
+  so OVMF must be installed on every agent host. Rocky 9 GenericCloud
+  images reset in a loop under the default SeaBIOS firmware.
 - A VM is created over its cached base image as a qcow2 overlay, with QEMU
   and `qemu-img` from `JATSZOTER_AGENT_QEMU` and `JATSZOTER_AGENT_QEMU_IMG`.
   A VM that fails to start leaves no directory and no process. A VM is alive

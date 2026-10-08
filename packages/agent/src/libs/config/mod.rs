@@ -17,6 +17,8 @@ const GIB: u64 = 1 << 30;
 const DEFAULT_QEMU: &str = "qemu-system-x86_64";
 const DEFAULT_QEMU_IMG: &str = "qemu-img";
 const DEFAULT_XORRISO: &str = "xorriso";
+const DEFAULT_OVMF_CODE: &str = "/usr/share/OVMF/OVMF_CODE_4M.fd";
+const DEFAULT_OVMF_VARS: &str = "/usr/share/OVMF/OVMF_VARS_4M.fd";
 const PREFIX: &str = "JATSZOTER_AGENT_";
 const ENV_FILE: &str = "JATSZOTER_AGENT_ENV_FILE";
 
@@ -31,6 +33,8 @@ pub struct Config {
     pub qemu: PathBuf,
     pub qemu_img: PathBuf,
     pub xorriso: PathBuf,
+    pub ovmf_code: PathBuf,
+    pub ovmf_vars: PathBuf,
 }
 
 /// The environment as read, before any of it is checked.
@@ -45,6 +49,8 @@ pub struct RawConfig {
     pub qemu: Option<PathBuf>,
     pub qemu_img: Option<PathBuf>,
     pub xorriso: Option<PathBuf>,
+    pub ovmf_code: Option<PathBuf>,
+    pub ovmf_vars: Option<PathBuf>,
 }
 
 impl Config {
@@ -81,6 +87,8 @@ impl Config {
             qemu: raw.qemu.unwrap_or_else(|| DEFAULT_QEMU.into()),
             qemu_img: raw.qemu_img.unwrap_or_else(|| DEFAULT_QEMU_IMG.into()),
             xorriso: raw.xorriso.unwrap_or_else(|| DEFAULT_XORRISO.into()),
+            ovmf_code: raw.ovmf_code.unwrap_or_else(|| DEFAULT_OVMF_CODE.into()),
+            ovmf_vars: raw.ovmf_vars.unwrap_or_else(|| DEFAULT_OVMF_VARS.into()),
         })
     }
 

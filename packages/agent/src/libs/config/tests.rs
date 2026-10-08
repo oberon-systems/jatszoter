@@ -90,3 +90,31 @@ fn capacity_is_bounded() {
 
     assert!(Config::parse(too_many, None, Some("/home/alpha".into())).is_err());
 }
+
+#[test]
+fn the_firmware_defaults_to_the_ovmf_package() {
+    let config = Config::parse(raw(), None, Some("/home/alpha".into())).unwrap();
+
+    assert_eq!(
+        config.ovmf_code,
+        PathBuf::from("/usr/share/OVMF/OVMF_CODE_4M.fd")
+    );
+    assert_eq!(
+        config.ovmf_vars,
+        PathBuf::from("/usr/share/OVMF/OVMF_VARS_4M.fd")
+    );
+}
+
+#[test]
+fn the_firmware_paths_can_be_overridden() {
+    let custom = RawConfig {
+        ovmf_code: Some("/opt/edk2/code.fd".into()),
+        ovmf_vars: Some("/opt/edk2/vars.fd".into()),
+        ..raw()
+    };
+
+    let config = Config::parse(custom, None, Some("/home/alpha".into())).unwrap();
+
+    assert_eq!(config.ovmf_code, PathBuf::from("/opt/edk2/code.fd"));
+    assert_eq!(config.ovmf_vars, PathBuf::from("/opt/edk2/vars.fd"));
+}

@@ -22,6 +22,8 @@ fn runtime(dir: &TempDir) -> QemuRuntime {
         qemu: "/nonexistent/qemu-system-x86_64".into(),
         qemu_img: "/nonexistent/qemu-img".into(),
         xorriso: "/nonexistent/xorriso".into(),
+        ovmf_code: "/nonexistent/OVMF_CODE.fd".into(),
+        ovmf_vars: "/nonexistent/OVMF_VARS.fd".into(),
     };
     QemuRuntime::new(&config, HttpApi::new(config.api_url.clone()).unwrap()).unwrap()
 }

@@ -27,6 +27,7 @@ const QMP: &str = "qmp.sock";
 const SERIAL: &str = "serial.sock";
 pub const QGA: &str = "qga.sock";
 const SEED_ISO: &str = "seed.iso";
+const EFIVARS: &str = "efivars.fd";
 const SEED_DIR: &str = "seed";
 const SEED_DEVICE: &str = "seed0";
 const GIB: u64 = 1 << 30;
@@ -59,6 +60,8 @@ pub struct Tools {
     pub qemu: PathBuf,
     pub qemu_img: PathBuf,
     pub xorriso: PathBuf,
+    pub ovmf_code: PathBuf,
+    pub ovmf_vars: PathBuf,
 }
 
 /// The contents of `vm.json`.
@@ -97,7 +100,7 @@ struct ImageInfo {
     specific: Option<Value>,
 }
 
-pub fn qemu_args(spec: &VmSpec, dir: &Path, kvm: bool) -> Vec<OsString> {
+pub fn qemu_args(spec: &VmSpec, dir: &Path, kvm: bool, firmware: &Path) -> Vec<OsString> {
     let (accel, cpu) = if kvm { ("kvm", "host") } else { ("tcg", "max") };
     let words = |items: &[&str]| items.iter().map(OsString::from).collect::<Vec<_>>();
     let chardev = |id: &str, name: &str| {
@@ -123,6 +126,16 @@ pub fn qemu_args(spec: &VmSpec, dir: &Path, kvm: bool) -> Vec<OsString> {
         &format!("{}M", spec.memory_mib),
         "-drive",
     ]);
+    args.push(option(
+        "if=pflash,format=raw,unit=0,readonly=on,file=",
+        firmware,
+    ));
+    args.push("-drive".into());
+    args.push(option(
+        "if=pflash,format=raw,unit=1,file=",
+        &dir.join(EFIVARS),
+    ));
+    args.push("-drive".into());
     args.push(option("if=virtio,format=qcow2,file=", &dir.join(DISK)));
     if spec.seed.is_some() {
         args.push("-drive".into());
@@ -234,6 +247,9 @@ async fn start(
             })?;
     }
 
+    let vars = fs::read(&tools.ovmf_vars)
+        .map_err(|err| AgentError::Vm(format!("{}: {err}", tools.ovmf_vars.display())))?;
+    write_private(&dir.join(EFIVARS), &vars)?;
     let base = std::path::absolute(&spec.base)?;
     let info = run(Command::new(&tools.qemu_img)
         .args(["info", "--output=json"])
@@ -246,7 +262,8 @@ async fn start(
         .arg(dir.join(DISK))
         .arg(format!("{}G", spec.disk_gib)))
     .await?;
-    run(Command::new(&tools.qemu).args(qemu_args(spec, dir, kvm_usable()))).await?;
+    let args = qemu_args(spec, dir, kvm_usable(), &tools.ovmf_code);
+    run(Command::new(&tools.qemu).args(args)).await?;
 
     let socket = dir.join(QMP);
     let deadline = Instant::now() + SOCKET_WAIT;

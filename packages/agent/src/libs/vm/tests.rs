@@ -20,6 +20,8 @@ use crate::libs::config::prepare_private_dir;
 use crate::libs::error::AgentError;
 use crate::libs::qmp::Qmp;
 
+const FIRMWARE: &str = "/ovmf/OVMF_CODE.fd";
+
 fn spec(deployment_id: &str, base: &Path) -> VmSpec {
     VmSpec {
         deployment_id: deployment_id.into(),
@@ -44,7 +46,15 @@ fn missing_tools() -> Tools {
         qemu: "/nonexistent/qemu-system-x86_64".into(),
         qemu_img: "/nonexistent/qemu-img".into(),
         xorriso: "/nonexistent/xorriso".into(),
+        ovmf_code: "/nonexistent/OVMF_CODE.fd".into(),
+        ovmf_vars: "/nonexistent/OVMF_VARS.fd".into(),
     }
+}
+
+fn vars_template(dir: &Path) -> PathBuf {
+    let path = dir.join("OVMF_VARS.fd");
+    fs::write(&path, b"vars").unwrap();
+    path
 }
 
 fn strings(args: Vec<OsString>) -> Vec<String> {
@@ -116,6 +126,7 @@ fn the_argv_for_kvm() {
         &spec("alpha", Path::new("/base.qcow2")),
         dir,
         true,
+        Path::new(FIRMWARE),
     ));
 
     assert_eq!(
@@ -135,6 +146,10 @@ fn the_argv_for_kvm() {
             "2",
             "-m",
             "1024M",
+            "-drive",
+            "if=pflash,format=raw,unit=0,readonly=on,file=/ovmf/OVMF_CODE.fd",
+            "-drive",
+            "if=pflash,format=raw,unit=1,file=/state/vms/alpha/efivars.fd",
             "-drive",
             "if=virtio,format=qcow2,file=/state/vms/alpha/disk.qcow2",
             "-netdev",
@@ -170,6 +185,7 @@ fn the_argv_for_tcg() {
         &spec("alpha", Path::new("/base.qcow2")),
         dir,
         false,
+        Path::new(FIRMWARE),
     ));
 
     assert!(args
@@ -188,9 +204,13 @@ fn a_comma_in_a_path_is_escaped() {
         &spec("alpha", Path::new("/base.qcow2")),
         dir,
         true,
+        Path::new(FIRMWARE),
     ));
 
     assert!(args.contains(&"if=virtio,format=qcow2,file=/state,,beta/vms/alpha/disk.qcow2".into()));
+    assert!(
+        args.contains(&"if=pflash,format=raw,unit=1,file=/state,,beta/vms/alpha/efivars.fd".into())
+    );
     assert!(args.contains(&"/state,beta/vms/alpha/qemu.pid".into()));
 }
 
@@ -201,8 +221,8 @@ fn a_seed_adds_the_cdrom_and_nothing_else() {
     let mut seeded = plain.clone();
     seeded.seed = Some(seed());
 
-    let without = strings(qemu_args(&plain, dir, true));
-    let mut with = strings(qemu_args(&seeded, dir, true));
+    let without = strings(qemu_args(&plain, dir, true, Path::new(FIRMWARE)));
+    let mut with = strings(qemu_args(&seeded, dir, true, Path::new(FIRMWARE)));
 
     let at = with.iter().position(|arg| arg.contains("id=seed")).unwrap() - 1;
     let cdrom: Vec<String> = with.drain(at..at + 4).collect();
@@ -435,6 +455,24 @@ async fn an_id_that_is_not_a_plain_word_is_refused() {
 async fn a_failed_start_leaves_no_directory() {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path().join("vms");
+    let mut tools = missing_tools();
+    tools.ovmf_vars = vars_template(tmp.path());
+
+    let err = create(&root, &spec("alpha", Path::new("/base.qcow2")), &tools)
+        .await
+        .unwrap_err();
+
+    assert!(
+        matches!(&err, AgentError::Vm(message) if message.contains("qemu-img")),
+        "{err}"
+    );
+    assert!(list(&root).unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_missing_vars_template_fails_the_start_and_leaves_no_directory() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path().join("vms");
 
     let err = create(
         &root,
@@ -445,13 +483,13 @@ async fn a_failed_start_leaves_no_directory() {
     .unwrap_err();
 
     assert!(
-        matches!(&err, AgentError::Vm(message) if message.contains("qemu-img")),
+        matches!(&err, AgentError::Vm(message) if message.contains("OVMF_VARS.fd")),
         "{err}"
     );
     assert!(list(&root).unwrap().is_empty());
 }
 
-// Needs qemu-system-x86_64, qemu-img and xorriso on PATH, so it runs only with `-- --ignored`.
+// Needs qemu-system-x86_64, qemu-img, xorriso and OVMF, so it runs only with `-- --ignored`.
 #[tokio::test]
 #[ignore]
 async fn a_real_vm_starts_is_listed_and_is_destroyed() {
@@ -469,6 +507,8 @@ async fn a_real_vm_starts_is_listed_and_is_destroyed() {
         qemu: "qemu-system-x86_64".into(),
         qemu_img: "qemu-img".into(),
         xorriso: "xorriso".into(),
+        ovmf_code: "/usr/share/OVMF/OVMF_CODE_4M.fd".into(),
+        ovmf_vars: "/usr/share/OVMF/OVMF_VARS_4M.fd".into(),
     };
     let mut spec = spec("alpha", &base);
     spec.cpus = 1;
@@ -482,6 +522,9 @@ async fn a_real_vm_starts_is_listed_and_is_destroyed() {
     let iso = vm.dir.join("seed.iso");
     let mode = fs::metadata(&iso).unwrap().permissions().mode() & 0o777;
     let unpacked = vm.dir.join("seed").exists();
+    let vars = vm.dir.join("efivars.fd");
+    let vars_mode = fs::metadata(&vars).unwrap().permissions().mode() & 0o777;
+    let vars_copied = fs::read(&vars).unwrap() == fs::read(&tools.ovmf_vars).unwrap();
     let blocks = Qmp::connect(&vm.dir.join("qmp.sock"), Duration::from_secs(5))
         .await
         .unwrap()
@@ -494,6 +537,8 @@ async fn a_real_vm_starts_is_listed_and_is_destroyed() {
 
     assert_eq!(mode, 0o600);
     assert!(!unpacked);
+    assert_eq!(vars_mode, 0o600);
+    assert!(vars_copied);
     assert!(blocks
         .as_array()
         .unwrap()

@@ -30,7 +30,7 @@ to cover it. An item marked Done has landed on `main`.
    - Smoke: log in, register the sample scenario by URL, deploy it; the
      deployment is assigned, started and destroyed on stop.
 5. Merged into 4.
-6. cloud-init bootstrap and the bootstrap marker.
+6. cloud-init bootstrap and the bootstrap marker. Done.
    - API: the seed route renders user-data and meta-data from the stored
      bundle.
    - Agent: fetch the seed, pack, attach and eject the seed ISO, probe the

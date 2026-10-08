@@ -1,133 +1,70 @@
-# 01 - Docs: write the item 6 contracts
+# 01 - Docs: the item 7 contracts
 
-Read `promts/00-README.md` first; its ground rules apply. If the
-`write-docs` skill is available, use it; markdownlint in pre-commit gates the
-result either way.
+Read `promts/00-README.md` first; its ground rules apply. Then read
+`docs/project/04-console.md` in full, Agent protocol and VM runtime in
+`docs/project/01-architecture.md`, Writing in `docs/project/05-recording.md`
+and `docs/project/07-roadmap.md`.
 
 ## Goal
 
-`AGENTS.md` says a change of design is proposed in `docs/` before code. This
-prompt changes documentation only, no code. Later prompts implement exactly
-what is written here, so be precise about routes, fields, paths and states.
+`docs/` states every decision in the README of this prompt set, so prompts
+02 to 06 implement a written contract. No code changes.
 
-## Files
+## Established facts
 
-`docs/project/01-architecture.md`, `02-domain-model.md`,
-`03-scenario-format.md`, `06-security.md`, `07-roadmap.md`. Nothing else.
+- `04-console.md` already describes the pipeline, viewers, links, take
+  control, resize, backpressure and scaling; several lines predate these
+  decisions:
+  - "one WebSocket per READY deployment" - it is per live VM now;
+  - the console buffer "up to `JATSZOTER_CONSOLE_LIMIT_BYTES`" - it is now
+    a Valkey tail plus a full log in the file store, two settings;
+  - "Bytes produced before READY belong to the operator's bootstrap log
+    only" stays true and now has a mechanism: the READY offset.
+- `01-architecture.md` lists the agent routes, among them
+  `WS .../console`, and the VM directory layout without `console.log`.
+- `05-recording.md` streams the trainee's recording from the console bytes
+  the API receives; item 9 implements it and nothing here changes that.
 
-## Changes
+## Scope
 
-### Agent protocol (`01-architecture.md`)
+- `docs/project/04-console.md`:
+  - Pipeline: QEMU writes `console.log` itself; one socket per live VM in
+    STARTING, BOOTSTRAPPING or READY; the frame and reply format; the agent
+    moves its offset to the API's answer, backwards too; poll 50 ms,
+    reconnect 5 s, no HTTP fallback; close code 4413 when the log is full
+    and the agent stops shipping that deployment.
+  - A new section on what the API holds: the Valkey tail
+    (`JATSZOTER_CONSOLE_TAIL_BYTES`, 8 MiB), the full log
+    `consoles/<deployment_id>.log` in the file store
+    (`JATSZOTER_CONSOLE_LIMIT_BYTES`, 64 MiB), the READY offset taken when
+    `bootstrap` is accepted, the download route, and what a terminal status
+    drops.
+  - Viewers: a new viewer gets the tail, older history stays in the browser;
+    in version one item 7 serves operators only, links follow in item 8.
+  - Backpressure: the per-viewer cap and the resend from the Valkey tail.
+  - Acceptance criteria: replace "an agent reconnect loses and duplicates no
+    console byte" with the same claim for the full log, and add that an API
+    restart with Valkey alive keeps the tail.
+- `docs/project/01-architecture.md`: `console.log` in the VM directory
+  listing; a VM runtime bullet on the serial log file; the agent protocol
+  list gains `GET /api/v1/deployments/{id}/console` where the operator
+  routes are listed, or a pointer to 04 if they are not listed there.
+- `docs/project/07-roadmap.md`: item 7 lists what this set delivers (API,
+  agent, smoke), in the style of item 6.
 
-- Add to the route list:
+## Failure behaviour
 
-  ```text
-  GET  /api/v1/agents/{agent_id}/deployments/{id}/seed       signed
-  ```
+None: documentation only.
 
-- The seed is `{"user_data": "...", "meta_data": "..."}`, the two NoCloud
-  files as text. The API renders them from the stored bundle of the
-  deployment's scenario version (see 03 Bootstrap).
-- It is served only for a deployment the agent holds, only while that
-  deployment is STARTING, and only under a live lease: 409 otherwise; an
-  unknown deployment, or another agent's, is 404.
+## Tests
 
-### VM runtime (`01-architecture.md`)
-
-- The directory listing gains `seed.iso`, the cloud-init NoCloud seed,
-  removed once it is ejected; `vm.json` holds `deployment_id`, `vm_id` and
-  `created_at` (unix seconds).
-- QEMU attaches `seed.iso` read-only as a CD-ROM. After the marker says
-  `ok`, the agent ejects it through QMP and deletes the file.
-- The agent packs the ISO with `xorriso -as mkisofs`, volume label
-  `cidata`, from `JATSZOTER_AGENT_XORRISO` (default `xorriso`).
-- Replace the bullet saying the seed ISO joins the VM directory with item 6.
-
-### Data flows (`01-architecture.md`)
-
-Create and bootstrap becomes:
-
-1. Operator creates the deployment (unchanged).
-2. A heartbeat assigns it; the agent moves it to STARTING, fetches the image
-   and the seed, packs the seed ISO and boots the VM.
-3. Once the guest agent answers `guest-ping`, the agent moves the
-   deployment to BOOTSTRAPPING.
-4. When the marker reads `ok`, the agent ejects the seed ISO and moves the
-   deployment to READY. A marker `failed <step> <exit code>` moves it to
-   FAILED with the marker as reason; so does `bootstrap_seconds` passing,
-   with reason `bootstrap timeout`.
-
-### Reconciliation (`01-architecture.md`)
-
-- A live VM whose deployment is STARTING or BOOTSTRAPPING is probed once per
-  round: a short task pings the guest agent or reads the marker and checks
-  the deadline, then ends. Nothing waits for a guest in a long task, so a
-  stop is never held up by a bootstrap.
-- The deadline counts from `created_at` in `vm.json`, so an agent restart
-  neither resets nor loses it.
-- A deployment the API moved to STOPPING while a start task for it is still
-  running has that task aborted; the stop then destroys whatever it left.
-
-### Bootstrap (`03-scenario-format.md`)
-
-Keep the six steps and state how they are carried out:
-
-- `user-data` is a `#cloud-config` document. `meta-data` holds
-  `instance-id: <vm_id>` and `local-hostname: <scenario id>`.
-- The trainee user is created through cloud-config `users`, with
-  passwordless sudo when `sudo` is true, and no password.
-- `packages` always gains `qemu-guest-agent`. On RHEL-family guests the
-  seed also allows the guest agent's `guest-file-*` and `guest-exec*` calls,
-  which the distribution blocks by default, and restarts it.
-- The step scripts and one driver script are written under
-  `/var/lib/jatszoter/`, mode 0700, owned by root. `runcmd` runs the driver,
-  which runs `install`, `configure`, `break` in order with output to
-  `/var/lib/jatszoter/bootstrap.log`, stops at the first failure, removes
-  the scripts, the log and cloud-init's copies of `user-data`, sets up the
-  serial getty, and writes the marker last.
-- The marker is `/var/lib/jatszoter/marker`: `ok`, or
-  `failed <step> <exit code>`. The agent reads it with `guest-file-open`,
-  `guest-file-read` and `guest-file-close`.
-- The getty on `ttyS0` logs in as the trainee user without a password and
-  clears the screen.
-- Add the trainee fallbacks to the settings table:
-  `trainee.user` from `JATSZOTER_DEFAULT_TRAINEE_USER` (default `trainee`),
-  `trainee.sudo` from `JATSZOTER_DEFAULT_TRAINEE_SUDO` (default `false`).
-- Acceptance criteria: `scenarios/nginx-502` bootstraps to READY on a stock
-  Rocky Linux 9 GenericCloud image registered as `rocky-9`, not `debian-12`.
-
-### Domain model (`02-domain-model.md`)
-
-Only where it names `debian-12` or the bootstrap trigger: the "Who moves
-what" rows stay, but STARTING to BOOTSTRAPPING reads "guest agent answers
-`guest-ping`" and BOOTSTRAPPING to READY reads "marker `ok`, seed ejected".
-
-### Security (`06-security.md`)
-
-- Guest and host: the seed enables the guest agent's file and exec calls;
-  that is no loss, since the guest is not a security boundary.
-- Scenario secrecy: the seed route answers only the agent holding the
-  deployment, only while it is STARTING; the agent never logs a seed, keeps
-  `seed.iso` 0600 inside the VM directory and deletes it after the eject.
-
-### Roadmap (`07-roadmap.md`)
-
-Rewrite item 6 as:
-
-```text
-6. cloud-init bootstrap and the bootstrap marker.
-   - API: the seed route renders user-data and meta-data from the stored
-     bundle.
-   - Agent: fetch the seed, pack, attach and eject the seed ISO, probe the
-     guest agent and the marker, fail on the marker or the deadline.
-   - Scenario: nginx-502 version 2 on rocky-9.
-   - Smoke: a Rocky 9 deployment reaches READY and is destroyed on stop.
-```
+None. The documents pass markdownlint through pre-commit, and
+`grep -nP '[^\x00-\x7F]' docs/project/*.md` prints nothing.
 
 ## Acceptance
 
-- `.venv/bin/pre-commit run --files` on every edited file passes.
-- Every route, field, path, setting and state named above appears in the
-  docs, and nothing contradicts it elsewhere in `docs/` or `AGENTS.md`
-  (`grep -rn "debian-12\|joins the VM directory" docs AGENTS.md` finds
-  nothing stale).
+- Every decision in `promts/00-README.md` is findable in `docs/`, worded as
+  a contract rather than a plan.
+- No document contradicts another: the agent socket lifetime, the two
+  settings and the close code read the same in 01 and 04.
+- `.venv/bin/pre-commit run --files` on every edited document passes.

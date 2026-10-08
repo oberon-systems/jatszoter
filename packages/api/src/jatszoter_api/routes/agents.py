@@ -181,11 +181,20 @@ def desired(agent: LeasedDep) -> list[DesiredOut]:
 
 @router.post("/{agent_id}/deployments/{deployment_id}/transition")
 def transition(
-    body: TransitionIn, agent: LeasedDep, session: SessionDep, deployment_id: uuid.UUID
+    body: TransitionIn,
+    agent: LeasedDep,
+    session: SessionDep,
+    settings: SettingsDep,
+    deployment_id: uuid.UUID,
 ) -> TransitionOut:
     deployment = _held(session, agent, deployment_id)
     deployment.transition(
-        body.event, body.expected, body.reason, actor=Actor.AGENT, agent_id=agent.id
+        body.event,
+        body.expected,
+        body.reason,
+        actor=Actor.AGENT,
+        agent_id=agent.id,
+        filer_url=None if settings.seaweed_url is None else str(settings.seaweed_url),
     )
     return TransitionOut(id=deployment.id, status=deployment.status)
 

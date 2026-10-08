@@ -9,6 +9,7 @@ from jatszoter_api.errors import InvalidTransitionError
 from jatszoter_api.lifecycle import TERMINAL, Actor, DeploymentStatus, advance
 from jatszoter_api.models._base import Base
 from jatszoter_api.models.check import Check
+from jatszoter_api.models.console import Console
 from jatszoter_api.models.image import Image
 from jatszoter_api.models.link import Link
 from jatszoter_api.models.scenario import Scenario
@@ -37,6 +38,7 @@ class Deployment(Base, table=True):
     _image: Image | None = PrivateAttr(default=None)
     _links: list[Link] | None = PrivateAttr(default=None)
     _checks: list[Check] | None = PrivateAttr(default=None)
+    _console: Console | None = PrivateAttr(default=None)
 
     def __init__(self, session: Session, **data: Any) -> None:
         super().__init__(session, **data)
@@ -78,6 +80,12 @@ class Deployment(Base, table=True):
             self._checks = Check._load(self._session, deployment_id=self.id)
         return self._checks
 
+    @property
+    def console(self) -> Console:
+        if not self._console:
+            self._console = Console(self.id)
+        return self._console
+
     def assign(self, agent_id: uuid.UUID) -> bool:
         """Take this PENDING deployment for `agent_id`; False once someone else got it first."""
         self._session.refresh(self, with_for_update=True)
@@ -104,6 +112,7 @@ class Deployment(Base, table=True):
         *,
         actor: Actor,
         agent_id: uuid.UUID | None = None,
+        filer_url: str | None = None,
     ) -> None:
         target = advance(expected, event, actor)
         if target is DeploymentStatus.FAILED and not reason:
@@ -131,3 +140,7 @@ class Deployment(Base, table=True):
                 if link.revoked_at is None:
                     link.revoked_at = now
         self.save()
+        if target is DeploymentStatus.READY:
+            self.console.mark_ready(filer_url)
+        if target in TERMINAL:
+            self.console.drop()

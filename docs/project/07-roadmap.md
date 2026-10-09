@@ -37,7 +37,7 @@ to cover it. An item marked Done has landed on `main`.
      guest agent and the marker, fail on the marker or the deadline.
    - Scenario: nginx-502 version 2 on rocky-9.
    - Smoke: a Rocky 9 deployment reaches READY and is destroyed on stop.
-7. Console pipeline with bounded viewer queues ([04](04-console.md)).
+7. Console pipeline with bounded viewer queues ([04](04-console.md)). Done.
    - API: the agent console socket, the Valkey tail and the full log in the
      file store, the hub, operator attach and the log download.
    - Agent: QEMU logs the serial console to a file; the agent ships it over

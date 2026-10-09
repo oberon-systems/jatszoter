@@ -103,6 +103,47 @@ vm_destroyed() {
         [ ! -e "$TEMP_DIR/agent/vms/$deployment" ]
 }
 
+# Attaches as the operator and reads until it holds an offset and console bytes.
+viewer_py='
+import hashlib, hmac, json, os, sys, time
+from urllib.parse import urlsplit
+from websockets.exceptions import WebSocketException
+from websockets.sync.client import connect
+
+url = os.environ["VIEWER_URL"]
+ts = str(int(time.time()))
+message = "\n".join([ts, "GET", urlsplit(url).path, hashlib.sha256(b"").hexdigest()])
+key = os.environ["VIEWER_KEY"].encode()
+headers = {
+    "X-Owner": os.environ["VIEWER_OWNER"],
+    "X-Credential": os.environ["VIEWER_CREDENTIAL"],
+    "X-Timestamp": ts,
+    "X-Signature": hmac.new(key, message.encode(), hashlib.sha256).hexdigest(),
+}
+deadline = time.monotonic() + 30
+offset, received = None, 0
+try:
+    with connect(url, additional_headers=headers, open_timeout=30) as socket:
+        while offset is None or not received:
+            frame = socket.recv(timeout=max(deadline - time.monotonic(), 0))
+            if isinstance(frame, str):
+                offset = json.loads(frame).get("offset", offset)
+            else:
+                received += len(frame)
+except TimeoutError:
+    sys.exit(f"the viewer timed out with offset {offset} and {received} bytes")
+except (OSError, WebSocketException) as err:
+    sys.exit(f"the viewer was refused or dropped: {type(err).__name__}")
+print(f"the viewer got offset {offset} and {received} bytes")
+'
+
+# The key reaches the viewer through its environment, never a command line.
+viewer() {
+    VIEWER_URL="ws://${api#http://}/api/v1/deployments/$deployment/attach" \
+        VIEWER_OWNER="$owner" VIEWER_CREDENTIAL="$credential" VIEWER_KEY="$key" \
+        "$VENV/bin/python" -I -c "$viewer_py"
+}
+
 cached_sha256() {
     sha256sum "$1" | cut -d' ' -f1
 }
@@ -208,6 +249,22 @@ if [ -e "$TEMP_DIR/agent/vms/$deployment/seed.iso" ]; then
     exit 1
 fi
 qemu="$(cat "$TEMP_DIR/agent/vms/$deployment/qemu.pid")"
+
+echo "attaching to the console as the operator..."
+viewer
+signed GET "/api/v1/deployments/$deployment/console" >"$TEMP_DIR/console.download"
+if [ ! -s "$TEMP_DIR/console.download" ]; then
+    echo "the downloaded console log is empty" >&2
+    exit 1
+fi
+if ! grep -qa 'Rocky Linux' "$TEMP_DIR/console.download"; then
+    echo "the downloaded console log does not hold the boot" >&2
+    exit 1
+fi
+if [ ! -s "$TEMP_DIR/agent/vms/$deployment/console.log" ]; then
+    echo "console.log is missing or empty in the VM directory" >&2
+    exit 1
+fi
 
 echo "stopping the deployment..."
 signed POST "/api/v1/deployments/$deployment/stop" >/dev/null

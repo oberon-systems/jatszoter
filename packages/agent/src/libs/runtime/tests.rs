@@ -108,6 +108,43 @@ async fn a_start_of_a_deployment_turned_stopping_is_aborted_before_the_plan() {
 }
 
 #[tokio::test]
+async fn a_console_of_a_deployment_turned_stopping_is_aborted_before_the_plan() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut runtime = runtime(&dir);
+    let (held, released) = oneshot::channel::<()>();
+    let task = tokio::spawn(async move {
+        let _held = held;
+        std::future::pending::<()>().await;
+    });
+    runtime.consoles.insert("alpha".into(), task);
+    let auth: Auth = Arc::new(RwLock::new(None));
+
+    runtime.reconcile(&auth, vec![stopping("alpha")]);
+
+    assert!(runtime.consoles.is_empty());
+    assert_eq!(runtime.kinds.get("alpha"), Some(&Kind::Stop));
+    assert!(released.await.is_err());
+}
+
+#[tokio::test]
+async fn fencing_empties_the_consoles() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut runtime = runtime(&dir);
+    let (held, mut released) = oneshot::channel::<()>();
+    let task = tokio::spawn(async move {
+        let _held = held;
+        std::future::pending::<()>().await;
+    });
+    runtime.consoles.insert("alpha".into(), task);
+
+    runtime.destroy_all().unwrap();
+    runtime.fence.take().unwrap().await.unwrap();
+
+    assert!(runtime.consoles.is_empty());
+    assert_eq!(released.try_recv(), Err(TryRecvError::Closed));
+}
+
+#[tokio::test]
 async fn a_stop_in_flight_is_left_running() {
     let dir = tempfile::tempdir().unwrap();
     let mut runtime = runtime(&dir);

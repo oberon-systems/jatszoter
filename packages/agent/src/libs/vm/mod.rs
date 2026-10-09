@@ -25,6 +25,7 @@ const DISK: &str = "disk.qcow2";
 const PID_FILE: &str = "qemu.pid";
 const QMP: &str = "qmp.sock";
 const SERIAL: &str = "serial.sock";
+pub const CONSOLE_LOG: &str = "console.log";
 pub const QGA: &str = "qga.sock";
 const SEED_ISO: &str = "seed.iso";
 const EFIVARS: &str = "efivars.fd";
@@ -155,7 +156,10 @@ pub fn qemu_args(spec: &VmSpec, dir: &Path, kvm: bool, firmware: &Path) -> Vec<O
         "virtio-net-pci,netdev=net0",
         "-chardev",
     ]));
-    args.push(chardev("serial0", SERIAL));
+    let mut serial = chardev("serial0", SERIAL);
+    serial.push(option(",logfile=", &dir.join(CONSOLE_LOG)));
+    serial.push(",logappend=on");
+    args.push(serial);
     args.extend(words(&[
         "-serial",
         "chardev:serial0",

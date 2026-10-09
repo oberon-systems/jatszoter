@@ -1,10 +1,10 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tokio::task::{JoinHandle, JoinSet};
-use tokio::time::timeout;
+use tokio::time::{sleep, timeout};
 use tracing::Instrument;
 use url::Url;
 
@@ -12,11 +12,12 @@ use crate::libs::agent::{Auth, Runtime};
 use crate::libs::api::{Api, Desired, Event, HttpApi, Moved, Seed, Signed, Status};
 use crate::libs::bootstrap::{self, Verdict, MARKER};
 use crate::libs::config::Config;
+use crate::libs::console;
 use crate::libs::error::AgentError;
 use crate::libs::images::ImageCache;
 use crate::libs::qga::Qga;
 use crate::libs::reconcile::{plan, Action};
-use crate::libs::vm::{self, Tools, VmSpec};
+use crate::libs::vm::{self, OnDisk, Tools, VmSpec};
 
 // Bounds how long a task holds the credential, so a refresh is never held off.
 const SIGN_WAIT: Duration = Duration::from_secs(15);
@@ -26,9 +27,13 @@ const PROBE_WAIT: Duration = Duration::from_secs(15);
 const QGA_WAIT: Duration = Duration::from_secs(5);
 const MARKER_MAX: usize = 256;
 const OVERDUE: &str = "bootstrap timeout";
+const CONSOLE_RETRY: Duration = Duration::from_secs(5);
+
+type Full = Arc<Mutex<HashSet<String>>>;
 
 struct Shared {
     api: HttpApi,
+    api_url: Url,
     images: ImageCache,
     root: PathBuf,
     tools: Tools,
@@ -60,6 +65,8 @@ pub struct QemuRuntime {
     capacity: u32,
     tasks: HashMap<String, JoinHandle<()>>,
     kinds: HashMap<String, Kind>,
+    consoles: HashMap<String, JoinHandle<()>>,
+    full: Full,
     fence: Option<JoinHandle<()>>,
 }
 
@@ -68,6 +75,7 @@ impl QemuRuntime {
         Ok(Self {
             shared: Arc::new(Shared {
                 api,
+                api_url: config.api_url.clone(),
                 images: ImageCache::new(
                     &config.state_dir.join("images"),
                     config.image_limit_bytes,
@@ -84,6 +92,8 @@ impl QemuRuntime {
             capacity: config.capacity,
             tasks: HashMap::new(),
             kinds: HashMap::new(),
+            consoles: HashMap::new(),
+            full: Full::default(),
             fence: None,
         })
     }
@@ -105,6 +115,47 @@ impl QemuRuntime {
             }
         }
         aborted
+    }
+
+    // Console tasks live outside `tasks`: they neither make a deployment busy nor take capacity.
+    fn keep_consoles(&mut self, auth: &Auth, desired: &[Desired], on_disk: &[OnDisk]) {
+        let wanted: Vec<&Desired> = desired
+            .iter()
+            .filter(|item| {
+                matches!(
+                    item.status,
+                    Status::Starting | Status::Bootstrapping | Status::Ready
+                ) && vm::valid_id(&item.id)
+                    && on_disk
+                        .iter()
+                        .any(|vm| vm.alive && vm.dir == self.shared.root.join(&item.id))
+            })
+            .collect();
+        self.consoles.retain(|id, task| {
+            if wanted.iter().any(|item| &item.id == id) {
+                return !task.is_finished();
+            }
+            tracing::info!(deployment_id = %id, "aborting the console task");
+            task.abort();
+            false
+        });
+        let mut full = self.full.lock().unwrap_or_else(PoisonError::into_inner);
+        full.retain(|id| desired.iter().any(|item| &item.id == id));
+        for item in wanted {
+            if self.consoles.contains_key(&item.id) || full.contains(&item.id) {
+                continue;
+            }
+            let span =
+                tracing::info_span!("deployment", deployment_id = %item.id, vm_id = %item.vm_id);
+            let work = ship_console(
+                Arc::clone(&self.shared),
+                Arc::clone(auth),
+                item.id.clone(),
+                Arc::clone(&self.full),
+            );
+            self.consoles
+                .insert(item.id.clone(), tokio::spawn(work.instrument(span)));
+        }
     }
 }
 
@@ -128,6 +179,7 @@ impl Runtime for QemuRuntime {
                 return;
             }
         };
+        self.keep_consoles(auth, &desired, &on_disk);
         let mut aborted = self.abort_stopping(&desired);
         let busy: HashSet<String> = self.tasks.keys().cloned().collect();
         for action in plan(&desired, &on_disk, &busy, self.capacity) {
@@ -161,6 +213,7 @@ impl Runtime for QemuRuntime {
         let aborted: Vec<_> = self
             .tasks
             .drain()
+            .chain(self.consoles.drain())
             .map(|(_, task)| {
                 task.abort();
                 task
@@ -199,6 +252,24 @@ async fn fence(root: &Path) {
         }
     }
     tracing::info!("fenced");
+}
+
+async fn ship_console(shared: Arc<Shared>, auth: Auth, deployment_id: String, full: Full) {
+    let log = shared.root.join(&deployment_id).join(vm::CONSOLE_LOG);
+    loop {
+        match console::ship(&shared.api_url, &auth, &deployment_id, &log).await {
+            Ok(true) => {
+                tracing::warn!("the console log is full; shipping stops");
+                full.lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .insert(deployment_id);
+                return;
+            }
+            Ok(false) => tracing::info!("the console socket closed"),
+            Err(err) => tracing::warn!(error = %err, "the console socket failed"),
+        }
+        sleep(CONSOLE_RETRY).await;
+    }
 }
 
 async fn run(shared: Arc<Shared>, auth: Auth, action: Action, after: Option<JoinHandle<()>>) {

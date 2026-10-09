@@ -157,7 +157,8 @@ fn the_argv_for_kvm() {
             "-device",
             "virtio-net-pci,netdev=net0",
             "-chardev",
-            "socket,id=serial0,server=on,wait=off,path=/state/vms/alpha/serial.sock",
+            "socket,id=serial0,server=on,wait=off,path=/state/vms/alpha/serial.sock,\
+             logfile=/state/vms/alpha/console.log,logappend=on",
             "-serial",
             "chardev:serial0",
             "-device",
@@ -212,6 +213,11 @@ fn a_comma_in_a_path_is_escaped() {
         args.contains(&"if=pflash,format=raw,unit=1,file=/state,,beta/vms/alpha/efivars.fd".into())
     );
     assert!(args.contains(&"/state,beta/vms/alpha/qemu.pid".into()));
+    assert!(args.contains(
+        &"socket,id=serial0,server=on,wait=off,path=/state,,beta/vms/alpha/serial.sock,\
+          logfile=/state,,beta/vms/alpha/console.log,logappend=on"
+            .into()
+    ));
 }
 
 #[test]

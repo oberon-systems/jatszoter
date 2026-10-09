@@ -44,16 +44,22 @@ to cover it. An item marked Done has landed on `main`.
      one WebSocket per live VM.
    - Smoke: an operator viewer receives console output after READY and the
      downloaded log holds the boot.
-8. Links, take control.
-   - Agent: pass terminal input and resize from the API to the guest.
-   - Smoke: a trainee link opens the terminal; take control cuts its input.
+8. Links, take control ([04](04-console.md#links)).
+   - API: users made by the operator, the trainee link on create, link
+     issue and revoke, the link session cookie, attach by role, the control
+     holder, keys and resize passed down the agent's console socket.
+   - Agent: write keys into the serial socket and apply a resize through
+     the guest agent.
+   - Smoke: a trainee link opens the terminal and types; take control cuts
+     its input; a resize reaches the guest; a revoked link opens nothing.
 9. Recording and replay ([05](05-recording.md)).
    - Agent: no change; the API records the stream it already receives.
    - Smoke: a session leaves a recording that replays.
 10. Checks through the guest agent.
     - Agent: run pending checks in the guest and post the result.
     - Smoke: a check fails before the fix and passes after it.
-11. Web UI, design-first in Penpot: design system, then each screen.
+11. Web UI, design-first in Penpot: design system, then each screen; CSRF
+    tokens on state-changing requests.
     - Agent: no change.
     - Smoke: the operator and trainee pages load against the smoke stand.
 12. Hardening: limits, TTL sweeps.

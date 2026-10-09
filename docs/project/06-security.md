@@ -65,7 +65,10 @@ operator has not taken control.
   holds: the live generation moves past both the live and the pending one.
   A credential issued before is then a superseded generation, so using it
   disables the user like any other; only an operator enables them again.
-- **Link** - see [04](04-console.md#links).
+- **Link** - the token is exchanged once for a session cookie, see
+  [04](04-console.md#links). A request or an upgrade that authenticates by
+  that cookie is bound by SameSite=Strict and by its `Origin`, which, when
+  sent, must name the request's own host.
 - **Scenario URLs** - the API fetches them, so only an operator can name
   one, and the fetch rules in
   [03](03-scenario-format.md#registering) bound it.
@@ -82,6 +85,8 @@ operator has not taken control.
 | Link guessed                   | 256 random bits, constant-time hash comparison    |
 | Link used after the exam       | revoked when the deployment ends                  |
 | Cookie reused on another host  | HttpOnly, Secure, SameSite=Strict, scoped path    |
+| Cookie sent to another route   | `Path=/api/v1/deployments/{id}` of its deployment |
+| Token read from the access log | the log shows `/s/<redacted>`                     |
 
 ## Guest and host
 
@@ -115,13 +120,16 @@ The seed carries the break step, so it is guarded on the way in:
 
 ## Web
 
-- Every state-changing request needs a CSRF token; WebSocket upgrades check
-  `Origin`.
+- A cookie request that changes state and a cookie WebSocket upgrade are
+  refused when they send an `Origin` that does not name their own host;
+  SameSite=Strict keeps the cookie off cross-site requests. CSRF tokens on
+  every state-changing request arrive with the web UI, roadmap item 11.
+- Signed requests carry no cookie and need neither.
 - Security headers: `Content-Security-Policy` without inline scripts,
   `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`.
 - Operator pages and trainee pages are separate routes; a link cookie
-  opens nothing outside its deployment's trainee page, attach socket and
-  check.
+  reaches nothing outside its deployment's routes under
+  `/api/v1/deployments/{id}`: the attach socket, control and the check.
 
 ## Acceptance criteria
 

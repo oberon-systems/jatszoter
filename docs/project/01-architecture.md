@@ -77,12 +77,19 @@ POST /api/v1/images                        signed (operator)
 GET  /api/v1/images                        signed (operator)
 POST /api/v1/scenarios                     signed (operator)
 GET  /api/v1/scenarios                     signed (operator)
+POST /api/v1/users                         signed (operator)
+GET  /api/v1/users                         signed (operator)
 POST /api/v1/deployments                   signed (operator)
 GET  /api/v1/deployments                   signed (operator)
 GET  /api/v1/deployments/{id}              signed (operator)
 POST /api/v1/deployments/{id}/stop         signed (operator)
 GET  /api/v1/deployments/{id}/console      signed (operator)
+POST /api/v1/deployments/{id}/links        signed (operator)
+GET  /api/v1/deployments/{id}/links        signed (operator)
+POST /api/v1/deployments/{id}/control      signed (operator), operator link
 WS   /api/v1/deployments/{id}/attach       signed (operator), link
+POST /api/v1/links/{id}/revoke             signed (operator)
+GET  /s/{token}                            open, the token is the secret
 ```
 
 - Login and the credential are described in
@@ -95,6 +102,11 @@ WS   /api/v1/deployments/{id}/attach       signed (operator), link
 - A WebSocket route checks the signature from the upgrade's headers over
   `GET`, the path and an empty body. The console routes are described in
   [04](04-console.md).
+- `link` is the `jatszoter_link` cookie that `GET /s/{token}` sets: a
+  session of one link, valid for that link's deployment alone while the
+  link is not revoked and its user is `enabled`. `operator link` is such a
+  session whose user has role `operator`. See [04](04-console.md#links).
+- `GET /s/{token}` is the one route outside `/api/v1`.
 
 ## Agent protocol
 
@@ -235,9 +247,10 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
 
 Create and bootstrap:
 
-1. Operator `POST /api/v1/deployments` with `scenario_id`, optional
-   `agent_id` to pin it; the API copies the scenario's image, resources and
-   timeouts and stores it PENDING.
+1. Operator `POST /api/v1/deployments` with `scenario_id`, `trainee_id`
+   and an optional `agent_id` to pin it; the API copies the scenario's
+   image, resources and timeouts, stores it PENDING and answers with it and
+   its trainee link.
 2. A heartbeat assigns it; the agent moves it to STARTING, fetches the
    image and the seed, packs the seed ISO and boots the VM.
 3. Once the guest agent answers `guest-ping`, the agent moves the

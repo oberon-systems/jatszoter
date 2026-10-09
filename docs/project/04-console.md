@@ -45,8 +45,17 @@ through a link; one party at a time holds the keyboard.
 - The API stores the bytes, see [Console store](#console-store), fans them
   out to every attached viewer, and streams the same bytes into the trainee
   link's recording; see [05](05-recording.md#writing).
-- Keys and resize requests travel back on the same socket. Keys are never
-  stored, logged or recorded, and console bytes never reach a log line.
+- Keys and resizes travel down the same socket, between the `{"offset": n}`
+  answers: keys as a binary frame, a resize as the text frame
+  `{"cols": n, "rows": n}`. Up to 256 such messages wait for a slow agent;
+  more are dropped, and so is one that arrives while no agent socket is
+  attached.
+- The agent connects `serial.sock` on the first key and keeps it until its
+  console socket ends, reading and discarding what the guest echoes there,
+  since `console.log` already carries it. Keys that cannot be written are
+  lost; the console socket lives on.
+- Keys are never stored, logged or recorded, not their bytes and not their
+  length, and console bytes never reach a log line.
 
 ## Console store
 
@@ -74,26 +83,37 @@ The API keeps two copies of a deployment's console.
 
 ## Viewers
 
-`WS /api/v1/deployments/{id}/attach` is the live view. It accepts either a
-signed operator request, checked from the upgrade's headers, or a link
-session cookie; links arrive with roadmap item 8.
+`WS /api/v1/deployments/{id}/attach` is the live view. An upgrade that
+carries `X-Signature` is checked as a signed operator request; any other is
+checked as a link session, from the cookie described in [Links](#links).
 
+- A signed operator attaches in any status. A link attaches only while the
+  deployment is READY, its link is not revoked, its user is `enabled`, and
+  the upgrade's `Origin`, when sent, names the upgrade's own host.
+- Every refusal before the socket is accepted closes with 1008, whatever
+  the reason.
+- An operator link sees what a signed operator sees. A trainee or viewer
+  link starts at the READY offset: an older `offset` is raised to it, and
+  without a READY offset the view starts at the log end.
 - An optional query `offset` resumes a viewer that already holds the bytes
   before it, when the tail still has it; otherwise the viewer gets the whole
   tail.
 - The API sends a text frame `{"offset": n}` before the first bytes and
   before any jump, then the console bytes raw as binary frames.
-- The socket closes with 1000 once the deployment is terminal.
+- The socket closes with 1000 once the deployment is terminal, and with
+  4403 once its link is revoked.
 
 A viewer sends:
 
-- binary frames - keys, forwarded only when this viewer's role holds
-  control;
-- text frames - `{"cols": n, "rows": n}`, applied only from the viewer that
-  holds control.
+- binary frames - keys, at most 4096 bytes each; a larger frame closes the
+  socket with 1009;
+- text frames - `{"cols": n, "rows": n}`, both integers from 1 to 500;
+  anything else is dropped.
 
-The API sends text frames `{"control": "operator" | "trainee"}` whenever
-control changes, so every terminal can show who is typing.
+Either is forwarded only from a socket whose role holds control, see
+[Take control](#take-control). The API sends the text frame
+`{"control": "operator" | "trainee"}` after a viewer's first offset and
+whenever control changes, so every terminal can show who is typing.
 
 ## Links
 
@@ -107,16 +127,33 @@ link can do:
 | `operator` | watches, and takes or gives back control          |
 | `viewer`   | only watches; its keys and resizes are dropped    |
 
-- Every deployment is registered together with its trainee and that
-  trainee's link; the operator issues links to operators and viewers on
-  demand.
+- The users behind links are made by the operator with `POST
+  /api/v1/users`: name, role and comment. Such a user is `enabled` at once
+  and has no password, so it cannot log in; it exists to own links.
+- `POST /api/v1/deployments` requires `trainee_id`, an enabled user with
+  role `trainee`, and answers with the deployment and its trainee link.
+  `POST /api/v1/deployments/{id}/links` with `user_id` issues a link to any
+  enabled user while the deployment is not terminal. A deployment holds one
+  live trainee link at a time; a second is refused with 409.
+- `GET /api/v1/deployments/{id}/links` lists a deployment's links without
+  tokens or hashes; `POST /api/v1/links/{id}/revoke` revokes one.
 - The token is 32 random bytes, base64url. The API stores only its sha256
-  and returns the plain value once.
+  and returns the plain value once, in the response that creates the link.
 - A link has no expiry of its own. It can be revoked at any time, and the
   deployment reaching COMPLETED, FAILED or CANCELLED revokes all its links.
-- Opening the link exchanges it for an HttpOnly, SameSite=Strict session
-  cookie and redirects to a URL without the token.
-- Revoking a link closes every socket opened through it at once.
+- `GET /s/{token}`, served by the API outside `/api/v1`, opens the link: it
+  sets the session cookie and answers 303 to `/t/{deployment_id}`, a URL
+  without the token; the page there arrives with the web UI. An unknown or
+  revoked link and a link of a disabled user get the same 404. The link
+  opens in any non-terminal status; the terminal attaches at READY.
+- The cookie `jatszoter_link` is HttpOnly, Secure, SameSite=Strict, without
+  an expiry, and scoped to `Path=/api/v1/deployments/{id}`. Its value is a
+  random session token of 32 bytes; Valkey maps its sha256 to the link id
+  for a day, renewed on use. Every use loads the link row, so a revoked
+  link ends all its sessions.
+- The access log shows the open as `/s/<redacted>`.
+- Revoking a link closes every socket opened through it at once, with
+  4403.
 - The first open of the trainee link stamps its `opened_at` and starts its
   recording. Later opens, from any tab, join the same recording; revoking
   the link closes it, and a new trainee link starts a new one.
@@ -124,19 +161,36 @@ link can do:
 ## Take control
 
 - Only the operator decides who has the keyboard, and the API enforces it.
-  The current holder is console state, not a database column.
+  The holder is `trainee` or `operator`, kept in Valkey beside the tail as
+  `console:<id>:control`; it is `trainee` when the key is absent and is
+  dropped with the tail.
 - `POST /api/v1/deployments/{id}/control` with `{"holder": "operator"}`
   takes it; `{"holder": "trainee"}` gives it back. Only a signed operator
-  request or an operator link may call it.
-- While the operator holds control, trainee keys and resize frames are
-  dropped in the API, whatever the browser shows.
-- Every change is written as a marker into the recording.
+  request or an operator link may call it, and only while the deployment
+  is READY; otherwise it gets 409. A link's request whose `Origin`, when
+  sent, does not name the request's own host is refused.
+- A signed operator and an operator link type as `operator`, a trainee link
+  as `trainee`; a viewer link never types. The API reads the holder for
+  every frame and forwards it only from a socket of that role, whatever
+  the browser shows.
+- Every change is written as a marker into the recording, see
+  [05](05-recording.md).
 
 ## Resize
 
 The serial line has no window size. When the holder of control resizes, the
-agent sets it in the guest through the guest agent, as `stty cols N rows M`
-on `ttyS0`, and records an `r` event in the recording.
+agent sets it in the guest through the guest agent: `guest-exec` of `stty -F
+/dev/ttyS0 cols N rows M`, spawned as an argument vector.
+
+- The agent waits at most 5 s for the command and ships no console bytes
+  meanwhile. A resize that fails or times out is tried again at the next
+  resize frame.
+- A size equal to the last one applied runs nothing.
+- This is proven on the Rocky 9 smoke guest with SELinux enforcing: from
+  the guest agent's confined domain the command exits 0 and `stty size`
+  reads the new size back.
+- The API records an `r` event in the recording, see
+  [05](05-recording.md).
 
 ## Backpressure
 
@@ -160,7 +214,9 @@ several processes is on the [roadmap](07-roadmap.md).
 - A trainee with a valid link sees output within one second of the guest
   writing it, and cannot type while the operator holds control, even with a
   modified client.
-- A revoked link closes the trainee socket and cannot be reopened.
+- A revoked link closes its sockets with 4403 and cannot be reopened.
+- A viewer link never types: its keys and resizes reach no agent.
+- No link token and no session token appears in any log.
 - An agent reconnect loses and duplicates no byte of the full log, and
   neither does an agent restart.
 - An API restart with Valkey alive keeps the tail; without it, the full log

@@ -27,7 +27,9 @@ holding that entity's UUID.
   it, like an agent), `password` (a scrypt hash, its parameters stored with
   it) and `password_changed` (0 until the user sets their own password, then
   when they did). The role says what every link of that user can do. A user
-  owns a secret. See [06](06-security.md#credentials).
+  owns a secret. See [06](06-security.md#credentials). The name is unique.
+  An operator creates users; such a user is `enabled` at once and has no
+  password, and a user without a password cannot log in.
 - **Agent** - a registered host: name, placement labels, `state`
   (`disabled` while it waits for an operator or once one turns it off,
   `enabled` after approval). An agent owns a secret. Its last heartbeat and
@@ -53,12 +55,13 @@ holding that entity's UUID.
   immutable; a change is a new version.
 - **Deployment** - scenario version, `image_id`, agent, status, reason,
   timestamps, `vm_id`, and the resources and timeouts. The image, resources
-  and timeouts are copied from the scenario at create time. Trainee links
-  arrive with roadmap item 8 ([07](07-roadmap.md)).
+  and timeouts are copied from the scenario at create time. It is created
+  for one trainee and together with that trainee's link.
 - **Link** - deployment, user, token hash, `opened_at` on first open,
   `revoked_at`. The link acts with its user's role; a trainee's link owns one
-  recording. From item 8 on, a deployment is created with its trainee link;
-  ending the deployment revokes all its links. See [04](04-console.md#links).
+  recording. A deployment is created with its trainee link and holds one
+  live trainee link at a time; ending the deployment revokes all its links.
+  See [04](04-console.md#links).
 - **Recording** - URL of the asciicast in object storage, size, duration,
   trainee link.
 - **Check** - deployment, the link it came through if any, the user who
@@ -142,6 +145,12 @@ and tests always - the API uses an in-memory
 - A pending registration under `registration:<agent id>`, and its claim code
   under `claim:<sha256 of the code>`, until an operator approves it and the
   agent claims it, or their TTL runs out.
+- A link session under `session:<sha256 of the session token>`: the link
+  id, for a day, renewed on every use. A revoked link's sessions are left
+  to expire; they open nothing, since every use loads the link row.
+- The control holder under `console:<deployment id>:control`, beside the
+  console tail and with its TTL; absent means `trainee`. See
+  [04](04-console.md#take-control).
 
 No SQL row names a lease: an expired id would only go stale there. A
 deployment names its agent, an agent write is accepted only while Valkey holds

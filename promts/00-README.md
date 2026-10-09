@@ -1,63 +1,75 @@
-# Roadmap item 7 - implementation prompts
+# Roadmap item 8 - implementation prompts
 
-Item 7 of `docs/project/07-roadmap.md` (the console pipeline with bounded
-viewer queues), cut into prompts that run one at a time, in order, each on a
-clean tree. Every prompt assumes the previous ones have landed. Item 6's
-prompts landed before this set was written; git history keeps them.
+Item 8 of `docs/project/07-roadmap.md` (links and take control), cut into
+prompts that run one at a time, in order, each on a clean tree. Every prompt
+assumes the previous ones have landed. Item 7's prompts landed before this
+set was written; git history keeps them.
 
-| #  | Prompt                       | Component | Result                                              |
-| -- | ---------------------------- | --------- | --------------------------------------------------- |
-| 01 | `01-docs.md`                 | docs      | contracts below written into `docs/`                |
-| 02 | `02-api-file-append.md`      | api       | the file store appends to a file                    |
-| 03 | `03-api-console-store.md`    | api       | console tail in Valkey, full log in the file store  |
-| 04 | `04-api-console-sockets.md`  | api       | agent socket, hub, operator attach, log download    |
-| 05 | `05-agent-console.md`        | agent     | the serial console shipped over the agent socket    |
-| 06 | `06-smoke.md`                | smoke     | an operator viewer receives console output          |
+| #  | Prompt                      | Component | Result                                             |
+| -- | --------------------------- | --------- | -------------------------------------------------- |
+| 01 | `01-docs.md`                | docs      | resize proven in a guest, contracts in `docs/`     |
+| 02 | `02-api-users-links.md`     | api       | users, the trainee link on create, issue, revoke   |
+| 03 | `03-api-link-session.md`    | api       | a link opens a cookie session and attaches by role |
+| 04 | `04-api-control-keys.md`    | api       | the control holder, keys and resize to the agent   |
+| 05 | `05-agent-keys-resize.md`   | agent     | keys into the serial socket, resize through qga    |
+| 06 | `06-smoke.md`               | smoke     | a trainee link types; take control cuts its input  |
 
 ## Decisions behind the cut
 
-Taken with the user on 2026-10-08, after the runner console of the sibling
-project naos; prompt 01 writes them into `docs/`.
+Taken with the user on 2026-10-09; prompt 01 writes them into `docs/`.
 
-- QEMU writes the serial console into `console.log` in the VM directory
-  itself (`logfile=`, `logappend=on` on the serial chardev), from boot and
-  whether or not a client is connected. That file is the agent's buffer: the
-  agent keeps no ring of its own.
-- The agent holds one WebSocket per live VM whose deployment is STARTING,
-  BOOTSTRAPPING or READY, to
-  `WS /api/v1/agents/{agent_id}/deployments/{id}/console`, signed like every
-  agent request. It ships the whole file from offset 0, so the operator sees
-  the boot; the API marks where READY begins.
-- A frame from the agent is binary: an 8-byte big-endian offset, then up to
-  64 KiB read from `console.log` at that offset. The API answers text
-  `{"offset": n}`, how far it holds the log, once on connect and after every
-  frame; the agent moves its offset to `n`, backwards too. The agent looks
-  at the file every 50 ms and reconnects every 5 s. There is no HTTP
-  fallback.
-- The API keeps two copies. The last `JATSZOTER_CONSOLE_TAIL_BYTES` (8 MiB)
-  of each deployment's console sit in Valkey; a viewer that connects gets
-  only that tail, and anything older lives in the browsers that saw it. The
-  full log is appended at once to the file store as
-  `consoles/<deployment_id>.log`, up to `JATSZOTER_CONSOLE_LIMIT_BYTES`
-  (64 MiB); past it the API closes the agent's socket with code 4413 and the
-  agent stops shipping that deployment.
-- The file store gains append: the SeaweedFS filer's `POST ?op=append`, and
-  the same on the local `data/storage` directory.
-- The log end at the moment the `bootstrap` transition is accepted is the
-  deployment's READY offset, kept in Valkey. Item 8's trainee view starts
-  there.
-- The fan-out hub lives in the API process. In this item
-  `WS /api/v1/deployments/{id}/attach` serves signed operator requests only:
-  the tail, then every new byte. Each viewer's queue is capped by
-  `JATSZOTER_CONSOLE_VIEWER_BUFFER_BYTES` (4 MiB); a viewer past the cap is
-  resent from the Valkey tail at its last offset, or closed when that is
-  gone. Keys, resize, links and control are item 8.
-- `GET /api/v1/deployments/{id}/console` gives an operator the full log. A
-  deployment reaching a terminal status drops its Valkey keys; the file
-  stays until item 12's sweeps.
-- The agent speaks WebSocket through `tokio-tungstenite` over rustls. The
-  API serves it through uvicorn with the `websockets` package, which the
-  smoke viewer uses as well.
+- Users are made by the operator: `POST` and `GET /api/v1/users` with name,
+  role and comment. Such a user is `enabled` at once and has no password,
+  so it cannot log in; it exists to own links. `users.name` is unique.
+- `POST /api/v1/deployments` requires `trainee_id`, an enabled user with
+  role `trainee`, and answers with the deployment and its trainee link, the
+  plain token included that one time. Operator and viewer links are issued
+  by `POST /api/v1/deployments/{id}/links` with `user_id`; a deployment
+  holds one live trainee link at a time. `POST /api/v1/links/{id}/revoke`
+  revokes one.
+- `GET /s/{token}`, served by the API outside `/api/v1`, exchanges the
+  token for a session cookie and answers 303 to `/t/{deployment_id}`; the
+  page there arrives with the web UI in item 11. An unknown or revoked link
+  and a disabled user get the same 404.
+- The cookie `jatszoter_link` is HttpOnly, Secure, SameSite=Strict, without
+  an expiry, and scoped to `Path=/api/v1/deployments/{id}`, so it reaches
+  that deployment's attach, control and later checks and nothing else. Its
+  value is a random session token; Valkey maps its sha256 to the link id
+  for a day, renewed on use. Every use loads the link row, so a revoked
+  link ends all its sessions.
+- CSRF tokens arrive with the web UI in item 11. Until then a request or an
+  upgrade that authenticates by cookie is bound by SameSite=Strict and by
+  its `Origin`, which, when sent, must name the request's own host.
+- `/s/{token}` never reaches a log line: the access log shows
+  `/s/<redacted>`.
+- A link attaches to `WS /api/v1/deployments/{id}/attach` only while the
+  deployment is READY. An operator link sees what a signed operator sees.
+  A trainee or viewer link starts at the READY offset: an older `offset` is
+  raised to it, and without a READY offset it starts at the log end.
+  Revoking a link closes its sockets with 4403.
+- The control holder is `trainee` or `operator`, kept in Valkey beside the
+  console tail as `console:<id>:control`, `trainee` when absent, dropped
+  with the tail. `POST /api/v1/deployments/{id}/control` sets it for a
+  signed operator or an operator link while the deployment is READY. Every
+  viewer hears `{"control": ...}` after its first offset and on a change.
+- A viewer's binary frame, at most 4096 bytes, is keys; its text frame
+  `{"cols": n, "rows": n}`, both 1 to 500, is a resize. The API forwards
+  either only from a socket whose role is the holder: a signed operator and
+  an operator link are `operator`, a trainee link is `trainee`, a viewer
+  link never types. Without an agent socket the frame is dropped.
+- The API passes them down the agent's console socket: keys as a binary
+  frame, a resize as the same text frame. Up to 256 messages wait for a
+  slow agent; more are dropped.
+- The agent connects `serial.sock` on the first key and keeps it until its
+  console socket to the API ends, reading and discarding what the guest
+  echoes there, since `console.log` already carries it. Keys that cannot be
+  written are lost; the console socket lives on.
+- The agent applies a resize through the guest agent: `guest-exec` of
+  `stty -F /dev/ttyS0 cols N rows M` as an argument vector, within 5 s, and
+  only when the size differs from the last one applied. Prompt 01 proves
+  this in a Rocky 9 guest under SELinux before anything is written; if the
+  guest refuses, the set stops there.
+- Recording markers for control changes and resizes belong to item 9.
 
 ## Ground rules for every prompt
 
@@ -113,6 +125,6 @@ Each prompt starts by pointing here. These hold for all of them.
   - `.venv/bin/pytest -q packages/api` for API prompts;
   - `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --
     -D warnings` and `cargo test -p jatszoter-agent` for agent prompts;
-  - `make smoke` after every prompt; prompt 06 changes what it proves.
+  - `make smoke` after every prompt; prompts 02 and 06 change it.
 - Finish with a short report: files changed, tests added, and every place
   where the prompt had to be interpreted.

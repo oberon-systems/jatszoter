@@ -17,4 +17,5 @@ PyYAML==6.0.3
 sqlmodel==0.0.42
 uvicorn==0.52.4
 valkey==6.1.1
+websockets==17.2
 wyld-cz==0.3.1

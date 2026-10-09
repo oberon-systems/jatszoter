@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, Request, status
+from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
 from sqlmodel import Session
 
 from jatszoter_api.db import get_session
@@ -27,10 +27,18 @@ def _credential(owner_id: uuid.UUID, header: str) -> Credential | None:
         return None
 
 
+def _owner(x_owner: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(x_owner)
+    except ValueError:
+        raise unauthorized() from None
+
+
 def _signed[T: SecretOwner](
     model: type[T],
     owner_id: uuid.UUID,
-    request: Request,
+    method: str,
+    path: str,
     session: Session,
     keys: dict[str, str],
     body: bytes,
@@ -46,9 +54,7 @@ def _signed[T: SecretOwner](
         owner = model(session=session).load(id=owner_id)
     except IndexError:
         raise unauthorized() from None
-    if not owner.verify(
-        credential, keys, request.method, request.url.path, body, int(x_timestamp), x_signature
-    ):
+    if not owner.verify(credential, keys, method, path, body, int(x_timestamp), x_signature):
         raise unauthorized()
     return owner
 
@@ -64,9 +70,17 @@ def require_agent(
     x_signature: Annotated[str, Header()] = "",
 ) -> Agent:
     """The agent named in the path, once its signed request checks out."""
-    keys = settings.master_keys
     return _signed(
-        Agent, agent_id, request, session, keys, body, x_credential, x_timestamp, x_signature
+        Agent,
+        agent_id,
+        request.method,
+        request.url.path,
+        session,
+        settings.master_keys,
+        body,
+        x_credential,
+        x_timestamp,
+        x_signature,
     )
 
 
@@ -81,13 +95,17 @@ def require_user(
     x_signature: Annotated[str, Header()] = "",
 ) -> User:
     """The user named in `X-Owner`, once its signed request checks out."""
-    try:
-        owner_id = uuid.UUID(x_owner)
-    except ValueError:
-        raise unauthorized() from None
-    keys = settings.master_keys
     return _signed(
-        User, owner_id, request, session, keys, body, x_credential, x_timestamp, x_signature
+        User,
+        _owner(x_owner),
+        request.method,
+        request.url.path,
+        session,
+        settings.master_keys,
+        body,
+        x_credential,
+        x_timestamp,
+        x_signature,
     )
 
 
@@ -96,3 +114,40 @@ def require_operator(user: Annotated[User, Depends(require_user)]) -> User:
     if user.role is not Role.OPERATOR:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     return user
+
+
+def socket_agent(
+    agent_id: uuid.UUID, websocket: WebSocket, session: Session, keys: dict[str, str]
+) -> Agent:
+    """The agent named in the socket's path, once its upgrade, signed as a GET, checks out."""
+    headers = websocket.headers
+    return _signed(
+        Agent,
+        agent_id,
+        "GET",
+        websocket.url.path,
+        session,
+        keys,
+        b"",
+        headers.get("x-credential", ""),
+        headers.get("x-timestamp", ""),
+        headers.get("x-signature", ""),
+    )
+
+
+def socket_operator(websocket: WebSocket, session: Session, keys: dict[str, str]) -> User:
+    """The operator named in `X-Owner`, once the socket's upgrade, signed as a GET, checks out."""
+    headers = websocket.headers
+    user = _signed(
+        User,
+        _owner(headers.get("x-owner", "")),
+        "GET",
+        websocket.url.path,
+        session,
+        keys,
+        b"",
+        headers.get("x-credential", ""),
+        headers.get("x-timestamp", ""),
+        headers.get("x-signature", ""),
+    )
+    return require_operator(user)

@@ -1,10 +1,12 @@
 import uuid
 
-from fastapi import APIRouter, Depends
+import httpx
+from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, ConfigDict
 
 from jatszoter_api.auth import require_operator
 from jatszoter_api.errors import ConflictError, InvalidReferenceError, NotFoundError
+from jatszoter_api.file import File
 from jatszoter_api.lifecycle import DeploymentStatus
 from jatszoter_api.models import Agent, Deployment, Scenario, State
 from jatszoter_api.routes.agents import StrictModel
@@ -102,3 +104,16 @@ def stop(session: SessionDep, deployment_id: uuid.UUID) -> DeploymentOut:
     deployment = _deployment(session, deployment_id)
     deployment.stop()
     return DeploymentOut.model_validate(deployment)
+
+
+@router.get("/{deployment_id}/console")
+def console(session: SessionDep, settings: SettingsDep, deployment_id: uuid.UUID) -> Response:
+    deployment = _deployment(session, deployment_id)
+    filer_url = None if settings.seaweed_url is None else str(settings.seaweed_url)
+    log = File(deployment.console.path, filer_url=filer_url)
+    try:
+        log.get()
+    except httpx.HTTPStatusError as error:
+        if error.response.status_code != 404:
+            raise
+    return Response(log.data, media_type="application/octet-stream")

@@ -17,16 +17,17 @@ from fastapi import (
 )
 from sqlmodel import Session
 
-from jatszoter_api.auth import socket_agent, socket_operator
+from jatszoter_api.auth import socket_agent, socket_link, socket_operator
 from jatszoter_api.console_hub import ConsoleHub, Viewer
 from jatszoter_api.errors import ConflictError, DomainError, NotFoundError, TooLargeError
 from jatszoter_api.lifecycle import TERMINAL, DeploymentStatus
-from jatszoter_api.models import Console, Deployment
+from jatszoter_api.models import Console, Deployment, Link, Role
 from jatszoter_api.settings import Settings
 
 OFFSET_BYTES = 8
 FRAME_BYTES = 64 * 1024
 POLL_SECONDS = 1.0
+WS_4403_REVOKED = 4403
 WS_4413_TOO_LARGE = 4413
 WS_4429_BEHIND = 4429
 SHIPPING = frozenset(
@@ -156,12 +157,29 @@ async def ship(websocket: WebSocket, agent_id: uuid.UUID, deployment_id: uuid.UU
 
 def _watching(
     session: Session, websocket: WebSocket, deployment_id: uuid.UUID, settings: Settings
-) -> None:
-    socket_operator(websocket, session, settings.master_keys)
+) -> tuple[uuid.UUID | None, Role]:
+    """The link the socket came through, None for a signed operator, and the role it watches as."""
+    link_id: uuid.UUID | None = None
+    role = Role.OPERATOR
+    if "x-signature" in websocket.headers:
+        socket_operator(websocket, session, settings.master_keys)
+    else:
+        link, user = socket_link(websocket, session, deployment_id)
+        link_id, role = link.id, user.role
     try:
-        Deployment(session=session).load(id=deployment_id)
+        deployment = Deployment(session=session).load(id=deployment_id)
     except IndexError:
         raise NotFoundError(f"deployment {deployment_id} is not known") from None
+    if link_id is not None and deployment.status is not DeploymentStatus.READY:
+        raise ConflictError(f"deployment {deployment_id} is {deployment.status}")
+    return link_id, role
+
+
+def _revoked(session: Session, link_id: uuid.UUID) -> bool:
+    try:
+        return not Link(session=session).load(id=link_id).live
+    except IndexError:
+        return True
 
 
 def _ended(session: Session, deployment_id: uuid.UUID) -> bool:
@@ -188,25 +206,42 @@ async def attach(
 ) -> None:
     settings: Settings = websocket.app.state.settings
     hub: ConsoleHub = websocket.app.state.console_hub
-    await _refused_unless(
+    link_id, role = await _refused_unless(
         websocket,
         partial(_watching, websocket=websocket, deployment_id=deployment_id, settings=settings),
     )
     console = Console(deployment_id)
     await websocket.accept()
     # Registered before the tail is read, so nothing published meanwhile is lost.
-    with hub.viewer(deployment_id) as viewer:
+    with hub.viewer(deployment_id, link_id) as viewer:
         listener = asyncio.ensure_future(_drop_frames(websocket, viewer))
         try:
+            # A revoke between the check above and the registration never reached the hub.
+            if link_id is not None and await _in_session(
+                websocket, partial(_revoked, link_id=link_id)
+            ):
+                await websocket.close(WS_4403_REVOKED)
+                return
+            floor = None
+            if role is not Role.OPERATOR:
+                floor = await asyncio.to_thread(console.ready)
+                if floor is None:
+                    floor = await asyncio.to_thread(console.held, _filer_url(settings))
+                offset = floor if offset is None else max(offset, floor)
             resumed = None if offset is None else await asyncio.to_thread(console.since, offset)
             if offset is not None and resumed is not None:
                 start, data = offset, resumed
             else:
                 start, data = await asyncio.to_thread(console.tail)
+                if floor is not None and start < floor:
+                    start, data = floor, b""
             await _offset(websocket, start)
             await _send(websocket, data)
             viewer.sent = start + len(data)
             while not listener.done():
+                if viewer.revoked:
+                    await websocket.close(WS_4403_REVOKED)
+                    return
                 if viewer.behind:
                     viewer.behind = False
                     missed = await asyncio.to_thread(console.since, viewer.sent)
@@ -218,8 +253,11 @@ async def attach(
                     continue
                 chunk = await viewer.take(POLL_SECONDS)
                 if chunk is None:
-                    if not listener.done() and await _in_session(
-                        websocket, partial(_ended, deployment_id=deployment_id)
+                    ended = partial(_ended, deployment_id=deployment_id)
+                    if (
+                        not listener.done()
+                        and not viewer.revoked
+                        and await _in_session(websocket, ended)
                     ):
                         await websocket.close(status.WS_1000_NORMAL_CLOSURE)
                         return

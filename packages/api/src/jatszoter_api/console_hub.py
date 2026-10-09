@@ -11,6 +11,7 @@ class Viewer:
     def __init__(self, cap: int) -> None:
         self.sent = 0
         self.behind = False
+        self.revoked = False
         self._cap = cap
         self._size = 0
         self._chunks: deque[tuple[int, bytes]] = deque()
@@ -29,6 +30,10 @@ class Viewer:
         self._ready.set()
 
     def wake(self) -> None:
+        self._ready.set()
+
+    def revoke(self) -> None:
+        self.revoked = True
         self._ready.set()
 
     async def take(self, timeout: float) -> tuple[int, bytes] | None:
@@ -51,6 +56,7 @@ class ConsoleHub:
         self._cap = viewer_buffer_bytes
         self._agents: dict[uuid.UUID, tuple[asyncio.AbstractEventLoop, asyncio.Event]] = {}
         self._viewers: dict[uuid.UUID, set[tuple[asyncio.AbstractEventLoop, Viewer]]] = {}
+        self._links: dict[uuid.UUID, set[tuple[asyncio.AbstractEventLoop, Viewer]]] = {}
 
     @contextmanager
     def agent(self, deployment_id: uuid.UUID) -> Iterator[asyncio.Event]:
@@ -69,18 +75,31 @@ class ConsoleHub:
                 self._agents.pop(deployment_id, None)
 
     @contextmanager
-    def viewer(self, deployment_id: uuid.UUID) -> Iterator[Viewer]:
+    def viewer(
+        self, deployment_id: uuid.UUID, link_id: uuid.UUID | None = None
+    ) -> Iterator[Viewer]:
         entry = (asyncio.get_running_loop(), Viewer(self._cap))
-        self._viewers.setdefault(deployment_id, set()).add(entry)
+        held = [(self._viewers, deployment_id)]
+        if link_id is not None:
+            held.append((self._links, link_id))
+        for index, key in held:
+            index.setdefault(key, set()).add(entry)
         try:
             yield entry[1]
         finally:
-            watching = self._viewers.get(deployment_id, set())
-            watching.discard(entry)
-            if not watching:
-                self._viewers.pop(deployment_id, None)
+            for index, key in held:
+                watching = index.get(key, set())
+                watching.discard(entry)
+                if not watching:
+                    index.pop(key, None)
 
     def publish(self, deployment_id: uuid.UUID, offset: int, data: bytes) -> None:
         for loop, viewer in list(self._viewers.get(deployment_id, set())):
             with suppress(RuntimeError):
                 loop.call_soon_threadsafe(viewer.put, offset, data)
+
+    def revoke(self, link_id: uuid.UUID) -> None:
+        """Mark every viewer attached through this link as revoked and wake it."""
+        for loop, viewer in list(self._links.get(link_id, set())):
+            with suppress(RuntimeError):
+                loop.call_soon_threadsafe(viewer.revoke)

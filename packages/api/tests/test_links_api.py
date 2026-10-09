@@ -1,8 +1,12 @@
 import hashlib
+import logging
+import secrets
 import uuid
 from typing import Any
 
+import httpx
 import pytest
+from fastapi.testclient import TestClient
 from sqlmodel import Session
 
 from jatszoter_api.errors import ConflictError
@@ -70,6 +74,11 @@ def created(operator: Any, scenario: Scenario, trainee: User) -> dict[str, Any]:
 def issue(operator: Any, deployment_id: Any, owner: User) -> Any:
     path = f"{DEPLOYMENTS}/{deployment_id}/links"
     return operator.request("POST", path, json={"user_id": str(owner.id)})
+
+
+def open_link(api: TestClient, token: str) -> httpx.Response:
+    response: httpx.Response = api.get(f"/s/{token}", follow_redirects=False)
+    return response
 
 
 def test_create_returns_the_trainee_link_with_its_token(
@@ -255,3 +264,88 @@ def test_an_unknown_deployment_or_link_is_not_found(operator: Any, trainee: User
     assert operator.request("GET", unknown).status_code == 404
     assert issue(operator, uuid.uuid4(), trainee).status_code == 404
     assert operator.request("POST", f"{LINKS}/{uuid.uuid4()}/revoke").status_code == 404
+
+
+def test_open_redirects_without_the_token_and_sets_the_scoped_cookie(
+    api: TestClient, created: dict[str, Any]
+) -> None:
+    token = created["link"]["token"]
+
+    response = open_link(api, token)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/t/{created['id']}"
+    assert token not in response.headers["location"]
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert response.headers["cache-control"] == "no-store"
+    assert len(response.headers.get_list("set-cookie")) == 1
+    value, *attributes = (part.strip() for part in response.headers["set-cookie"].split(";"))
+    name, _, session_token = value.partition("=")
+    assert name == "jatszoter_link"
+    assert session_token not in ("", token)
+    # Exactly these, so no Expires and no Max-Age either.
+    assert {attribute.lower() for attribute in attributes} == {
+        "httponly",
+        "secure",
+        "samesite=strict",
+        f"path=/api/v1/deployments/{created['id']}",
+    }
+
+
+def test_opened_at_is_stamped_once_across_two_opens(
+    api: TestClient, session: Session, created: dict[str, Any]
+) -> None:
+    token = created["link"]["token"]
+    first = open_link(api, token)
+    stored = Link(session=session).load(id=uuid.UUID(created["link"]["id"]))
+    stamped = stored.opened_at
+    assert stamped is not None
+    # Moved back, so a second stamp in the same second would still show.
+    stored.opened_at = stamped - 50
+    stored.save()
+
+    second = open_link(api, token)
+
+    assert second.status_code == 303
+    assert second.headers["set-cookie"] != first.headers["set-cookie"]
+    assert stored.opened_at == stamped - 50
+
+
+def test_the_access_log_redacts_the_token(api: TestClient) -> None:
+    token = secrets.token_urlsafe(32)
+    logger = logging.getLogger("uvicorn.access")
+    record = logger.makeRecord(
+        logger.name,
+        logging.INFO,
+        "",
+        0,
+        '%s - "%s %s HTTP/%s" %d',
+        ("127.0.0.1:1", "GET", f"/s/{token}?alpha=1", "1.1", 303),
+        None,
+    )
+
+    assert logger.filter(record)
+
+    assert token not in record.getMessage()
+    assert '"GET /s/<redacted>?alpha=1 HTTP/1.1" 303' in record.getMessage()
+
+
+def test_an_unknown_revoked_or_disabled_link_gets_the_same_404_and_no_cookie(
+    api: TestClient, operator: Any, session: Session, created: dict[str, Any]
+) -> None:
+    viewer = user(session, "delta", Role.VIEWER)
+    issued = issue(operator, created["id"], viewer).json()
+    viewer.state = State.DISABLED
+    viewer.save()
+    assert operator.request("POST", f"{LINKS}/{created['link']['id']}/revoke").is_success
+
+    refusals = [
+        open_link(api, secrets.token_urlsafe(32)),
+        open_link(api, created["link"]["token"]),
+        open_link(api, issued["token"]),
+    ]
+
+    assert [response.status_code for response in refusals] == [404, 404, 404]
+    assert len({response.content for response in refusals}) == 1
+    assert not any("set-cookie" in response.headers for response in refusals)
+    assert [link.opened_at for link in Link._load(session)] == [None, None]

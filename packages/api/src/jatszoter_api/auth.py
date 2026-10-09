@@ -1,13 +1,16 @@
 import uuid
 from typing import Annotated
+from urllib.parse import urlsplit
 
 from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
 from sqlmodel import Session
 
 from jatszoter_api.db import get_session
-from jatszoter_api.models import Agent, Credential, Role, User
+from jatszoter_api.models import Agent, Credential, Link, Role, State, User
 from jatszoter_api.models.secret import SecretOwner
 from jatszoter_api.settings import Settings, app_settings
+
+LINK_COOKIE = "jatszoter_link"
 
 
 def unauthorized() -> HTTPException:
@@ -151,3 +154,24 @@ def socket_operator(websocket: WebSocket, session: Session, keys: dict[str, str]
         headers.get("x-signature", ""),
     )
     return require_operator(user)
+
+
+def socket_link(
+    websocket: WebSocket, session: Session, deployment_id: uuid.UUID
+) -> tuple[Link, User]:
+    """The link the upgrade's session cookie names and its user, if it may reach the deployment."""
+    headers = websocket.headers
+    origin = headers.get("origin")
+    if origin is not None and urlsplit(origin).netloc.lower() != headers.get("host", "").lower():
+        raise unauthorized()
+    token = websocket.cookies.get(LINK_COOKIE)
+    if not token:
+        raise unauthorized()
+    try:
+        link = Link(session=session).resume(token)
+        user = User(session=session).load(id=link.user_id)
+    except IndexError:
+        raise unauthorized() from None
+    if not link.live or link.deployment_id != deployment_id or user.state is not State.ENABLED:
+        raise unauthorized()
+    return link, user

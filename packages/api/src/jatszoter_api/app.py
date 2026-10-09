@@ -1,4 +1,5 @@
 import logging
+import re
 from pathlib import Path
 
 from alembic import command
@@ -19,6 +20,7 @@ from jatszoter_api.routes import (
     domain_error_handler,
     images_router,
     links_router,
+    open_router,
     scenarios_router,
     users_router,
 )
@@ -26,7 +28,24 @@ from jatszoter_api.settings import Settings
 
 MIGRATIONS = Path(__file__).parent / "migrations"
 
+LINK_PATH = re.compile(r"/s/[^/?#\s]+")
+
 log = logging.getLogger(__name__)
+
+
+class RedactLinks(logging.Filter):
+    """Rewrite `/s/<token>` in an access-log record, so no link token reaches the log."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(
+                LINK_PATH.sub("/s/<redacted>", arg) if isinstance(arg, str) else arg
+                for arg in record.args
+            )
+        return True
+
+
+_REDACT_LINKS = RedactLinks()
 
 
 def migrate(dsn: str) -> None:
@@ -42,6 +61,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     dsn = str(settings.database_dsn)
     migrate(dsn)
     Cached.connect(None if settings.valkey_dsn is None else str(settings.valkey_dsn))
+    # The same filter instance every time, so a second app adds nothing.
+    logging.getLogger("uvicorn.access").addFilter(_REDACT_LINKS)
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.settings = settings
     app.state.engine = create_engine(dsn)
@@ -75,4 +96,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     v1.include_router(scenarios_router)
     v1.include_router(users_router)
     app.include_router(v1)
+    app.include_router(open_router)
     return app

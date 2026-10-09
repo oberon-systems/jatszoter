@@ -15,8 +15,8 @@ from starlette.websockets import WebSocketDisconnect
 
 from jatszoter_api.console_hub import Viewer
 from jatszoter_api.file import File
-from jatszoter_api.lifecycle import DeploymentStatus
-from jatszoter_api.models import Agent, Deployment, Image, Role, Scenario, State
+from jatszoter_api.lifecycle import Actor, DeploymentStatus
+from jatszoter_api.models import Agent, Deployment, Image, Link, Role, Scenario, State, User
 from jatszoter_api.models._cache import Cached
 from jatszoter_api.models.secret import CREDENTIAL_SECONDS
 from jatszoter_api.settings import Settings
@@ -84,6 +84,27 @@ def watch(viewer: Any, deployment_id: uuid.UUID, query: str = "") -> WebSocketTe
     path = f"{DEPLOYMENTS}/{deployment_id}/attach"
     signed = headers(path, viewer.credential, viewer.key, **{"X-Owner": viewer.id})
     session: WebSocketTestSession = viewer.client.websocket_connect(path + query, headers=signed)
+    return session
+
+
+def opened(
+    api: TestClient, session: Session, deployment: Deployment, role: Role, name: str = "beta"
+) -> tuple[Link, str]:
+    """A link of a new user of `role`, opened: the link and its session cookie."""
+    owner = User(session=session, name=name, role=role, state=State.ENABLED)
+    owner.save()
+    link = Link(session=session, deployment_id=deployment.id, user_id=owner.id)
+    link.save()
+    response = api.get(f"/s/{link.token}", follow_redirects=False)
+    assert response.status_code == 303
+    return link, response.headers["set-cookie"].partition(";")[0]
+
+
+def join(
+    api: TestClient, deployment_id: uuid.UUID, cookie: str, query: str = "", **extra: str
+) -> WebSocketTestSession:
+    path = f"{DEPLOYMENTS}/{deployment_id}/attach{query}"
+    session: WebSocketTestSession = api.websocket_connect(path, headers={"Cookie": cookie, **extra})
     return session
 
 
@@ -340,3 +361,160 @@ def test_the_download_of_an_unknown_deployment_is_404_and_of_a_trainee_403(
 
     assert operator.request("GET", f"{DEPLOYMENTS}/{uuid.uuid4()}/console").status_code == 404
     assert trainee.request("GET", f"{DEPLOYMENTS}/{deployment.id}/console").status_code == 403
+
+
+@pytest.mark.parametrize(
+    ("query", "start", "seen"),
+    [("", 5, b"bet"), ("?offset=2", 5, b"bet"), ("?offset=6", 6, b"et")],
+)
+def test_a_trainee_link_starts_at_the_ready_offset(
+    api: TestClient,
+    session: Session,
+    shipper: Shipper,
+    deploy: Callable[..., Deployment],
+    query: str,
+    start: int,
+    seen: bytes,
+) -> None:
+    ready = deploy(status=S.READY)
+    _, cookie = opened(api, session, ready, Role.TRAINEE)
+    with shipper.connect(ready.id) as agent:
+        offset(agent)
+        ship(agent, 0, b"alpha")
+        ready.console.mark_ready(None)
+        ship(agent, 5, b"bet")
+
+        with join(api, ready.id, cookie, query, Origin="http://testserver") as viewer:
+            assert offset(viewer) == start
+            assert viewer.receive_bytes() == seen
+            ship(agent, 8, b"ical")
+            assert viewer.receive_bytes() == b"ical"
+
+
+def test_a_viewer_link_without_a_ready_offset_starts_at_the_log_end(
+    api: TestClient, session: Session, shipper: Shipper, deploy: Callable[..., Deployment]
+) -> None:
+    ready = deploy(status=S.READY)
+    _, cookie = opened(api, session, ready, Role.VIEWER)
+    with shipper.connect(ready.id) as agent:
+        offset(agent)
+        ship(agent, 0, b"alpha")
+
+        with join(api, ready.id, cookie, "?offset=0") as viewer:
+            assert offset(viewer) == 5
+            ship(agent, 5, b"bet")
+            assert viewer.receive_bytes() == b"bet"
+
+
+def test_an_operator_link_gets_the_tail_from_its_start(
+    api: TestClient, session: Session, shipper: Shipper, deploy: Callable[..., Deployment]
+) -> None:
+    ready = deploy(status=S.READY)
+    _, cookie = opened(api, session, ready, Role.OPERATOR)
+    with shipper.connect(ready.id) as agent:
+        offset(agent)
+        ship(agent, 0, b"alpha")
+        ready.console.mark_ready(None)
+        ship(agent, 5, b"bet")
+
+    with join(api, ready.id, cookie) as viewer:
+        assert offset(viewer) == 0
+        assert viewer.receive_bytes() == b"alphabet"
+
+
+def test_revoking_a_link_closes_its_socket_with_4403_and_no_other(
+    api: TestClient,
+    session: Session,
+    operator: Any,
+    shipper: Shipper,
+    deploy: Callable[..., Deployment],
+) -> None:
+    ready = deploy(status=S.READY)
+    link, cookie = opened(api, session, ready, Role.TRAINEE)
+    _, other = opened(api, session, ready, Role.VIEWER, name="gamma")
+    with (
+        shipper.connect(ready.id) as agent,
+        join(api, ready.id, cookie) as revoked,
+        join(api, ready.id, other) as kept,
+    ):
+        offset(agent)
+        assert (offset(revoked), offset(kept)) == (0, 0)
+
+        assert operator.request("POST", f"/api/v1/links/{link.id}/revoke").is_success
+
+        assert closed(revoked) == 4403
+        ship(agent, 0, b"alpha")
+        assert kept.receive_bytes() == b"alpha"
+    assert refused(join(api, ready.id, cookie)) == 1008
+
+
+@pytest.mark.parametrize("status", [S.PENDING, S.STARTING, S.BOOTSTRAPPING, S.STOPPING])
+def test_a_link_is_refused_before_and_after_ready(
+    api: TestClient, session: Session, deploy: Callable[..., Deployment], status: S
+) -> None:
+    waiting = deploy(status=status)
+    _, cookie = opened(api, session, waiting, Role.TRAINEE)
+
+    assert refused(join(api, waiting.id, cookie)) == 1008
+
+
+def test_a_link_is_refused_on_another_deployment(
+    api: TestClient, session: Session, deploy: Callable[..., Deployment]
+) -> None:
+    ready, other = deploy(status=S.READY), deploy(status=S.READY)
+    _, cookie = opened(api, session, ready, Role.OPERATOR)
+
+    assert refused(join(api, other.id, cookie)) == 1008
+
+
+def test_a_revoked_link_or_a_disabled_user_is_refused(
+    api: TestClient, session: Session, deploy: Callable[..., Deployment]
+) -> None:
+    ready = deploy(status=S.READY)
+    revoked, cookie = opened(api, session, ready, Role.TRAINEE)
+    link, other = opened(api, session, ready, Role.VIEWER, name="gamma")
+    revoked.revoke()
+    owner = User(session=session).load(id=link.user_id)
+    owner.state = State.DISABLED
+    owner.save()
+
+    assert refused(join(api, ready.id, cookie)) == 1008
+    assert refused(join(api, ready.id, other)) == 1008
+
+
+@pytest.mark.parametrize("origin", ["https://example.com", "http://testserver.example.com", "null"])
+def test_a_link_with_a_foreign_origin_is_refused(
+    api: TestClient, session: Session, deploy: Callable[..., Deployment], origin: str
+) -> None:
+    ready = deploy(status=S.READY)
+    _, cookie = opened(api, session, ready, Role.TRAINEE)
+
+    assert refused(join(api, ready.id, cookie, Origin=origin)) == 1008
+
+
+def test_a_missing_or_unknown_session_is_refused(
+    api: TestClient, deploy: Callable[..., Deployment]
+) -> None:
+    ready = deploy(status=S.READY)
+
+    assert refused(api.websocket_connect(f"{DEPLOYMENTS}/{ready.id}/attach")) == 1008
+    assert refused(join(api, ready.id, "jatszoter_link=")) == 1008
+    assert refused(join(api, ready.id, "jatszoter_link=alpha")) == 1008
+
+
+def test_a_link_socket_closes_with_1000_once_the_deployment_is_terminal(
+    api: TestClient,
+    session: Session,
+    deploy: Callable[..., Deployment],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("jatszoter_api.routes.console.POLL_SECONDS", 0.05)
+    ready = deploy(status=S.READY)
+    _, cookie = opened(api, session, ready, Role.TRAINEE)
+
+    with join(api, ready.id, cookie) as viewer:
+        offset(viewer)
+        ready.transition("abort", S.READY, "lease expired", actor=Actor.API)
+
+        assert closed(viewer) == 1000
+    assert refused(join(api, ready.id, cookie)) == 1008

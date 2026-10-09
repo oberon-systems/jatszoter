@@ -6,7 +6,7 @@ from enum import StrEnum
 from typing import Any
 
 from pydantic import PrivateAttr
-from sqlmodel import Session
+from sqlmodel import Field, Session
 
 from jatszoter_api.errors import InvalidPasswordError, NotAuthorizedError, ThrottledError
 from jatszoter_api.models._base import State
@@ -60,7 +60,7 @@ def _login_key(name: str) -> str:
 class User(SecretOwner, table=True):
     __tablename__ = "users"
 
-    name: str
+    name: str = Field(unique=True)
     role: Role
     comment: str | None = None
     password: str | None = None

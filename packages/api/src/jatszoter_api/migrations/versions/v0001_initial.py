@@ -37,6 +37,7 @@ def upgrade() -> None:
         sa.Column("password", sa.String(), nullable=True),
         sa.Column("password_changed", sa.Integer(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("name"),
     )
     op.create_table(
         "agents",

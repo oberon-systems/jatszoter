@@ -1,5 +1,6 @@
 import hashlib
 import secrets
+import time
 import uuid
 from typing import Any, Self
 
@@ -42,3 +43,9 @@ class Link(Base, table=True):
 
     def save(self) -> None:
         self._save()
+
+    def revoke(self) -> None:
+        """Stamp `revoked_at` once; a repeated call changes nothing."""
+        if self.revoked_at is None:
+            self.revoked_at = int(time.time())
+            self.save()

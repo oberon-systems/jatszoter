@@ -7,7 +7,7 @@ from sqlmodel import Session
 
 from jatszoter_api.file import File
 from jatszoter_api.lifecycle import DeploymentStatus
-from jatszoter_api.models import Agent, Deployment, Image, Role, Scenario, State
+from jatszoter_api.models import Agent, Deployment, Image, Role, Scenario, State, User
 
 S = DeploymentStatus
 DEPLOYMENTS = "/api/v1/deployments"
@@ -53,6 +53,17 @@ def scenario(session: Session, image: Image) -> Scenario:
     return register(session, DOCUMENT)
 
 
+@pytest.fixture
+def trainee(session: Session) -> User:
+    user = User(session=session, name="gamma", role=Role.TRAINEE, state=State.ENABLED)
+    user.save()
+    return user
+
+
+def body(scenario: Scenario, trainee: User, **more: str) -> dict[str, str]:
+    return {"scenario_id": str(scenario.id), "trainee_id": str(trainee.id), **more}
+
+
 def deploy(
     session: Session, scenario: Scenario, status: S = S.PENDING, created_at: int | None = None
 ) -> Deployment:
@@ -76,9 +87,9 @@ def agent(session: Session, state: State) -> Agent:
 
 
 def test_create_copies_the_scenario_and_falls_back_to_settings(
-    operator: Any, scenario: Scenario, image: Image
+    operator: Any, scenario: Scenario, image: Image, trainee: User
 ) -> None:
-    response = operator.request("POST", DEPLOYMENTS, json={"scenario_id": str(scenario.id)})
+    response = operator.request("POST", DEPLOYMENTS, json=body(scenario, trainee))
 
     assert response.status_code == 201
     created = response.json()
@@ -94,42 +105,47 @@ def test_create_copies_the_scenario_and_falls_back_to_settings(
         "check_seconds": 30,
         "session_minutes": 30,
     }
+    del created["link"]
     assert operator.request("GET", f"{DEPLOYMENTS}/{created['id']}").json() == created
 
 
-def test_a_pinned_agent_is_stored(operator: Any, session: Session, scenario: Scenario) -> None:
+def test_a_pinned_agent_is_stored(
+    operator: Any, session: Session, scenario: Scenario, trainee: User
+) -> None:
     pinned = agent(session, State.ENABLED)
 
     response = operator.request(
-        "POST", DEPLOYMENTS, json={"scenario_id": str(scenario.id), "agent_id": str(pinned.id)}
+        "POST", DEPLOYMENTS, json=body(scenario, trainee, agent_id=str(pinned.id))
     )
 
     assert response.status_code == 201
     assert response.json()["agent_id"] == str(pinned.id)
 
 
-def test_an_unknown_scenario_is_not_found(operator: Any) -> None:
-    response = operator.request("POST", DEPLOYMENTS, json={"scenario_id": str(uuid.uuid4())})
+def test_an_unknown_scenario_is_not_found(operator: Any, trainee: User) -> None:
+    unknown = {"scenario_id": str(uuid.uuid4()), "trainee_id": str(trainee.id)}
+
+    response = operator.request("POST", DEPLOYMENTS, json=unknown)
 
     assert response.status_code == 404
 
 
-def test_an_unregistered_image_conflicts(operator: Any, session: Session) -> None:
+def test_an_unregistered_image_conflicts(operator: Any, session: Session, trainee: User) -> None:
     orphan = register(session, {**DOCUMENT, "image": "beta"})
 
-    response = operator.request("POST", DEPLOYMENTS, json={"scenario_id": str(orphan.id)})
+    response = operator.request("POST", DEPLOYMENTS, json=body(orphan, trainee))
 
     assert response.status_code == 409
 
 
 @pytest.mark.parametrize("enabled", [False, None])
 def test_a_disabled_or_unknown_agent_is_unprocessable(
-    operator: Any, session: Session, scenario: Scenario, enabled: bool | None
+    operator: Any, session: Session, scenario: Scenario, trainee: User, enabled: bool | None
 ) -> None:
     agent_id = uuid.uuid4() if enabled is None else agent(session, State.DISABLED).id
 
     response = operator.request(
-        "POST", DEPLOYMENTS, json={"scenario_id": str(scenario.id), "agent_id": str(agent_id)}
+        "POST", DEPLOYMENTS, json=body(scenario, trainee, agent_id=str(agent_id))
     )
 
     assert response.status_code == 422
@@ -189,15 +205,17 @@ def test_stopping_an_ended_deployment_conflicts(
 
 
 def test_only_an_operator_reaches_deployments(
-    sign_in: Callable[..., Any], api: Any, session: Session, scenario: Scenario
+    sign_in: Callable[..., Any], api: Any, session: Session, scenario: Scenario, trainee: User
 ) -> None:
-    trainee = sign_in(name="beta", role=Role.TRAINEE)
+    signed = sign_in(name="beta", role=Role.TRAINEE)
     deployment = deploy(session, scenario)
     one = f"{DEPLOYMENTS}/{deployment.id}"
-    body = {"scenario_id": str(scenario.id)}
 
-    assert trainee.request("POST", DEPLOYMENTS, json=body).status_code == 403
-    assert trainee.request("GET", DEPLOYMENTS).status_code == 403
-    assert trainee.request("GET", one).status_code == 403
-    assert trainee.request("POST", f"{one}/stop").status_code == 403
+    assert signed.request("POST", DEPLOYMENTS, json=body(scenario, trainee)).status_code == 403
+    assert signed.request("GET", DEPLOYMENTS).status_code == 403
+    assert signed.request("GET", one).status_code == 403
+    assert signed.request("POST", f"{one}/stop").status_code == 403
+    assert signed.request("GET", f"{one}/links").status_code == 403
+    assert signed.request("POST", f"{one}/links", json={"user_id": signed.id}).status_code == 403
+    assert signed.request("POST", f"/api/v1/links/{uuid.uuid4()}/revoke").status_code == 403
     assert api.get(DEPLOYMENTS).status_code == 401

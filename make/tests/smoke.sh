@@ -236,8 +236,10 @@ else
     accel="TCG, no usable /dev/kvm"
 fi
 echo "deploying the scenario under $accel; the boot takes minutes..."
+trainee="$(signed POST /api/v1/users "$(jq -cn '{name: "beta", role: "trainee"}')" | jq -r .id)"
 created="$(signed POST /api/v1/deployments \
-    "$(jq -cn --arg id "$(jq -r .id <<<"$scenario")" '{scenario_id: $id}')")"
+    "$(jq -cn --arg id "$(jq -r .id <<<"$scenario")" --arg trainee "$trainee" \
+        '{scenario_id: $id, trainee_id: $trainee}')")"
 deployment="$(jq -r .id <<<"$created")"
 wait_for "$(($(jq -r .bootstrap_seconds <<<"$created") + 120))" vm_ready
 if ! vm_alive; then

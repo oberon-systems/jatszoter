@@ -43,8 +43,8 @@ through a link; one party at a time holds the keyboard.
   under a live lease, or not STARTING, BOOTSTRAPPING or READY. A newer
   socket for the same deployment replaces the older one.
 - The API stores the bytes, see [Console store](#console-store), fans them
-  out to every attached viewer, and streams the same bytes into the trainee
-  link's recording; see [05](05-recording.md#writing).
+  out to every attached viewer, and writes the bytes from the READY offset
+  on into the trainee link's recording; see [05](05-recording.md#writing).
 - Keys and resizes travel down the same socket, between the `{"offset": n}`
   answers: keys as a binary frame, a resize as the text frame
   `{"cols": n, "rows": n}`. Up to 256 such messages wait for a slow agent;
@@ -155,8 +155,9 @@ link can do:
 - Revoking a link closes every socket opened through it at once, with
   4403.
 - The first open of the trainee link stamps its `opened_at` and starts its
-  recording. Later opens, from any tab, join the same recording; revoking
-  the link closes it, and a new trainee link starts a new one.
+  recording, which takes output from the READY offset on. Later opens, from
+  any tab, join the same recording; revoking the link closes it, and a new
+  trainee link starts a new one. Links of other roles record nothing.
 
 ## Take control
 
@@ -173,8 +174,8 @@ link can do:
   as `trainee`; a viewer link never types. The API reads the holder for
   every frame and forwards it only from a socket of that role, whatever
   the browser shows.
-- Every change is written as a marker into the recording, see
-  [05](05-recording.md).
+- Every change is written into the trainee link's recording as the marker
+  `control operator` or `control trainee`, see [05](05-recording.md#format).
 
 ## Resize
 
@@ -189,8 +190,9 @@ agent sets it in the guest through the guest agent: `guest-exec` of `stty -F
 - This is proven on the Rocky 9 smoke guest with SELinux enforcing: from
   the guest agent's confined domain the command exits 0 and `stty size`
   reads the new size back.
-- The API records an `r` event in the recording, see
-  [05](05-recording.md).
+- The API writes an `r` event into the recording when it passes the
+  holder's resize to the agent, whether or not the guest then applies it;
+  see [05](05-recording.md#writing).
 
 ## Backpressure
 

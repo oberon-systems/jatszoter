@@ -86,9 +86,11 @@ POST /api/v1/deployments/{id}/stop         signed (operator)
 GET  /api/v1/deployments/{id}/console      signed (operator)
 POST /api/v1/deployments/{id}/links        signed (operator)
 GET  /api/v1/deployments/{id}/links        signed (operator)
+GET  /api/v1/deployments/{id}/recordings   signed (operator)
 POST /api/v1/deployments/{id}/control      signed (operator), operator link
 WS   /api/v1/deployments/{id}/attach       signed (operator), link
 POST /api/v1/links/{id}/revoke             signed (operator)
+GET  /api/v1/recordings/{id}.cast          signed (operator)
 GET  /s/{token}                            open, the token is the secret
 ```
 
@@ -106,6 +108,8 @@ GET  /s/{token}                            open, the token is the secret
   session of one link, valid for that link's deployment alone while the
   link is not revoked and its user is `enabled`. `operator link` is such a
   session whose user has role `operator`. See [04](04-console.md#links).
+- The recording routes are described in [05](05-recording.md#replay); no
+  link reads a recording.
 - `GET /s/{token}` is the one route outside `/api/v1`.
 
 ## Agent protocol
@@ -276,8 +280,9 @@ Stop:
 1. Operator stops the deployment; STARTING, BOOTSTRAPPING and READY move
    to STOPPING, PENDING to CANCELLED.
 2. The agent destroys the VM and its directory, then moves it to COMPLETED.
-3. COMPLETED revokes the deployment's links; the API closes the recording
-   stream and stores its final size and duration.
+3. COMPLETED revokes the deployment's links and closes the trainee link's
+   recording: the API stores its final size and duration. FAILED and
+   CANCELLED do the same.
 
 ## Reconciliation
 

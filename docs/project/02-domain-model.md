@@ -62,8 +62,10 @@ holding that entity's UUID.
   recording. A deployment is created with its trainee link and holds one
   live trainee link at a time; ending the deployment revokes all its links.
   See [04](04-console.md#links).
-- **Recording** - URL of the asciicast in object storage, size, duration,
-  trainee link.
+- **Recording** - deployment, trainee link, URL of the asciicast in the
+  file store, size and duration. It is stored on the first open of the
+  trainee link; size and duration are 0 until it is closed. See
+  [05](05-recording.md).
 - **Check** - deployment, the link it came through if any, the user who
   requested it, status (`pending`, `passed`, `failed`, `error`, `timeout`),
   exit code, message, times.
@@ -151,6 +153,12 @@ and tests always - the API uses an in-memory
 - The control holder under `console:<deployment id>:control`, beside the
   console tail and with its TTL; absent means `trainee`. See
   [04](04-console.md#take-control).
+- A live recording's state under `recording:<recording id>:*`: how far the
+  console is recorded, the bytes written, the rest of a split UTF-8
+  sequence and the limit flag; and `recording:of:<deployment id>`, the id
+  of the deployment's live recording. All for a day, renewed by every
+  write and deleted when the recording closes. See
+  [05](05-recording.md#writing).
 
 No SQL row names a lease: an expired id would only go stale there. A
 deployment names its agent, an agent write is accepted only while Valkey holds

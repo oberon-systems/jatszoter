@@ -53,16 +53,23 @@ to cover it. An item marked Done has landed on `main`.
    - Smoke: a trainee link opens the terminal and types; take control cuts
      its input; a resize reaches the guest; a revoked link opens nothing.
 9. Recording and replay ([05](05-recording.md)).
+   - API: the asciicast of a trainee link from its first open - output from
+     the READY offset, resizes and control changes as events, the size
+     limit - closed on revoke and when the deployment ends; the recordings
+     listing and the download.
    - Agent: no change; the API records the stream it already receives.
    - Smoke: a session leaves a recording that replays.
 10. Checks through the guest agent.
+    - API: check results as markers in the recording.
     - Agent: run pending checks in the guest and post the result.
     - Smoke: a check fails before the fix and passes after it.
 11. Web UI, design-first in Penpot: design system, then each screen; CSRF
-    tokens on state-changing requests.
+    tokens on state-changing requests; the replay page with a vendored
+    asciinema-player and markers as jump points.
     - Agent: no change.
     - Smoke: the operator and trainee pages load against the smoke stand.
-12. Hardening: limits, TTL sweeps.
+12. Hardening: limits, TTL sweeps, the recording retention sweep with
+    `JATSZOTER_RECORDING_RETENTION_DAYS`.
     - Agent: bounded retries and backoff towards the API.
     - Smoke: session TTL and bootstrap timeout end their deployments.
 

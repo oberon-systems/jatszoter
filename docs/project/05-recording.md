@@ -15,52 +15,92 @@ operator can replay exactly what the terminal showed.
 One JSON header line, then one JSON event per line:
 
 ```text
-{"version": 2, "width": 120, "height": 32, "timestamp": 1790000000, "title": "nginx-502 v1 5f0c..."}
-[0.512, "o", "trainee@alpha:~$ "]
+{"version": 2, "width": 80, "height": 24, "timestamp": 1790000000, "title": "nginx-502 v2 5f0c..."}
+[0.0, "o", "trainee@alpha:~$ "]
 [4.031, "r", "140x40"]
-[9.870, "m", "control operator"]
-[21.004, "m", "check 9b2e... failed: nginx still does not serve the app page"]
+[9.87, "m", "control operator"]
 ```
 
-- `o` - output bytes as the API received them from the agent.
-- `r` - resize, applied from the holder of control.
-- `m` - markers: control changes and check results.
-- There are no `i` events: keys are never stored.
+- The header says 80 by 24, the size of a serial line nobody has resized.
+  `timestamp` is when the link was first opened; `title` is the scenario's
+  slug, its version and the deployment id.
+- `o` - output: the console bytes the API received from the agent, decoded
+  as UTF-8. A sequence split between two frames is carried over to the
+  next event, and an invalid byte is written as U+FFFD.
+- `r` - resize, `<cols>x<rows>`, from the holder of control.
+- `m` - markers: `control operator` and `control trainee` for control
+  changes, and `recording limit reached`, see [Storage](#storage). Check
+  results join them with roadmap item 10.
+- There are no `i` events: keys are never stored. Nothing a viewer sends
+  reaches the file except the size in a resize.
 
 ## Writing
 
-- When the trainee link is first opened, the API opens one new object in
-  SeaweedFS and streams the asciicast into it as console bytes arrive from
-  the agent, with times since the first open taken from the API clock.
-- It is the same stream the API fans out to the terminals. Nothing is
-  buffered into a whole file first; a crash loses only the bytes in flight.
-- Control changes and check results go into the stream as markers, in order
-  with the output.
-- Revoking the link closes the stream and writes the final size and duration
-  to the Recording row. Ending the deployment revokes the link, so no
-  recording outlives it.
-- In tests the API streams into the local file store; see [Storage](#storage).
+- The first open of a trainee link stores the Recording row and writes the
+  header. Links of other roles record nothing. Later opens, from any tab,
+  join the same recording.
+- Time zero is the row's `created_at`, a whole second on the API clock. An
+  event's time is the API clock minus it.
+- Output is recorded from the READY offset, the place where a trainee's
+  terminal starts; see [04](04-console.md#console-store). Nothing is
+  written before READY. A link first opened after READY gets the bytes
+  from the READY offset to the log end as its first event, at time 0; when
+  the tail no longer holds them, the recording starts at the log end.
+- From then on every frame the API stores is recorded before it is fanned
+  out, and only the bytes past what is already recorded. It is the same
+  stream the terminals get. Nothing is buffered into a whole file first; a
+  crash loses only the bytes in flight.
+- An `r` event is written when the API passes a resize of the holder of
+  control to the agent. The API cannot see whether the guest applied it.
+- An `m` event is written when
+  [the control route](04-console.md#take-control) changes the holder.
+- Each event is stamped and appended on its own, one at a time, so the
+  times in the file never go backwards.
+- What the recorder needs between events lives in Valkey under
+  `recording:<recording id>:*`, and `recording:of:<deployment id>` names
+  the deployment's live recording; see
+  [02](02-domain-model.md#ephemeral-state). When Valkey loses them, the
+  bytes written are read back from the file's size and output resumes with
+  the next frame that arrives.
+- Revoking the link closes the recording: the row gets the file's final
+  size and the seconds since time zero, and the Valkey keys are deleted. A
+  deployment reaching COMPLETED, FAILED or CANCELLED revokes its links and
+  closes the recording the same way, so no recording outlives it open. A
+  new trainee link starts a new recording.
+- A recording that cannot be written never stops the console: the agent
+  still gets its answer, the terminals their bytes, and the link still
+  opens.
 
 ## Storage
 
-- Files live in [SeaweedFS](https://github.com/seaweedfs/seaweedfs) as
-  `<deployment_id>/<recording_id>.cast`; the Recording row keeps the file's
-  URL, its size and duration.
-- When `JATSZOTER_SEAWEED_URL` is unset, the API writes the same layout
-  under `data/storage/` in its working directory instead, as in development
-  and tests.
-- A recording larger than `JATSZOTER_RECORDING_LIMIT_BYTES` stops taking
-  output and gets a final marker saying so.
-- Recordings older than `JATSZOTER_RECORDING_RETENTION_DAYS` are deleted by
-  a background sweep, file and row together. Unset means keep forever.
+- Files live in the file store as
+  `recordings/<deployment_id>/<recording_id>.cast`, in
+  [SeaweedFS](https://github.com/seaweedfs/seaweedfs) or, when
+  `JATSZOTER_SEAWEED_URL` is unset, under `data/storage/` in the API's
+  working directory, as in development and tests. Each event is one append
+  through the filer.
+- The Recording row keeps the deployment, the trainee link, the file's
+  URL, and the size and duration once the recording is closed; both are 0
+  before that.
+- `JATSZOTER_RECORDING_LIMIT_BYTES` is 64 MiB by default. The event that
+  would take the file past it is not written; the marker `recording limit
+  reached` takes its place, once, and nothing is written after it.
+- A closed recording stays until it is deleted. The retention sweep that
+  deletes old files and rows together arrives with roadmap item 12.
 
 ## Replay
 
-- `GET /api/v1/recordings/{recording_id}.cast` returns the file, signed
-  operator request only.
-- The web UI plays it with a vendored asciinema-player and lists markers as
-  jump points.
-- A recording of a live link is served as far as it is written.
+- `GET /api/v1/deployments/{id}/recordings` lists a deployment's
+  recordings, oldest first: id, link, creation time, size and duration,
+  never the URL.
+- `GET /api/v1/recordings/{recording_id}.cast` returns the file as
+  `application/x-asciicast`. A recording of a live link is served as far
+  as it is written. An unknown recording, or one whose file is gone,
+  answers 404.
+- Both take a signed operator request and nothing else: a link, of any
+  role, never reads a recording.
+- The web UI plays it with a vendored asciinema-player and lists markers
+  as jump points; that page arrives with roadmap item 11.
 
 ## Acceptance criteria
 
@@ -68,4 +108,7 @@ One JSON header line, then one JSON event per line:
   resizes.
 - No recording contains a key the trainee or the operator typed, other than
   what the guest echoed back.
-- Every control change and check result appears as a marker.
+- Every control change appears as a marker, in order with the output.
+- A recording never grows past its limit, and a console whose recording
+  fails keeps working.
+- No link token and no session token appears in a recording.

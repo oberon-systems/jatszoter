@@ -255,9 +255,9 @@ async fn fence(root: &Path) {
 }
 
 async fn ship_console(shared: Arc<Shared>, auth: Auth, deployment_id: String, full: Full) {
-    let log = shared.root.join(&deployment_id).join(vm::CONSOLE_LOG);
+    let dir = shared.root.join(&deployment_id);
     loop {
-        match console::ship(&shared.api_url, &auth, &deployment_id, &log).await {
+        match console::ship(&shared.api_url, &auth, &deployment_id, &dir).await {
             Ok(true) => {
                 tracing::warn!("the console log is full; shipping stops");
                 full.lock()

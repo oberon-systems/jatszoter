@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::UnixStream;
-use tokio::time::{timeout_at, Instant};
+use tokio::time::{sleep, timeout_at, Instant};
 
 use crate::libs::error::AgentError;
 
@@ -16,6 +16,7 @@ const DELIMITER: u8 = 0xFF;
 const SYNC: &str = "guest-sync-delimited";
 const CHUNK: usize = 64 * 1024;
 const MISSING: &str = "No such file or directory";
+const EXEC_POLL: Duration = Duration::from_millis(100);
 
 pub struct Qga {
     reader: BufReader<OwnedReadHalf>,
@@ -51,6 +52,39 @@ impl Qga {
 
     pub async fn ping(&mut self) -> Result<(), AgentError> {
         self.execute("guest-ping", None).await.map(drop)
+    }
+
+    /// Runs `argv` in the guest and returns its exit code; an error once `wait` passes.
+    pub async fn exec(&mut self, argv: &[&str], wait: Duration) -> Result<i64, AgentError> {
+        let command = "guest-exec";
+        let (path, args) = argv
+            .split_first()
+            .ok_or_else(|| AgentError::Qga(format!("{command}: no command")))?;
+        let deadline = Instant::now() + wait;
+        let started = self
+            .execute(
+                command,
+                Some(json!({ "path": path, "arg": args, "capture-output": false })),
+            )
+            .await?;
+        let pid = started
+            .get("pid")
+            .and_then(Value::as_i64)
+            .ok_or_else(|| AgentError::Qga(format!("{command}: no pid")))?;
+        let command = "guest-exec-status";
+        loop {
+            let status = self.execute(command, Some(json!({ "pid": pid }))).await?;
+            if status.get("exited").and_then(Value::as_bool) == Some(true) {
+                return status
+                    .get("exitcode")
+                    .and_then(Value::as_i64)
+                    .ok_or_else(|| AgentError::Qga(format!("{command}: no exit code")));
+            }
+            if Instant::now() + EXEC_POLL > deadline {
+                return Err(AgentError::Qga(format!("{path}: still running")));
+            }
+            sleep(EXEC_POLL).await;
+        }
     }
 
     pub async fn read_file(

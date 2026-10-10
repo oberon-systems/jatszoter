@@ -223,3 +223,68 @@ async fn a_reply_that_is_not_json_is_an_error() {
         "{err}"
     );
 }
+
+fn started() -> Vec<u8> {
+    reply(json!({ "return": { "pid": 7 } }))
+}
+
+fn running() -> Vec<u8> {
+    reply(json!({ "return": { "exited": false } }))
+}
+
+fn status() -> Value {
+    json!({ "execute": "guest-exec-status", "arguments": { "pid": 7 } })
+}
+
+#[tokio::test]
+async fn exec_sends_the_argument_vector_and_returns_the_exit_code() {
+    let dir = TempDir::new().unwrap();
+    let exited = reply(json!({ "return": { "exited": true, "exitcode": 3 } }));
+    let (path, server) = serve(&dir, b"", vec![started(), running(), exited]);
+
+    let mut qga = Qga::connect(&path, TIMEOUT).await.unwrap();
+    let code = qga.exec(&["alpha", "-F", "beta gamma"], TIMEOUT).await;
+    drop(qga);
+
+    assert_eq!(code.unwrap(), 3);
+    let exec = json!({
+        "execute": "guest-exec",
+        "arguments": { "path": "alpha", "arg": ["-F", "beta gamma"], "capture-output": false }
+    });
+    assert_eq!(server.await.unwrap(), vec![exec, status(), status()]);
+}
+
+#[tokio::test]
+async fn a_process_that_never_exits_is_an_error_after_wait() {
+    let dir = TempDir::new().unwrap();
+    let mut replies = vec![started()];
+    replies.extend((0..50).map(|_| running()));
+    let (path, server) = serve(&dir, b"", replies);
+
+    let mut qga = Qga::connect(&path, TIMEOUT).await.unwrap();
+    let err = qga
+        .exec(&["alpha"], Duration::from_millis(250))
+        .await
+        .unwrap_err();
+    drop(qga);
+
+    assert!(
+        matches!(&err, AgentError::Qga(message) if message == "alpha: still running"),
+        "{err}"
+    );
+    let seen = server.await.unwrap();
+    assert!(seen.len() > 1 && seen[1..].iter().all(|sent| sent == &status()));
+}
+
+#[tokio::test]
+async fn exec_without_a_command_sends_nothing() {
+    let dir = TempDir::new().unwrap();
+    let (path, server) = serve(&dir, b"", vec![started()]);
+
+    let mut qga = Qga::connect(&path, TIMEOUT).await.unwrap();
+    let err = qga.exec(&[], TIMEOUT).await.unwrap_err();
+    drop(qga);
+
+    assert!(matches!(&err, AgentError::Qga(_)), "{err}");
+    assert!(server.await.unwrap().is_empty());
+}

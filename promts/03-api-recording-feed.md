@@ -36,6 +36,8 @@ revoked or the deployment ends.
 - `routes/console.py`:
   - `ship`: after a frame is stored, in the same thread, the deployment's
     live recording takes the kept bytes; without one nothing more is done;
+  - `attach`: a trainee link whose recording is open but no longer named
+    live, as after a lost Valkey, has it resumed with `Recording.resume`;
   - `_forward`: a resize the agent took is written as `r`;
   - `control`: a change of the holder is written as `m`, `control
     operator` or `control trainee`.

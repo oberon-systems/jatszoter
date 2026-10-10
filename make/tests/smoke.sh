@@ -144,6 +144,121 @@ viewer() {
         "$VENV/bin/python" -I -c "$viewer_py"
 }
 
+# The token reaches curl on stdin; the redirect is not followed.
+open_link() {
+    printf 'url = "%s"\n' "$api/s/$token" | curl -sS -K - -o /dev/null "$@" | tr -d '\r'
+}
+
+header() {
+    sed -n "s/^$1: //Ip" <<<"$opened"
+}
+
+# A trainee socket by cookie and an operator socket by signature; prints check names only.
+# shellcheck disable=SC2016
+terminal_py='
+import hashlib, hmac, json, os, sys, time
+from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
+from websockets.exceptions import WebSocketException
+from websockets.sync.client import connect
+
+target = urlsplit(os.environ["TERMINAL_URL"])
+key = os.environ["TERMINAL_KEY"].encode()
+
+
+def signed(method, path, body=b""):
+    ts = str(int(time.time()))
+    message = "\n".join([ts, method, path, hashlib.sha256(body).hexdigest()])
+    return {
+        "X-Owner": os.environ["TERMINAL_OWNER"],
+        "X-Credential": os.environ["TERMINAL_CREDENTIAL"],
+        "X-Timestamp": ts,
+        "X-Signature": hmac.new(key, message.encode(), hashlib.sha256).hexdigest(),
+    }
+
+
+class Terminal:
+    def __init__(self, socket):
+        self.socket = socket
+        self.offset, self.control, self.seen = None, None, bytearray()
+
+    def until(self, done, seconds=30):
+        deadline = time.monotonic() + seconds
+        while not done():
+            try:
+                frame = self.socket.recv(timeout=max(deadline - time.monotonic(), 0))
+            except TimeoutError:
+                return False
+            if isinstance(frame, str):
+                told = json.loads(frame)
+                self.offset = told.get("offset", self.offset)
+                self.control = told.get("control", self.control)
+            else:
+                self.seen += frame
+        return True
+
+    def held_by(self, holder, seconds=30):
+        return self.until(lambda: self.offset is not None and self.control == holder, seconds)
+
+    def prints(self, line, text, seconds=30):
+        self.seen.clear()
+        self.socket.send(line.encode() + b"\r")
+        return self.until(lambda: text.encode() in self.seen, seconds)
+
+    # The echo shows the arithmetic as typed; only the guest expands it.
+    def runs(self, mark, seconds=30):
+        return self.prints(f"printf {mark}-%d $((40 + 2))", f"{mark}-42", seconds)
+
+
+def take_control():
+    path = target.path.removesuffix("/attach") + "/control"
+    body = json.dumps({"holder": "operator"}).encode()
+    headers = {**signed("POST", path, body), "Content-Type": "application/json"}
+    request = Request(f"http://{target.netloc}{path}", data=body, headers=headers)
+    with urlopen(request, timeout=30) as response:
+        response.read()
+    return trainee.held_by("operator") and operator.held_by("operator")
+
+
+def resize():
+    operator.socket.send(json.dumps({"cols": 100, "rows": 30}))
+    return operator.prints("stty size", "30 100")
+
+
+checks = [
+    ("the trainee attaches holding control", lambda: trainee.held_by("trainee")),
+    ("the trainee types into the guest", lambda: trainee.runs("one")),
+    ("the operator takes control", take_control),
+    ("the keys of the trainee are cut", lambda: not trainee.runs("two", 5)),
+    ("the operator types into the guest", lambda: operator.runs("three")),
+    ("a resize reaches the guest", resize),
+]
+def attach(headers):
+    return connect(target.geturl(), additional_headers=headers, open_timeout=30)
+
+
+name = "opening the sockets"
+cookie = {"Cookie": "jatszoter_link=" + os.environ["TERMINAL_COOKIE"]}
+try:
+    with attach(cookie) as first, attach(signed("GET", target.path)) as second:
+        trainee, operator = Terminal(first), Terminal(second)
+        for name, check in checks:
+            if not check():
+                counts = f"{len(trainee.seen)} trainee and {len(operator.seen)} operator bytes"
+                sys.exit(f"the terminal failed at: {name}, with {counts} since each last line")
+            print(f"the terminal passed: {name}", flush=True)
+except (OSError, WebSocketException) as err:
+    sys.exit(f"the terminal was refused or dropped at: {name}: {type(err).__name__}")
+'
+
+# The cookie and the key reach the terminal through its environment, never a command line.
+terminal() {
+    TERMINAL_URL="ws://${api#http://}/api/v1/deployments/$deployment/attach" \
+        TERMINAL_COOKIE="$cookie" \
+        TERMINAL_OWNER="$owner" TERMINAL_CREDENTIAL="$credential" TERMINAL_KEY="$key" \
+        "$VENV/bin/python" -I -c "$terminal_py"
+}
+
 cached_sha256() {
     sha256sum "$1" | cut -d' ' -f1
 }
@@ -265,6 +380,52 @@ if ! grep -qa 'Rocky Linux' "$TEMP_DIR/console.download"; then
 fi
 if [ ! -s "$TEMP_DIR/agent/vms/$deployment/console.log" ]; then
     echo "console.log is missing or empty in the VM directory" >&2
+    exit 1
+fi
+
+echo "opening the trainee link..."
+link="$(jq -r .link.id <<<"$created")"
+token="$(jq -r .link.token <<<"$created")"
+unset created
+if [[ ! "$token" =~ ^[A-Za-z0-9_-]{32,}$ ]]; then
+    echo "the create response carries no link token" >&2
+    exit 1
+fi
+opened="$(open_link -D -)"
+answer="$(head -n 1 <<<"$opened" | cut -d' ' -f2)"
+if [ "$answer" != 303 ] || [ "$(header location)" != "/t/$deployment" ]; then
+    echo "opening the link answered $answer, not 303 to /t/$deployment" >&2
+    exit 1
+fi
+jar="$(header set-cookie)"
+cookie="${jar%%;*}"
+attributes="; ${jar#*; };"
+attributes="${attributes,,}"
+unset opened jar
+if [[ "$cookie" != jatszoter_link=?* ]]; then
+    echo "opening the link set no jatszoter_link cookie" >&2
+    exit 1
+fi
+cookie="${cookie#jatszoter_link=}"
+for attribute in httponly secure samesite=strict "path=/api/v1/deployments/$deployment"; do
+    if [[ "$attributes" != *"; $attribute;"* ]]; then
+        echo "the link cookie is not $attribute" >&2
+        exit 1
+    fi
+done
+
+echo "typing as the trainee, then taking control..."
+terminal
+
+echo "revoking the trainee link..."
+signed POST "/api/v1/links/$link/revoke" >/dev/null
+answer="$(open_link -w '%{http_code}')"
+if [ "$answer" != 404 ]; then
+    echo "opening the revoked link answered $answer, not 404" >&2
+    exit 1
+fi
+if grep -qF -f <(printf '%s\n%s\n' "$token" "$cookie") "$TEMP_DIR/api.log" "$TEMP_DIR/agent.log"; then
+    echo "a log holds the link token or the cookie value" >&2
     exit 1
 fi
 

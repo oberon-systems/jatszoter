@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     console_tail_bytes: PositiveInt = 8 * 1024 * 1024
     console_limit_bytes: PositiveInt = 64 * 1024 * 1024
     console_viewer_buffer_bytes: PositiveInt = 4 * 1024 * 1024
+    recording_limit_bytes: PositiveInt = 64 * 1024 * 1024
 
     default_cpus: int = 1
     default_memory_mib: int = 1024

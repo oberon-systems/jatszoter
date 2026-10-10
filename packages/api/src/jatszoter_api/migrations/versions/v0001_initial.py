@@ -122,6 +122,7 @@ def upgrade() -> None:
     op.create_table(
         "recordings",
         sa.Column("id", sa.Uuid(), nullable=False),
+        sa.Column("deployment_id", sa.Uuid(), nullable=False),
         sa.Column("link_id", sa.Uuid(), nullable=False),
         sa.Column("url", sa.String(), nullable=False),
         sa.Column("size_bytes", sa.Integer(), nullable=False),
@@ -130,6 +131,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("link_id"),
     )
+    op.create_index("ix_recordings_deployment_id", "recordings", ["deployment_id"])
     op.create_table(
         "checks",
         sa.Column("id", sa.Uuid(), nullable=False),

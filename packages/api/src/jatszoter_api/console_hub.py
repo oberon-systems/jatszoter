@@ -4,6 +4,10 @@ from collections import deque
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 
+from jatszoter_api.models.console import Holder
+
+QUEUE_MESSAGES = 256
+
 
 class Viewer:
     """One attached viewer: bytes queued for it, counted against its cap."""
@@ -12,6 +16,7 @@ class Viewer:
         self.sent = 0
         self.behind = False
         self.revoked = False
+        self.control: Holder | None = None
         self._cap = cap
         self._size = 0
         self._chunks: deque[tuple[int, bytes]] = deque()
@@ -36,6 +41,10 @@ class Viewer:
         self.revoked = True
         self._ready.set()
 
+    def announce(self, holder: Holder) -> None:
+        self.control = holder
+        self._ready.set()
+
     async def take(self, timeout: float) -> tuple[int, bytes] | None:
         """The oldest queued chunk and where it starts; None when `timeout` passes first."""
         if not self._chunks and not self.behind:
@@ -49,30 +58,65 @@ class Viewer:
         return offset, data
 
 
+class AgentSocket:
+    """One agent socket: the keys and resizes waiting to go down it."""
+
+    def __init__(self) -> None:
+        self.replaced = False
+        self.woken = asyncio.Event()
+        self._loop = asyncio.get_running_loop()
+        self._waiting: deque[bytes | str] = deque()
+
+    def _wake(self) -> None:
+        with suppress(RuntimeError):
+            self._loop.call_soon_threadsafe(self.woken.set)
+
+    def replace(self) -> None:
+        self.replaced = True
+        self._wake()
+
+    def put(self, message: bytes | str) -> bool:
+        if len(self._waiting) >= QUEUE_MESSAGES:
+            return False
+        self._waiting.append(message)
+        self._wake()
+        return True
+
+    def take(self) -> list[bytes | str]:
+        """Everything that waits, oldest first; the wake is spent."""
+        self.woken.clear()
+        taken = list(self._waiting)
+        self._waiting.clear()
+        return taken
+
+
 # Every socket registers the loop it runs in, because two of them need not share
 # one: a viewer's queue belongs to its own loop and is fed through it.
 class ConsoleHub:
     def __init__(self, viewer_buffer_bytes: int) -> None:
         self._cap = viewer_buffer_bytes
-        self._agents: dict[uuid.UUID, tuple[asyncio.AbstractEventLoop, asyncio.Event]] = {}
+        self._agents: dict[uuid.UUID, AgentSocket] = {}
         self._viewers: dict[uuid.UUID, set[tuple[asyncio.AbstractEventLoop, Viewer]]] = {}
         self._links: dict[uuid.UUID, set[tuple[asyncio.AbstractEventLoop, Viewer]]] = {}
 
     @contextmanager
-    def agent(self, deployment_id: uuid.UUID) -> Iterator[asyncio.Event]:
-        """Hold the deployment's agent socket; the event is set once a newer one replaces it."""
-        entry = (asyncio.get_running_loop(), asyncio.Event())
+    def agent(self, deployment_id: uuid.UUID) -> Iterator[AgentSocket]:
+        """Hold the deployment's agent socket; it is woken as replaced once a newer one comes."""
+        entry = AgentSocket()
         older = self._agents.get(deployment_id)
         self._agents[deployment_id] = entry
         if older is not None:
-            loop, replaced = older
-            with suppress(RuntimeError):
-                loop.call_soon_threadsafe(replaced.set)
+            older.replace()
         try:
-            yield entry[1]
+            yield entry
         finally:
             if self._agents.get(deployment_id) is entry:
                 self._agents.pop(deployment_id, None)
+
+    def to_agent(self, deployment_id: uuid.UUID, message: bytes | str) -> bool:
+        """Queue a message for the deployment's agent socket; False without one or when full."""
+        entry = self._agents.get(deployment_id)
+        return entry is not None and entry.put(message)
 
     @contextmanager
     def viewer(
@@ -103,3 +147,9 @@ class ConsoleHub:
         for loop, viewer in list(self._links.get(link_id, set())):
             with suppress(RuntimeError):
                 loop.call_soon_threadsafe(viewer.revoke)
+
+    def announce(self, deployment_id: uuid.UUID, holder: Holder) -> None:
+        """Hand the holder of control to every viewer of the deployment and wake it."""
+        for loop, viewer in list(self._viewers.get(deployment_id, set())):
+            with suppress(RuntimeError):
+                loop.call_soon_threadsafe(viewer.announce, holder)

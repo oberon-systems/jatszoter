@@ -7,17 +7,19 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 from starlette.testclient import WebSocketTestSession
 from starlette.websockets import WebSocketDisconnect
 
-from jatszoter_api.console_hub import Viewer
+from jatszoter_api.console_hub import ConsoleHub, Viewer
 from jatszoter_api.file import File
 from jatszoter_api.lifecycle import Actor, DeploymentStatus
 from jatszoter_api.models import Agent, Deployment, Image, Link, Role, Scenario, State, User
 from jatszoter_api.models._cache import Cached
+from jatszoter_api.models.console import Holder
 from jatszoter_api.models.secret import CREDENTIAL_SECONDS
 from jatszoter_api.settings import Settings
 
@@ -113,6 +115,41 @@ def offset(socket: WebSocketTestSession) -> int:
     return answer
 
 
+def control(socket: WebSocketTestSession) -> str:
+    holder: str = json.loads(socket.receive_text())["control"]
+    return holder
+
+
+def attached(socket: WebSocketTestSession) -> int:
+    """A viewer's first offset, with the holder it hears next read away."""
+    at = offset(socket)
+    control(socket)
+    return at
+
+
+def hand(caller: Any, deployment_id: uuid.UUID, holder: str) -> httpx.Response:
+    """A signed request that gives control to `holder`."""
+    path = f"{DEPLOYMENTS}/{deployment_id}/control"
+    answer: httpx.Response = caller.request("POST", path, json={"holder": holder})
+    return answer
+
+
+def ask(
+    api: TestClient, deployment_id: uuid.UUID, cookie: str, holder: str = "operator", **extra: str
+) -> httpx.Response:
+    """A link's request, by its cookie, that gives control to `holder`."""
+    answer: httpx.Response = api.post(
+        f"{DEPLOYMENTS}/{deployment_id}/control",
+        json={"holder": holder},
+        headers={"Cookie": cookie, **extra},
+    )
+    return answer
+
+
+def resize(cols: int, rows: int) -> str:
+    return json.dumps({"cols": cols, "rows": rows})
+
+
 def ship(socket: WebSocketTestSession, at: int, data: bytes) -> int:
     socket.send_bytes(frame(at, data))
     return offset(socket)
@@ -193,7 +230,7 @@ def test_an_attached_operator_receives_the_offset_then_the_published_bytes(
     shipper: Shipper, operator: Any, deployment: Deployment
 ) -> None:
     with watch(operator, deployment.id) as viewer, shipper.connect(deployment.id) as agent:
-        assert offset(viewer) == 0
+        assert attached(viewer) == 0
         offset(agent)
         ship(agent, 0, b"alpha")
 
@@ -208,7 +245,7 @@ def test_a_viewer_attaching_later_gets_the_tail(
         ship(agent, 0, b"alphabet")
 
     with watch(operator, deployment.id) as viewer:
-        assert offset(viewer) == 0
+        assert attached(viewer) == 0
         assert viewer.receive_bytes() == b"alphabet"
 
 
@@ -220,7 +257,7 @@ def test_a_viewer_with_an_offset_inside_the_tail_resumes_there(
         ship(agent, 0, b"alphabet")
 
     with watch(operator, deployment.id, "?offset=5") as viewer:
-        assert offset(viewer) == 5
+        assert attached(viewer) == 5
         assert viewer.receive_bytes() == b"bet"
 
 
@@ -324,7 +361,7 @@ def test_a_viewer_past_its_cap_is_resent_from_the_tail(
     shipper: Shipper, operator: Any, deployment: Deployment
 ) -> None:
     with watch(operator, deployment.id) as viewer, shipper.connect(deployment.id) as agent:
-        offset(viewer)
+        attached(viewer)
         offset(agent)
         ship(agent, 0, b"alphabet")
 
@@ -336,7 +373,7 @@ def test_a_viewer_past_its_cap_closes_with_4429_once_the_tail_lost_its_offset(
     shipper: Shipper, operator: Any, deployment: Deployment
 ) -> None:
     with watch(operator, deployment.id) as viewer, shipper.connect(deployment.id) as agent:
-        offset(viewer)
+        attached(viewer)
         offset(agent)
         ship(agent, 0, b"alphabet")
 
@@ -385,7 +422,7 @@ def test_a_trainee_link_starts_at_the_ready_offset(
         ship(agent, 5, b"bet")
 
         with join(api, ready.id, cookie, query, Origin="http://testserver") as viewer:
-            assert offset(viewer) == start
+            assert attached(viewer) == start
             assert viewer.receive_bytes() == seen
             ship(agent, 8, b"ical")
             assert viewer.receive_bytes() == b"ical"
@@ -401,7 +438,7 @@ def test_a_viewer_link_without_a_ready_offset_starts_at_the_log_end(
         ship(agent, 0, b"alpha")
 
         with join(api, ready.id, cookie, "?offset=0") as viewer:
-            assert offset(viewer) == 5
+            assert attached(viewer) == 5
             ship(agent, 5, b"bet")
             assert viewer.receive_bytes() == b"bet"
 
@@ -418,7 +455,7 @@ def test_an_operator_link_gets_the_tail_from_its_start(
         ship(agent, 5, b"bet")
 
     with join(api, ready.id, cookie) as viewer:
-        assert offset(viewer) == 0
+        assert attached(viewer) == 0
         assert viewer.receive_bytes() == b"alphabet"
 
 
@@ -438,7 +475,7 @@ def test_revoking_a_link_closes_its_socket_with_4403_and_no_other(
         join(api, ready.id, other) as kept,
     ):
         offset(agent)
-        assert (offset(revoked), offset(kept)) == (0, 0)
+        assert (attached(revoked), attached(kept)) == (0, 0)
 
         assert operator.request("POST", f"/api/v1/links/{link.id}/revoke").is_success
 
@@ -513,8 +550,274 @@ def test_a_link_socket_closes_with_1000_once_the_deployment_is_terminal(
     _, cookie = opened(api, session, ready, Role.TRAINEE)
 
     with join(api, ready.id, cookie) as viewer:
-        offset(viewer)
+        attached(viewer)
         ready.transition("abort", S.READY, "lease expired", actor=Actor.API)
 
         assert closed(viewer) == 1000
     assert refused(join(api, ready.id, cookie)) == 1008
+
+
+def test_a_trainee_links_keys_reach_the_agent_as_one_binary_frame(
+    api: TestClient, session: Session, shipper: Shipper, deploy: Callable[..., Deployment]
+) -> None:
+    ready = deploy(status=S.READY)
+    _, cookie = opened(api, session, ready, Role.TRAINEE)
+    with shipper.connect(ready.id) as agent, join(api, ready.id, cookie) as trainee:
+        offset(agent)
+        attached(trainee)
+        trainee.send_bytes(b"x" * 4096)
+
+        assert agent.receive_bytes() == b"x" * 4096
+        assert ship(agent, 0, b"alpha") == 5
+
+
+def test_taking_control_moves_the_keyboard_and_giving_it_back_returns_it(
+    api: TestClient,
+    session: Session,
+    operator: Any,
+    shipper: Shipper,
+    deploy: Callable[..., Deployment],
+) -> None:
+    ready = deploy(status=S.READY)
+    _, cookie = opened(api, session, ready, Role.TRAINEE)
+    with (
+        shipper.connect(ready.id) as agent,
+        join(api, ready.id, cookie) as trainee,
+        watch(operator, ready.id) as signed,
+    ):
+        offset(agent)
+        attached(trainee)
+        attached(signed)
+
+        taken = hand(operator, ready.id, "operator")
+        assert (taken.status_code, taken.json()) == (200, {"holder": "operator"})
+        assert (control(trainee), control(signed)) == ("operator", "operator")
+        trainee.send_bytes(b"alpha")
+        signed.send_bytes(b"beta")
+        assert agent.receive_bytes() == b"beta"
+
+        assert hand(operator, ready.id, "trainee").json() == {"holder": "trainee"}
+        assert (control(trainee), control(signed)) == ("trainee", "trainee")
+        signed.send_bytes(b"gamma")
+        trainee.send_bytes(b"delta")
+        assert agent.receive_bytes() == b"delta"
+        assert ship(agent, 0, b"alpha") == 5
+
+
+def test_an_operator_link_sets_the_holder_and_types_once_it_holds(
+    api: TestClient, session: Session, shipper: Shipper, deploy: Callable[..., Deployment]
+) -> None:
+    ready = deploy(status=S.READY)
+    _, cookie = opened(api, session, ready, Role.OPERATOR)
+    with shipper.connect(ready.id) as agent, join(api, ready.id, cookie) as linked:
+        offset(agent)
+        attached(linked)
+
+        taken = ask(api, ready.id, cookie, Origin="http://testserver")
+        assert (taken.status_code, taken.json()) == (200, {"holder": "operator"})
+        assert control(linked) == "operator"
+        assert ready.console.control() is Holder.OPERATOR
+        linked.send_bytes(b"beta")
+        assert agent.receive_bytes() == b"beta"
+
+        assert ask(api, ready.id, cookie, "trainee").status_code == 200
+        assert control(linked) == "trainee"
+
+
+def test_a_viewer_hears_the_holder_on_attach_and_on_a_change(
+    api: TestClient, session: Session, operator: Any, deploy: Callable[..., Deployment]
+) -> None:
+    ready = deploy(status=S.READY)
+    _, cookie = opened(api, session, ready, Role.VIEWER)
+    with join(api, ready.id, cookie) as first:
+        offset(first)
+        assert control(first) == "trainee"
+        hand(operator, ready.id, "operator")
+        assert control(first) == "operator"
+
+        with watch(operator, ready.id) as second:
+            offset(second)
+            assert control(second) == "operator"
+            hand(operator, ready.id, "trainee")
+            assert (control(first), control(second)) == ("trainee", "trainee")
+
+
+def test_the_holders_resize_reaches_the_agent_as_text_and_no_other_partys(
+    api: TestClient,
+    session: Session,
+    operator: Any,
+    shipper: Shipper,
+    deploy: Callable[..., Deployment],
+) -> None:
+    ready = deploy(status=S.READY)
+    _, cookie = opened(api, session, ready, Role.TRAINEE)
+    with (
+        shipper.connect(ready.id) as agent,
+        join(api, ready.id, cookie) as trainee,
+        watch(operator, ready.id) as signed,
+    ):
+        offset(agent)
+        attached(trainee)
+        attached(signed)
+        signed.send_text(resize(200, 50))
+        trainee.send_text(resize(120, 40))
+        assert json.loads(agent.receive_text()) == {"cols": 120, "rows": 40}
+
+        hand(operator, ready.id, "operator")
+        control(trainee)
+        control(signed)
+        trainee.send_text(resize(80, 24))
+        signed.send_text(resize(500, 1))
+        assert json.loads(agent.receive_text()) == {"cols": 500, "rows": 1}
+        assert ship(agent, 0, b"alpha") == 5
+
+
+def test_a_viewer_links_keys_and_resizes_never_arrive(
+    api: TestClient, session: Session, shipper: Shipper, deploy: Callable[..., Deployment]
+) -> None:
+    ready = deploy(status=S.READY)
+    _, cookie = opened(api, session, ready, Role.TRAINEE)
+    _, other = opened(api, session, ready, Role.VIEWER, name="gamma")
+    with (
+        shipper.connect(ready.id) as agent,
+        join(api, ready.id, cookie) as trainee,
+        join(api, ready.id, other) as viewer,
+    ):
+        offset(agent)
+        attached(trainee)
+        attached(viewer)
+        viewer.send_bytes(b"alpha")
+        viewer.send_text(resize(80, 24))
+        trainee.send_bytes(b"beta")
+
+        assert agent.receive_bytes() == b"beta"
+        assert ship(agent, 0, b"alpha") == 5
+
+
+@pytest.mark.parametrize(
+    "sent",
+    [
+        '{"cols": 0, "rows": 24}',
+        '{"cols": 80, "rows": 501}',
+        '{"cols": 80}',
+        '{"cols": true, "rows": 24}',
+        '{"cols": 80.5, "rows": 24}',
+        '{"cols": "80", "rows": "24"}',
+        "[80, 24]",
+        "alpha",
+    ],
+)
+def test_a_text_frame_that_is_no_resize_is_dropped(
+    api: TestClient,
+    session: Session,
+    shipper: Shipper,
+    deploy: Callable[..., Deployment],
+    sent: str,
+) -> None:
+    ready = deploy(status=S.READY)
+    _, cookie = opened(api, session, ready, Role.TRAINEE)
+    with shipper.connect(ready.id) as agent, join(api, ready.id, cookie) as trainee:
+        offset(agent)
+        attached(trainee)
+        trainee.send_text(sent)
+        trainee.send_text('{"cols": 1, "rows": 500, "alpha": 1}')
+
+        assert json.loads(agent.receive_text()) == {"cols": 1, "rows": 500}
+
+
+def test_a_key_frame_over_4096_bytes_closes_with_1009(
+    api: TestClient, session: Session, shipper: Shipper, deploy: Callable[..., Deployment]
+) -> None:
+    ready = deploy(status=S.READY)
+    _, cookie = opened(api, session, ready, Role.TRAINEE)
+    with shipper.connect(ready.id) as agent, join(api, ready.id, cookie) as trainee:
+        offset(agent)
+        attached(trainee)
+        trainee.send_bytes(b"x" * 4097)
+
+        assert closed(trainee) == 1009
+        assert ship(agent, 0, b"alpha") == 5
+
+
+def test_keys_with_no_agent_attached_keep_the_viewer_open(
+    api: TestClient, session: Session, shipper: Shipper, deploy: Callable[..., Deployment]
+) -> None:
+    ready = deploy(status=S.READY)
+    _, cookie = opened(api, session, ready, Role.TRAINEE)
+    with join(api, ready.id, cookie) as trainee:
+        attached(trainee)
+        trainee.send_bytes(b"alpha")
+        trainee.send_bytes(b"x" * 4097)
+
+        # 1009 answers the second frame, so the first was read and left the socket open.
+        assert closed(trainee) == 1009
+    with shipper.connect(ready.id) as agent:
+        assert offset(agent) == 0
+        assert ship(agent, 0, b"beta") == 4
+
+
+def test_the_agent_queue_takes_256_messages_and_drops_the_rest() -> None:
+    async def fill() -> tuple[int, int, bool]:
+        hub = ConsoleHub(8)
+        target = uuid.uuid4()
+        with hub.agent(target) as socket:
+            taken = [hub.to_agent(target, b"a") for _ in range(257)]
+            return taken.count(True), len(socket.take()), hub.to_agent(uuid.uuid4(), "{}")
+
+    assert asyncio.run(fill()) == (256, 256, False)
+
+
+@pytest.mark.parametrize("status", [S.PENDING, S.STARTING, S.BOOTSTRAPPING, S.STOPPING])
+def test_control_is_409_unless_the_deployment_is_ready(
+    operator: Any, deploy: Callable[..., Deployment], status: S
+) -> None:
+    waiting = deploy(status=status)
+
+    assert hand(operator, waiting.id, "operator").status_code == 409
+    assert waiting.console.control() is Holder.TRAINEE
+
+
+@pytest.mark.parametrize("role", [Role.TRAINEE, Role.VIEWER])
+def test_control_is_403_for_a_trainee_or_viewer_link(
+    api: TestClient, session: Session, deploy: Callable[..., Deployment], role: Role
+) -> None:
+    ready = deploy(status=S.READY)
+    _, cookie = opened(api, session, ready, role)
+
+    assert ask(api, ready.id, cookie).status_code == 403
+    assert ready.console.control() is Holder.TRAINEE
+
+
+@pytest.mark.parametrize("origin", ["https://example.com", "http://testserver.example.com", "null"])
+def test_control_with_a_foreign_origin_is_refused(
+    api: TestClient, session: Session, deploy: Callable[..., Deployment], origin: str
+) -> None:
+    ready = deploy(status=S.READY)
+    _, cookie = opened(api, session, ready, Role.OPERATOR)
+
+    assert ask(api, ready.id, cookie, Origin=origin).status_code == 403
+    assert ready.console.control() is Holder.TRAINEE
+
+
+def test_control_is_refused_to_everyone_but_this_deployments_operator(
+    api: TestClient,
+    session: Session,
+    sign_in: Callable[..., Any],
+    operator: Any,
+    deploy: Callable[..., Deployment],
+) -> None:
+    ready, other = deploy(status=S.READY), deploy(status=S.READY)
+    link, cookie = opened(api, session, other, Role.OPERATOR)
+    trainee = sign_in(name="gamma", role=Role.TRAINEE)
+    path = f"{DEPLOYMENTS}/{ready.id}/control"
+
+    assert api.post(path, json={"holder": "operator"}).status_code == 401
+    assert ask(api, ready.id, "jatszoter_link=alpha").status_code == 401
+    assert ask(api, ready.id, cookie).status_code == 403
+    assert hand(trainee, ready.id, "operator").status_code == 403
+    assert hand(operator, uuid.uuid4(), "operator").status_code == 404
+    assert hand(operator, ready.id, "viewer").status_code == 422
+    link.revoke()
+    assert ask(api, other.id, cookie).status_code == 401
+    assert ready.console.control() is Holder.TRAINEE
+    assert other.console.control() is Holder.TRAINEE

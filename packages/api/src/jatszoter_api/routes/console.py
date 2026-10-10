@@ -4,28 +4,42 @@ import logging
 import uuid
 from collections.abc import Callable
 from functools import partial
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import (
     APIRouter,
+    Depends,
     HTTPException,
     Query,
+    Request,
     WebSocket,
     WebSocketDisconnect,
     WebSocketException,
     status,
 )
+from pydantic import BaseModel
 from sqlmodel import Session
+from starlette.types import Message
+from valkey.exceptions import ValkeyError
 
-from jatszoter_api.auth import socket_agent, socket_link, socket_operator
+from jatszoter_api.auth import (
+    require_deployment_operator,
+    socket_agent,
+    socket_link,
+    socket_operator,
+)
 from jatszoter_api.console_hub import ConsoleHub, Viewer
 from jatszoter_api.errors import ConflictError, DomainError, NotFoundError, TooLargeError
 from jatszoter_api.lifecycle import TERMINAL, DeploymentStatus
 from jatszoter_api.models import Console, Deployment, Link, Role
+from jatszoter_api.models.console import Holder
+from jatszoter_api.routes.deps import SessionDep
 from jatszoter_api.settings import Settings
 
 OFFSET_BYTES = 8
 FRAME_BYTES = 64 * 1024
+KEYS_BYTES = 4096
+SIZES = range(1, 501)
 POLL_SECONDS = 1.0
 WS_4403_REVOKED = 4403
 WS_4413_TOO_LARGE = 4413
@@ -68,14 +82,17 @@ async def _offset(websocket: WebSocket, offset: int) -> None:
     await websocket.send_text(json.dumps({"offset": offset}))
 
 
-async def _next(websocket: WebSocket, replaced: asyncio.Event) -> dict[str, object] | None:
-    """The next message from the socket; None once a newer socket replaced this one."""
-    receiving = asyncio.ensure_future(websocket.receive())
-    replacing = asyncio.ensure_future(replaced.wait())
-    done, pending = await asyncio.wait({receiving, replacing}, return_when=asyncio.FIRST_COMPLETED)
-    for task in pending:
-        task.cancel()
-    return dict(receiving.result()) if receiving in done else None
+async def _control(websocket: WebSocket, holder: Holder) -> None:
+    await websocket.send_text(json.dumps({"control": holder.value}))
+
+
+async def _next(receiving: asyncio.Future[Message], woken: asyncio.Event) -> bool:
+    """Wait for the socket's next message or a wake; True once the message is there."""
+    waking = asyncio.ensure_future(woken.wait())
+    either: set[asyncio.Future[Any]] = {receiving, waking}
+    await asyncio.wait(either, return_when=asyncio.FIRST_COMPLETED)
+    waking.cancel()
+    return receiving.done()
 
 
 def _shipping(
@@ -116,40 +133,57 @@ async def ship(websocket: WebSocket, agent_id: uuid.UUID, deployment_id: uuid.UU
     await websocket.accept()
     try:
         await _offset(websocket, held)
-        with hub.agent(deployment_id) as replaced:
-            while (message := await _next(websocket, replaced)) is not None:
-                if message["type"] == "websocket.disconnect":
-                    return
-                frame = message.get("bytes")
-                if not isinstance(frame, bytes):
-                    continue
-                if not OFFSET_BYTES <= len(frame) <= OFFSET_BYTES + FRAME_BYTES:
-                    await websocket.close(status.WS_1009_MESSAGE_TOO_BIG)
-                    return
-                offset = int.from_bytes(frame[:OFFSET_BYTES], "big")
-                try:
-                    start, new = await asyncio.to_thread(
-                        console.append,
-                        offset,
-                        frame[OFFSET_BYTES:],
-                        _filer_url(settings),
-                        settings.console_tail_bytes,
-                        settings.console_limit_bytes,
-                    )
-                except TooLargeError:
-                    await websocket.close(WS_4413_TOO_LARGE)
-                    return
-                except Exception as error:
-                    log.error(
-                        "console of deployment %s not stored: %s",
-                        deployment_id,
-                        type(error).__name__,
-                    )
-                    await websocket.close(status.WS_1011_INTERNAL_ERROR)
-                    return
-                if new:
-                    hub.publish(deployment_id, start, new)
-                await _offset(websocket, start + len(new))
+        with hub.agent(deployment_id) as downlink:
+            # One receive lives across wakes: cancelling it could lose a frame.
+            receiving = asyncio.ensure_future(websocket.receive())
+            try:
+                while True:
+                    arrived = await _next(receiving, downlink.woken)
+                    if downlink.replaced:
+                        break
+                    for waiting in downlink.take():
+                        if isinstance(waiting, bytes):
+                            await websocket.send_bytes(waiting)
+                        else:
+                            await websocket.send_text(waiting)
+                    if not arrived:
+                        continue
+                    message = receiving.result()
+                    if message["type"] == "websocket.disconnect":
+                        return
+                    receiving = asyncio.ensure_future(websocket.receive())
+                    frame = message.get("bytes")
+                    if not isinstance(frame, bytes):
+                        continue
+                    if not OFFSET_BYTES <= len(frame) <= OFFSET_BYTES + FRAME_BYTES:
+                        await websocket.close(status.WS_1009_MESSAGE_TOO_BIG)
+                        return
+                    offset = int.from_bytes(frame[:OFFSET_BYTES], "big")
+                    try:
+                        start, new = await asyncio.to_thread(
+                            console.append,
+                            offset,
+                            frame[OFFSET_BYTES:],
+                            _filer_url(settings),
+                            settings.console_tail_bytes,
+                            settings.console_limit_bytes,
+                        )
+                    except TooLargeError:
+                        await websocket.close(WS_4413_TOO_LARGE)
+                        return
+                    except Exception as error:
+                        log.error(
+                            "console of deployment %s not stored: %s",
+                            deployment_id,
+                            type(error).__name__,
+                        )
+                        await websocket.close(status.WS_1011_INTERNAL_ERROR)
+                        return
+                    if new:
+                        hub.publish(deployment_id, start, new)
+                    await _offset(websocket, start + len(new))
+            finally:
+                receiving.cancel()
             await websocket.close()
     except WebSocketDisconnect:
         return
@@ -189,13 +223,68 @@ def _ended(session: Session, deployment_id: uuid.UUID) -> bool:
         return True
 
 
-async def _drop_frames(websocket: WebSocket, viewer: Viewer) -> None:
-    """Read and drop what the viewer sends until it leaves, then wake its sender."""
+def _resize(text: str) -> str | None:
+    """The resize a text frame asks for, as the frame the agent gets; None when it is not one."""
     try:
-        while (await websocket.receive())["type"] != "websocket.disconnect":
-            pass
+        asked = json.loads(text)
+    except (ValueError, RecursionError):
+        return None
+    if not isinstance(asked, dict):
+        return None
+    cols, rows = asked.get("cols"), asked.get("rows")
+    # A bool is an int to isinstance, and no size.
+    if type(cols) is not int or type(rows) is not int or cols not in SIZES or rows not in SIZES:
+        return None
+    return json.dumps({"cols": cols, "rows": rows})
+
+
+async def _forward(
+    websocket: WebSocket, viewer: Viewer, hub: ConsoleHub, console: Console, role: Role
+) -> int | None:
+    """Pass the holder's keys and resizes to the agent until the viewer leaves, then wake its
+    sender; the answer is the code to close an oversized frame's socket with."""
+    try:
+        while (message := await websocket.receive())["type"] != "websocket.disconnect":
+            keys, text = message.get("bytes"), message.get("text")
+            sent: bytes | str | None = None
+            if isinstance(keys, bytes):
+                if len(keys) > KEYS_BYTES:
+                    return status.WS_1009_MESSAGE_TOO_BIG
+                sent = keys
+            elif isinstance(text, str):
+                sent = _resize(text)
+            if not sent or role is Role.VIEWER:
+                continue
+            try:
+                holder = await asyncio.to_thread(console.control)
+            except ValkeyError:
+                continue
+            if role.value == holder.value:
+                hub.to_agent(console.deployment_id, sent)
+        return None
     finally:
         viewer.wake()
+
+
+class ControlIn(BaseModel):
+    holder: Holder
+
+
+@router.post(
+    "/deployments/{deployment_id}/control", dependencies=[Depends(require_deployment_operator)]
+)
+def control(
+    body: ControlIn, request: Request, session: SessionDep, deployment_id: uuid.UUID
+) -> ControlIn:
+    try:
+        deployment = Deployment(session=session).load(id=deployment_id)
+    except IndexError:
+        raise NotFoundError(f"deployment {deployment_id} is not known") from None
+    if deployment.status is not DeploymentStatus.READY:
+        raise ConflictError(f"deployment {deployment_id} is {deployment.status}")
+    deployment.console.give(body.holder)
+    request.app.state.console_hub.announce(deployment_id, body.holder)
+    return body
 
 
 @router.websocket("/deployments/{deployment_id}/attach")
@@ -214,7 +303,7 @@ async def attach(
     await websocket.accept()
     # Registered before the tail is read, so nothing published meanwhile is lost.
     with hub.viewer(deployment_id, link_id) as viewer:
-        listener = asyncio.ensure_future(_drop_frames(websocket, viewer))
+        listener = asyncio.ensure_future(_forward(websocket, viewer, hub, console, role))
         try:
             # A revoke between the check above and the registration never reached the hub.
             if link_id is not None and await _in_session(
@@ -236,12 +325,17 @@ async def attach(
                 if floor is not None and start < floor:
                     start, data = floor, b""
             await _offset(websocket, start)
+            await _control(websocket, await asyncio.to_thread(console.control))
             await _send(websocket, data)
             viewer.sent = start + len(data)
             while not listener.done():
                 if viewer.revoked:
                     await websocket.close(WS_4403_REVOKED)
                     return
+                if viewer.control is not None:
+                    holder, viewer.control = viewer.control, None
+                    await _control(websocket, holder)
+                    continue
                 if viewer.behind:
                     viewer.behind = False
                     missed = await asyncio.to_thread(console.since, viewer.sent)
@@ -271,6 +365,8 @@ async def attach(
                     data = data[viewer.sent - start :]
                 await _send(websocket, data)
                 viewer.sent = start + len(data)
+            if listener.exception() is None and (code := listener.result()) is not None:
+                await websocket.close(code)
         except WebSocketDisconnect:
             return
         finally:

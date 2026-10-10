@@ -4,6 +4,7 @@ from urllib.parse import urlsplit
 
 from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
 from sqlmodel import Session
+from starlette.datastructures import Headers
 
 from jatszoter_api.db import get_session
 from jatszoter_api.models import Agent, Credential, Link, Role, State, User
@@ -156,15 +157,14 @@ def socket_operator(websocket: WebSocket, session: Session, keys: dict[str, str]
     return require_operator(user)
 
 
-def socket_link(
-    websocket: WebSocket, session: Session, deployment_id: uuid.UUID
-) -> tuple[Link, User]:
-    """The link the upgrade's session cookie names and its user, if it may reach the deployment."""
-    headers = websocket.headers
+def _foreign(headers: Headers) -> bool:
+    """Whether an `Origin` was sent and names another host than the request's own."""
     origin = headers.get("origin")
-    if origin is not None and urlsplit(origin).netloc.lower() != headers.get("host", "").lower():
-        raise unauthorized()
-    token = websocket.cookies.get(LINK_COOKIE)
+    return origin is not None and urlsplit(origin).netloc.lower() != headers.get("host", "").lower()
+
+
+def _resumed(session: Session, token: str | None) -> tuple[Link, User]:
+    """The live link a session token names and its enabled user."""
     if not token:
         raise unauthorized()
     try:
@@ -172,6 +172,51 @@ def socket_link(
         user = User(session=session).load(id=link.user_id)
     except IndexError:
         raise unauthorized() from None
-    if not link.live or link.deployment_id != deployment_id or user.state is not State.ENABLED:
+    if not link.live or user.state is not State.ENABLED:
         raise unauthorized()
     return link, user
+
+
+def socket_link(
+    websocket: WebSocket, session: Session, deployment_id: uuid.UUID
+) -> tuple[Link, User]:
+    """The link the upgrade's session cookie names and its user, if it may reach the deployment."""
+    if _foreign(websocket.headers):
+        raise unauthorized()
+    link, user = _resumed(session, websocket.cookies.get(LINK_COOKIE))
+    if link.deployment_id != deployment_id:
+        raise unauthorized()
+    return link, user
+
+
+def require_deployment_operator(
+    deployment_id: uuid.UUID,
+    request: Request,
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(app_settings)],
+    body: Annotated[bytes, Depends(_body)],
+) -> User:
+    """A signed operator, or the user behind the cookie of an operator link of this deployment."""
+    headers = request.headers
+    if "x-signature" in headers:
+        user = _signed(
+            User,
+            _owner(headers.get("x-owner", "")),
+            request.method,
+            request.url.path,
+            session,
+            settings.master_keys,
+            body,
+            headers.get("x-credential", ""),
+            headers.get("x-timestamp", ""),
+            headers.get("x-signature", ""),
+        )
+        return require_operator(user)
+    token = request.cookies.get(LINK_COOKIE)
+    # Checked before the session is resumed, so a foreign page never renews it.
+    if token and _foreign(headers):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    link, user = _resumed(session, token)
+    if link.deployment_id != deployment_id or user.role is not Role.OPERATOR:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+    return user

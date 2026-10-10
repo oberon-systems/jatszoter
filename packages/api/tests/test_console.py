@@ -9,6 +9,7 @@ from jatszoter_api.file import File
 from jatszoter_api.lifecycle import Actor, DeploymentStatus
 from jatszoter_api.models import Console, Deployment
 from jatszoter_api.models._cache import Cached
+from jatszoter_api.models.console import Holder
 
 S = DeploymentStatus
 AGENT = uuid.uuid4()
@@ -91,6 +92,23 @@ def test_mark_ready_records_the_end() -> None:
     write(console, 5, b"beta")
 
     assert console.ready() == 5
+
+
+def test_the_holder_is_the_trainee_until_given_survives_an_append_and_goes_with_the_drop() -> None:
+    console = Console(uuid.uuid4())
+    key = f"console:{console.deployment_id}:control"
+    assert console.control() is Holder.TRAINEE
+
+    console.give(Holder.OPERATOR)
+    Cached._client().expire(key, 5)
+    write(console, 0, b"alpha")
+
+    left = Cached._client().ttl(key)
+    assert console.control() is Holder.OPERATOR
+    assert isinstance(left, int) and left > 5
+
+    console.drop()
+    assert console.control() is Holder.TRAINEE
 
 
 def test_a_deployment_marks_ready_and_drops_the_tail_when_it_ends(session: Session) -> None:

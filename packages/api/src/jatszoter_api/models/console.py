@@ -1,4 +1,5 @@
 import uuid
+from enum import StrEnum
 
 from valkey.client import Pipeline
 
@@ -7,6 +8,11 @@ from jatszoter_api.file import File
 from jatszoter_api.models._cache import Cached
 
 TTL = 24 * 60 * 60
+
+
+class Holder(StrEnum):
+    TRAINEE = "trainee"
+    OPERATOR = "operator"
 
 
 def _commit(pipe: Pipeline) -> None:
@@ -74,6 +80,7 @@ class Console(Cached):
         pipe.set(self._key("start"), end - min(size + len(new), tail_bytes), ex=TTL)
         pipe.set(self._key("end"), end, ex=TTL)
         pipe.expire(self._key("ready"), TTL)
+        pipe.expire(self._key("control"), TTL)
         _commit(pipe)
         return held, new
 
@@ -102,5 +109,17 @@ class Console(Cached):
     def ready(self) -> int | None:
         return self._number("ready")
 
+    def control(self) -> Holder:
+        """Who holds the keyboard: the trainee unless the operator was given it."""
+        raw = self._client().get(self._key("control"))
+        try:
+            return Holder(raw.decode()) if isinstance(raw, bytes) else Holder.TRAINEE
+        except ValueError:
+            return Holder.TRAINEE
+
+    def give(self, holder: Holder) -> None:
+        self._client().set(self._key("control"), holder.value, ex=TTL)
+
     def drop(self) -> None:
-        self._client().delete(*(self._key(name) for name in ("tail", "start", "end", "ready")))
+        names = ("tail", "start", "end", "ready", "control")
+        self._client().delete(*(self._key(name) for name in names))

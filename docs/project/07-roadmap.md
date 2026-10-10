@@ -44,7 +44,7 @@ to cover it. An item marked Done has landed on `main`.
      one WebSocket per live VM.
    - Smoke: an operator viewer receives console output after READY and the
      downloaded log holds the boot.
-8. Links, take control ([04](04-console.md#links)).
+8. Links, take control ([04](04-console.md#links)). Done.
    - API: users made by the operator, the trainee link on create, link
      issue and revoke, the link session cookie, attach by role, the control
      holder, keys and resize passed down the agent's console socket.

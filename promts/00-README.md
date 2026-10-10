@@ -1,75 +1,67 @@
-# Roadmap item 8 - implementation prompts
+# Roadmap item 9 - implementation prompts
 
-Item 8 of `docs/project/07-roadmap.md` (links and take control), cut into
+Item 9 of `docs/project/07-roadmap.md` (recording and replay), cut into
 prompts that run one at a time, in order, each on a clean tree. Every prompt
-assumes the previous ones have landed. Item 7's prompts landed before this
+assumes the previous ones have landed. Item 8's prompts landed before this
 set was written; git history keeps them.
 
-| #  | Prompt                      | Component | Result                                             |
-| -- | --------------------------- | --------- | -------------------------------------------------- |
-| 01 | `01-docs.md`                | docs      | resize proven in a guest, contracts in `docs/`     |
-| 02 | `02-api-users-links.md`     | api       | users, the trainee link on create, issue, revoke   |
-| 03 | `03-api-link-session.md`    | api       | a link opens a cookie session and attaches by role |
-| 04 | `04-api-control-keys.md`    | api       | the control holder, keys and resize to the agent   |
-| 05 | `05-agent-keys-resize.md`   | agent     | keys into the serial socket, resize through qga    |
-| 06 | `06-smoke.md`               | smoke     | a trainee link types; take control cuts its input  |
+| #  | Prompt                     | Component | Result                                          |
+| -- | -------------------------- | --------- | ----------------------------------------------- |
+| 01 | `01-docs.md`               | docs      | the item 9 contracts in `docs/`                 |
+| 02 | `02-api-recording.md`      | api       | the Recording model writes an asciicast         |
+| 03 | `03-api-recording-feed.md` | api       | open, console, resize, control, revoke feed it  |
+| 04 | `04-api-replay.md`         | api       | the operator lists recordings and downloads one |
+| 05 | `05-smoke.md`              | smoke     | a session leaves a recording that replays       |
 
 ## Decisions behind the cut
 
-Taken with the user on 2026-10-09; prompt 01 writes them into `docs/`.
+Taken with the user on 2026-10-10; prompt 01 writes them into `docs/`.
 
-- Users are made by the operator: `POST` and `GET /api/v1/users` with name,
-  role and comment. Such a user is `enabled` at once and has no password,
-  so it cannot log in; it exists to own links. `users.name` is unique.
-- `POST /api/v1/deployments` requires `trainee_id`, an enabled user with
-  role `trainee`, and answers with the deployment and its trainee link, the
-  plain token included that one time. Operator and viewer links are issued
-  by `POST /api/v1/deployments/{id}/links` with `user_id`; a deployment
-  holds one live trainee link at a time. `POST /api/v1/links/{id}/revoke`
-  revokes one.
-- `GET /s/{token}`, served by the API outside `/api/v1`, exchanges the
-  token for a session cookie and answers 303 to `/t/{deployment_id}`; the
-  page there arrives with the web UI in item 11. An unknown or revoked link
-  and a disabled user get the same 404.
-- The cookie `jatszoter_link` is HttpOnly, Secure, SameSite=Strict, without
-  an expiry, and scoped to `Path=/api/v1/deployments/{id}`, so it reaches
-  that deployment's attach, control and later checks and nothing else. Its
-  value is a random session token; Valkey maps its sha256 to the link id
-  for a day, renewed on use. Every use loads the link row, so a revoked
-  link ends all its sessions.
-- CSRF tokens arrive with the web UI in item 11. Until then a request or an
-  upgrade that authenticates by cookie is bound by SameSite=Strict and by
-  its `Origin`, which, when sent, must name the request's own host.
-- `/s/{token}` never reaches a log line: the access log shows
-  `/s/<redacted>`.
-- A link attaches to `WS /api/v1/deployments/{id}/attach` only while the
-  deployment is READY. An operator link sees what a signed operator sees.
-  A trainee or viewer link starts at the READY offset: an older `offset` is
-  raised to it, and without a READY offset it starts at the log end.
-  Revoking a link closes its sockets with 4403.
-- The control holder is `trainee` or `operator`, kept in Valkey beside the
-  console tail as `console:<id>:control`, `trainee` when absent, dropped
-  with the tail. `POST /api/v1/deployments/{id}/control` sets it for a
-  signed operator or an operator link while the deployment is READY. Every
-  viewer hears `{"control": ...}` after its first offset and on a change.
-- A viewer's binary frame, at most 4096 bytes, is keys; its text frame
-  `{"cols": n, "rows": n}`, both 1 to 500, is a resize. The API forwards
-  either only from a socket whose role is the holder: a signed operator and
-  an operator link are `operator`, a trainee link is `trainee`, a viewer
-  link never types. Without an agent socket the frame is dropped.
-- The API passes them down the agent's console socket: keys as a binary
-  frame, a resize as the same text frame. Up to 256 messages wait for a
-  slow agent; more are dropped.
-- The agent connects `serial.sock` on the first key and keeps it until its
-  console socket to the API ends, reading and discarding what the guest
-  echoes there, since `console.log` already carries it. Keys that cannot be
-  written are lost; the console socket lives on.
-- The agent applies a resize through the guest agent: `guest-exec` of
-  `stty -F /dev/ttyS0 cols N rows M` as an argument vector, within 5 s, and
-  only when the size differs from the last one applied. Prompt 01 proves
-  this in a Rocky 9 guest under SELinux before anything is written; if the
-  guest refuses, the set stops there.
-- Recording markers for control changes and resizes belong to item 9.
+- Item 9 ships the core: the API writes the asciicast, closes it and serves
+  it to the operator. Check results as markers move to item 10, the
+  vendored asciinema-player and its jump points to item 11, and
+  `JATSZOTER_RECORDING_RETENTION_DAYS` with its sweep to item 12. The agent
+  does not change.
+- The first open of a trainee link stores a Recording row and writes the
+  header line. Links of other roles record nothing. Time zero is the row's
+  `created_at`, read from the API clock; an event's time is the API clock
+  minus it.
+- The file is `recordings/<deployment_id>/<recording_id>.cast` in the file
+  store, written one event per filer append. The row keeps the file's URL,
+  as a scenario keeps its bundle's, and gains `deployment_id`.
+- Output is recorded from the READY offset, the place a trainee's terminal
+  starts. Nothing is written before READY. A link first opened after READY
+  gets the bytes from the READY offset to the log end as its first event,
+  at time 0; when the tail no longer holds them, the recording starts at
+  the log end.
+- An `o` event is text: console bytes decoded as UTF-8, a sequence split
+  between two frames carried over to the next, an invalid byte written as
+  U+FFFD.
+- The header says 80 by 24, the size of a serial line nobody has resized.
+  An `r` event, `<cols>x<rows>`, is written when the API passes a resize of
+  the holder of control to the agent; the API cannot see whether the guest
+  applied it.
+- An `m` event `control operator` or `control trainee` is written when the
+  control route changes the holder.
+- Events are stamped and appended one at a time, so their times never go
+  backwards.
+- `JATSZOTER_RECORDING_LIMIT_BYTES`, 64 MiB by default: the event that
+  would pass it is replaced by the marker `recording limit reached`, and
+  nothing is written after that.
+- The recorder is the Recording model, `models/recording.py`. What it needs
+  between events lives in Valkey under `recording:<id>:*` with a one-day
+  TTL renewed on every write: how far the console is recorded, the bytes
+  written, the split UTF-8 rest, the limit flag. `recording:of:<deployment
+  id>` names the deployment's live recording.
+- Revoking the trainee link closes its recording: the row gets the file's
+  final size and the duration, and the Valkey keys go. A deployment that
+  ends revokes its links and closes the recording the same way.
+- `GET /api/v1/deployments/{id}/recordings` lists a deployment's recordings
+  and `GET /api/v1/recordings/{recording_id}.cast` returns one, live or
+  closed, as far as it is written. Both take a signed operator request
+  only; a link never reads a recording.
+- Keys are never recorded: there is no `i` event, and nothing a viewer
+  sends reaches the file except a resize's size.
 
 ## Ground rules for every prompt
 
@@ -112,19 +104,12 @@ Each prompt starts by pointing here. These hold for all of them.
     `test_head_matches_the_models` must keep passing;
   - errors are `DomainError` subclasses from `errors.py`; the handler in
     `routes/deps.py` maps them to status codes.
-- Rust agent conventions: `unsafe_code` is forbidden and clippy runs with
-  `-D warnings`; tests sit in `tests.rs` next to `mod.rs`; every host process
-  is spawned with an argument vector, never through a shell. A trait change
-  keeps the existing tests compiling unchanged where it can, for example
-  through a default method.
 - Never log a password, token, link, credential key, signature, the content
-  of a seed, or console bytes: the console carries what the trainee types
-  and what the guest prints.
+  of a seed, console bytes or the content of a recording: both carry what
+  the guest prints, which includes what the trainee typed.
 - Checks each prompt must leave green (when an agent runs under
   `CLAUDE.local.md`, it asks the user before running them):
   - `.venv/bin/pytest -q packages/api` for API prompts;
-  - `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --
-    -D warnings` and `cargo test -p jatszoter-agent` for agent prompts;
-  - `make smoke` after every prompt; prompts 02 and 06 change it.
+  - `make smoke` after every prompt; prompt 05 changes it.
 - Finish with a short report: files changed, tests added, and every place
   where the prompt had to be interpreted.

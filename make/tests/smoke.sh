@@ -259,6 +259,85 @@ terminal() {
         "$VENV/bin/python" -I -c "$terminal_py"
 }
 
+# Reads the recording as a player would; prints check names only, never a line of it.
+replay_py='
+import json, os, sys
+
+first, cut, second = (os.environ[f"REPLAY_{name}"] for name in ("FIRST", "CUT", "SECOND"))
+with open(os.environ["REPLAY_FILE"], encoding="utf-8") as file:
+    lines = file.read().splitlines()
+events = []
+
+
+def header():
+    told = json.loads(lines[0])
+    sized = all(type(told.get(side)) is int for side in ("width", "height"))
+    return told.get("version") == 2 and sized
+
+
+def well_formed():
+    last = 0
+    for line in lines[1:]:
+        event = json.loads(line)
+        if not isinstance(event, list) or len(event) != 3:
+            return False
+        at, code, text = event
+        if type(at) not in (int, float) or code not in ("o", "r", "m"):
+            return False
+        if not isinstance(text, str) or at < last:
+            return False
+        last = at
+        events.append((code, text))
+    return True
+
+
+# The event with which the output first holds the text; None when it never does.
+def reached(text):
+    shown = ""
+    for index, (code, part) in enumerate(events):
+        if code == "o":
+            shown += part
+            if text in shown:
+                return index
+    return None
+
+
+def typed():
+    return None not in (reached(first), reached(second)) and reached(cut) is None
+
+
+def marked():
+    marks = [index for index, event in enumerate(events) if event == ("m", "control operator")]
+    return any(reached(first) < index < reached(second) for index in marks)
+
+
+checks = [
+    ("the first line is an asciicast header", header),
+    ("every event is well formed and in order", well_formed),
+    ("the output holds what both typed and not the cut line", typed),
+    ("the control change sits between the two", marked),
+    ("the resize is an event", lambda: ("r", "100x30") in events),
+]
+for name, check in checks:
+    try:
+        passed = bool(lines) and check()
+    except ValueError:
+        passed = False
+    if not passed:
+        sys.exit(f"the replay failed at: {name}, with {len(lines)} lines")
+    print(f"the replay passed: {name}", flush=True)
+'
+
+# The texts are what the guest prints for the lines `terminal` types.
+replay() {
+    REPLAY_FILE="$1" REPLAY_FIRST=one-42 REPLAY_CUT=two-42 REPLAY_SECOND=three-42 \
+        "$VENV/bin/python" -I -c "$replay_py"
+}
+
+recordings() {
+    signed GET "/api/v1/deployments/$deployment/recordings"
+}
+
 cached_sha256() {
     sha256sum "$1" | cut -d' ' -f1
 }
@@ -417,20 +496,45 @@ done
 echo "typing as the trainee, then taking control..."
 terminal
 
+echo "replaying the recording..."
+listed="$(recordings)"
+if [ "$(jq length <<<"$listed")" != 1 ]; then
+    echo "the deployment lists $(jq length <<<"$listed") recordings, not 1" >&2
+    exit 1
+fi
+recording="$(jq -r '.[0].id' <<<"$listed")"
+signed GET "/api/v1/recordings/$recording.cast" >"$TEMP_DIR/recording.cast"
+replay "$TEMP_DIR/recording.cast"
+stored="$TEMP_DIR/data/storage/recordings/$deployment/$recording.cast"
+
 echo "revoking the trainee link..."
 signed POST "/api/v1/links/$link/revoke" >/dev/null
+if ! recordings | jq -e '.[0].size_bytes > 0 and .[0].duration_seconds > 0' >/dev/null; then
+    echo "the revoked link's recording has no size or no duration" >&2
+    exit 1
+fi
 answer="$(open_link -w '%{http_code}')"
 if [ "$answer" != 404 ]; then
     echo "opening the revoked link answered $answer, not 404" >&2
     exit 1
 fi
-if grep -qF -f <(printf '%s\n%s\n' "$token" "$cookie") "$TEMP_DIR/api.log" "$TEMP_DIR/agent.log"; then
-    echo "a log holds the link token or the cookie value" >&2
+if grep -qF -f <(printf '%s\n%s\n' "$token" "$cookie") \
+    "$TEMP_DIR/api.log" "$TEMP_DIR/agent.log" "$stored"; then
+    echo "a log or the recording holds the link token or the cookie value" >&2
     exit 1
 fi
 
 echo "stopping the deployment..."
 signed POST "/api/v1/deployments/$deployment/stop" >/dev/null
 wait_for 60 vm_destroyed
+if [ ! -s "$stored" ]; then
+    echo "the recording is not at $stored once the deployment completed" >&2
+    exit 1
+fi
+signed GET "/api/v1/recordings/$recording.cast" >"$TEMP_DIR/recording.final"
+if [ "$(wc -c <"$TEMP_DIR/recording.final")" -lt "$(wc -c <"$TEMP_DIR/recording.cast")" ]; then
+    echo "the recording shrank after the deployment completed" >&2
+    exit 1
+fi
 
 echo "smoke test passed"

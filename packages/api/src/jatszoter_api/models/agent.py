@@ -57,7 +57,7 @@ class Agent(SecretOwner, table=True):
             self._deployments = Deployment._load(self._session, agent_id=self.id)
         return self._deployments
 
-    def heartbeat(self, capacity: int) -> Lease:
+    def heartbeat(self, capacity: int, filer_url: str | None = None) -> Lease:
         """Renew the lease, failing what it held once it lapsed; then take waiting deployments,
         pinned ones first, oldest first, while `capacity` has room."""
         current = self.lease
@@ -65,7 +65,11 @@ class Agent(SecretOwner, table=True):
             for deployment in self.deployments:
                 if deployment.status in RUNNING:
                     deployment.transition(
-                        "abort", deployment.status, "lease expired", actor=Actor.API
+                        "abort",
+                        deployment.status,
+                        "lease expired",
+                        actor=Actor.API,
+                        filer_url=filer_url,
                     )
         now = int(time.time())
         lease = Lease(

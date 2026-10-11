@@ -18,6 +18,7 @@ from fastapi import (
     status,
 )
 from pydantic import BaseModel
+from sqlalchemy import Engine
 from sqlmodel import Session
 from starlette.types import Message
 from valkey.exceptions import ValkeyError
@@ -31,9 +32,10 @@ from jatszoter_api.auth import (
 from jatszoter_api.console_hub import ConsoleHub, Viewer
 from jatszoter_api.errors import ConflictError, DomainError, NotFoundError, TooLargeError
 from jatszoter_api.lifecycle import TERMINAL, DeploymentStatus
-from jatszoter_api.models import Console, Deployment, Link, Role
+from jatszoter_api.models import Console, Deployment, Link, Recording, Role
 from jatszoter_api.models.console import Holder
-from jatszoter_api.routes.deps import SessionDep
+from jatszoter_api.models.recording import live
+from jatszoter_api.routes.deps import SessionDep, SettingsDep
 from jatszoter_api.settings import Settings
 
 OFFSET_BYTES = 8
@@ -71,6 +73,42 @@ async def _refused_unless[T](websocket: WebSocket, call: Callable[[Session], T])
 
 def _filer_url(settings: Settings) -> str | None:
     return None if settings.seaweed_url is None else str(settings.seaweed_url)
+
+
+def _recorded(
+    engine: Engine, deployment_id: uuid.UUID, write: Callable[..., None], *args: Any
+) -> None:
+    """Hand the deployment's live recording to `write`; a failure is logged and goes no further."""
+    try:
+        recording_id = live(deployment_id)
+        if recording_id is None:
+            return
+        with Session(engine) as session:
+            write(Recording(session=session).load(id=recording_id), *args)
+    except Exception as error:
+        log.error("recording of deployment %s not written: %s", deployment_id, type(error).__name__)
+
+
+def _stored(
+    engine: Engine, console: Console, offset: int, data: bytes, settings: Settings
+) -> tuple[int, bytes]:
+    """Store a frame and record what was kept of it; answer where that starts and the bytes."""
+    filer_url = _filer_url(settings)
+    start, new = console.append(
+        offset, data, filer_url, settings.console_tail_bytes, settings.console_limit_bytes
+    )
+    if new:
+        _recorded(
+            engine,
+            console.deployment_id,
+            Recording.output,
+            start,
+            new,
+            console,
+            filer_url,
+            settings.recording_limit_bytes,
+        )
+    return start, new
 
 
 async def _send(websocket: WebSocket, data: bytes) -> None:
@@ -161,12 +199,12 @@ async def ship(websocket: WebSocket, agent_id: uuid.UUID, deployment_id: uuid.UU
                     offset = int.from_bytes(frame[:OFFSET_BYTES], "big")
                     try:
                         start, new = await asyncio.to_thread(
-                            console.append,
+                            _stored,
+                            websocket.app.state.engine,
+                            console,
                             offset,
                             frame[OFFSET_BYTES:],
-                            _filer_url(settings),
-                            settings.console_tail_bytes,
-                            settings.console_limit_bytes,
+                            settings,
                         )
                     except TooLargeError:
                         await websocket.close(WS_4413_TOO_LARGE)
@@ -193,20 +231,38 @@ def _watching(
     session: Session, websocket: WebSocket, deployment_id: uuid.UUID, settings: Settings
 ) -> tuple[uuid.UUID | None, Role]:
     """The link the socket came through, None for a signed operator, and the role it watches as."""
-    link_id: uuid.UUID | None = None
+    link: Link | None = None
     role = Role.OPERATOR
     if "x-signature" in websocket.headers:
         socket_operator(websocket, session, settings.master_keys)
     else:
         link, user = socket_link(websocket, session, deployment_id)
-        link_id, role = link.id, user.role
+        role = user.role
     try:
         deployment = Deployment(session=session).load(id=deployment_id)
     except IndexError:
         raise NotFoundError(f"deployment {deployment_id} is not known") from None
-    if link_id is not None and deployment.status is not DeploymentStatus.READY:
+    if link is None:
+        return None, role
+    if deployment.status is not DeploymentStatus.READY:
         raise ConflictError(f"deployment {deployment_id} is {deployment.status}")
-    return link_id, role
+    if role is Role.TRAINEE:
+        _resumed(link, deployment.console, _filer_url(settings))
+    return link.id, role
+
+
+def _resumed(link: Link, console: Console, filer_url: str | None) -> None:
+    """Name the link's open recording live again once the cache lost it."""
+    try:
+        recording = link.recording
+        if not recording.size_bytes and live(link.deployment_id) is None:
+            recording.resume(console, filer_url)
+    except IndexError:
+        return
+    except Exception as error:
+        log.error(
+            "recording of deployment %s not resumed: %s", link.deployment_id, type(error).__name__
+        )
 
 
 def _revoked(session: Session, link_id: uuid.UUID) -> bool:
@@ -243,6 +299,7 @@ async def _forward(
 ) -> int | None:
     """Pass the holder's keys and resizes to the agent until the viewer leaves, then wake its
     sender; the answer is the code to close an oversized frame's socket with."""
+    settings: Settings = websocket.app.state.settings
     try:
         while (message := await websocket.receive())["type"] != "websocket.disconnect":
             keys, text = message.get("bytes"), message.get("text")
@@ -259,8 +316,20 @@ async def _forward(
                 holder = await asyncio.to_thread(console.control)
             except ValkeyError:
                 continue
-            if role.value == holder.value:
-                hub.to_agent(console.deployment_id, sent)
+            if role.value != holder.value or not hub.to_agent(console.deployment_id, sent):
+                continue
+            if isinstance(sent, str):
+                size = json.loads(sent)
+                await asyncio.to_thread(
+                    _recorded,
+                    websocket.app.state.engine,
+                    console.deployment_id,
+                    Recording.resize,
+                    size["cols"],
+                    size["rows"],
+                    _filer_url(settings),
+                    settings.recording_limit_bytes,
+                )
         return None
     finally:
         viewer.wake()
@@ -274,7 +343,11 @@ class ControlIn(BaseModel):
     "/deployments/{deployment_id}/control", dependencies=[Depends(require_deployment_operator)]
 )
 def control(
-    body: ControlIn, request: Request, session: SessionDep, deployment_id: uuid.UUID
+    body: ControlIn,
+    request: Request,
+    session: SessionDep,
+    settings: SettingsDep,
+    deployment_id: uuid.UUID,
 ) -> ControlIn:
     try:
         deployment = Deployment(session=session).load(id=deployment_id)
@@ -282,7 +355,17 @@ def control(
         raise NotFoundError(f"deployment {deployment_id} is not known") from None
     if deployment.status is not DeploymentStatus.READY:
         raise ConflictError(f"deployment {deployment_id} is {deployment.status}")
+    changed = deployment.console.control() is not body.holder
     deployment.console.give(body.holder)
+    if changed:
+        _recorded(
+            request.app.state.engine,
+            deployment_id,
+            Recording.mark,
+            f"control {body.holder.value}",
+            _filer_url(settings),
+            settings.recording_limit_bytes,
+        )
     request.app.state.console_hub.announce(deployment_id, body.holder)
     return body
 

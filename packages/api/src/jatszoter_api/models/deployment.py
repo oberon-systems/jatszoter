@@ -49,12 +49,12 @@ class Deployment(Base, table=True):
     def save(self) -> None:
         self._save()
 
-    def stop(self) -> None:
+    def stop(self, filer_url: str | None = None) -> None:
         """Cancel a PENDING deployment, stop a running one; a repeated stop changes nothing."""
         if self.status in (DeploymentStatus.STOPPING, DeploymentStatus.CANCELLED):
             return
         event = "cancel" if self.status is DeploymentStatus.PENDING else "stop"
-        self.transition(event, self.status, actor=Actor.OPERATOR)
+        self.transition(event, self.status, actor=Actor.OPERATOR, filer_url=filer_url)
 
     @property
     def scenario(self) -> Scenario:
@@ -144,3 +144,8 @@ class Deployment(Base, table=True):
             self.console.mark_ready(filer_url)
         if target in TERMINAL:
             self.console.drop()
+            for link in self.links:
+                try:
+                    link.recording.close(filer_url)
+                except IndexError:
+                    continue

@@ -130,7 +130,7 @@ def create(body: DeploymentIn, session: SessionDep, settings: SettingsDep) -> De
     except Exception:
         # Without its link the deployment must not wait for an agent.
         session.rollback()
-        deployment.stop()
+        deployment.stop(None if settings.seaweed_url is None else str(settings.seaweed_url))
         raise
     return DeploymentCreated(
         **DeploymentOut.model_validate(deployment).model_dump(),
@@ -153,9 +153,9 @@ def show(session: SessionDep, deployment_id: uuid.UUID) -> DeploymentOut:
 
 
 @router.post("/{deployment_id}/stop")
-def stop(session: SessionDep, deployment_id: uuid.UUID) -> DeploymentOut:
+def stop(session: SessionDep, settings: SettingsDep, deployment_id: uuid.UUID) -> DeploymentOut:
     deployment = _deployment(session, deployment_id)
-    deployment.stop()
+    deployment.stop(None if settings.seaweed_url is None else str(settings.seaweed_url))
     return DeploymentOut.model_validate(deployment)
 
 

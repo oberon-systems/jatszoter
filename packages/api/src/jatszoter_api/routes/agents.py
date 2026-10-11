@@ -163,8 +163,9 @@ def claim(body: ClaimIn, session: SessionDep, settings: SettingsDep) -> Response
 
 
 @router.post("/{agent_id}/heartbeat")
-def heartbeat(body: HeartbeatIn, agent: AgentDep) -> Lease:
-    return agent.heartbeat(body.capacity)
+def heartbeat(body: HeartbeatIn, agent: AgentDep, settings: SettingsDep) -> Lease:
+    filer_url = None if settings.seaweed_url is None else str(settings.seaweed_url)
+    return agent.heartbeat(body.capacity, filer_url)
 
 
 @router.post("/{agent_id}/credential")

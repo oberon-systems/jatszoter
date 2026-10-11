@@ -19,6 +19,7 @@ One JSON header line, then one JSON event per line:
 [0.0, "o", "trainee@alpha:~$ "]
 [4.031, "r", "140x40"]
 [9.87, "m", "control operator"]
+[61.2, "m", "check failed: nginx still does not serve the app page"]
 ```
 
 - The header says 80 by 24, the size of a serial line nobody has resized.
@@ -29,8 +30,9 @@ One JSON header line, then one JSON event per line:
   next event, and an invalid byte is written as U+FFFD.
 - `r` - resize, `<cols>x<rows>`, from the holder of control.
 - `m` - markers: `control operator` and `control trainee` for control
-  changes, and `recording limit reached`, see [Storage](#storage). Check
-  results join them with roadmap item 10.
+  changes, `check <status>: <message>` for a settled check, or `check
+  <status>` when it has no message, and `recording limit reached`, see
+  [Storage](#storage).
 - There are no `i` events: keys are never stored. Nothing a viewer sends
   reaches the file except the size in a resize.
 
@@ -53,7 +55,10 @@ One JSON header line, then one JSON event per line:
 - An `r` event is written when the API passes a resize of the holder of
   control to the agent. The API cannot see whether the guest applied it.
 - An `m` event is written when
-  [the control route](04-console.md#take-control) changes the holder.
+  [the control route](04-console.md#take-control) changes the holder, and
+  when a check is settled, by the agent's result or by the API itself; see
+  [01](01-architecture.md#data-flows). A check settled while no recording
+  is live leaves no marker.
 - Each event is stamped and appended on its own, one at a time, so the
   times in the file never go backwards.
 - What the recorder needs between events lives in Valkey under
@@ -71,8 +76,8 @@ One JSON header line, then one JSON event per line:
   transition; the row keeps size 0 until the sweep of roadmap item 12
   closes it.
 - A recording that cannot be written never stops the console: the agent
-  still gets its answer, the terminals their bytes, and the link still
-  opens.
+  still gets its answer, the terminals their bytes, the link still opens,
+  and a check's result is still stored.
 
 ## Storage
 
@@ -112,6 +117,8 @@ One JSON header line, then one JSON event per line:
 - No recording contains a key the trainee or the operator typed, other than
   what the guest echoed back.
 - Every control change appears as a marker, in order with the output.
+- Every check settled while the trainee link is live appears as a marker
+  with its status.
 - A recording never grows past its limit, and a console whose recording
   fails keeps working.
 - No link token and no session token appears in a recording.

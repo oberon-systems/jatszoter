@@ -108,11 +108,13 @@ marker as reason, and `bootstrap_seconds` passing does so with reason
 
 - The script never lives on the VM between checks: the agent writes it into
   the guest for each run and deletes it afterwards.
-- It runs as root with `check_seconds` as the timeout.
+- It runs as root with `check_seconds` as the timeout; at the deadline the
+  agent kills it in the guest.
 - Exit 0 is `passed`, any other code `failed`, a timeout `timeout`, and a
   guest agent error `error`.
-- The first line of stdout is the message shown to the trainee; stderr goes
-  to the operator only.
+- The first line of stdout, up to 200 characters, is the message shown to
+  the trainee and written into the recording. The first 4096 bytes of
+  stderr are kept as the check's detail, for the operator only.
 - A check must not change the state it checks, so running it twice gives the
   same result.
 

@@ -118,6 +118,14 @@ The seed carries the break step, so it is guarded on the way in:
 - The agent never logs a seed, keeps `seed.iso` 0600 inside the VM
   directory, and deletes it after the eject.
 
+The check script is guarded the same way:
+
+- Its route answers only the agent holding the deployment, under a live
+  lease, while the deployment is READY and that check is pending.
+- Neither side logs the script or what it printed. The stderr kept as a
+  check's detail reaches an operator only, never a trainee or viewer
+  link.
+
 ## Web
 
 - A cookie request that changes state and a cookie WebSocket upgrade are

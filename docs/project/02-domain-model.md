@@ -68,7 +68,10 @@ holding that entity's UUID.
   [05](05-recording.md).
 - **Check** - deployment, the link it came through if any, the user who
   requested it, status (`pending`, `passed`, `failed`, `error`, `timeout`),
-  exit code, message, times.
+  exit code, message, detail, times. A deployment has one `pending` check
+  at a time. The agent's result settles it; without one the API settles
+  it as `timeout` once it is overdue, and as `error` when the deployment
+  ends. See [01](01-architecture.md#data-flows).
 
 ## Deployment lifecycle
 

@@ -88,6 +88,9 @@ POST /api/v1/deployments/{id}/links        signed (operator)
 GET  /api/v1/deployments/{id}/links        signed (operator)
 GET  /api/v1/deployments/{id}/recordings   signed (operator)
 POST /api/v1/deployments/{id}/control      signed (operator), operator link
+POST /api/v1/deployments/{id}/checks       signed (operator), operator or trainee link
+GET  /api/v1/deployments/{id}/checks       signed (operator), link
+GET  /api/v1/deployments/{id}/checks/{id}  signed (operator), link
 WS   /api/v1/deployments/{id}/attach       signed (operator), link
 POST /api/v1/links/{id}/revoke             signed (operator)
 GET  /api/v1/recordings/{id}.cast          signed (operator)
@@ -110,6 +113,10 @@ GET  /s/{token}                            open, the token is the secret
   session whose user has role `operator`. See [04](04-console.md#links).
 - The recording routes are described in [05](05-recording.md#replay); no
   link reads a recording.
+- The check routes answer `id`, `status`, `exit_code`, `message`,
+  `created_at` and `finished_at`, and `detail` for an operator only: a
+  trainee or viewer link gets no such field. A viewer link reads checks
+  and requests none. The flow is under [Data flows](#data-flows).
 - `GET /s/{token}` is the one route outside `/api/v1`.
 
 ## Agent protocol
@@ -125,6 +132,7 @@ POST /api/v1/agents/{agent_id}/credential                 signed
 GET  /api/v1/agents/{agent_id}/deployments                signed
 POST /api/v1/agents/{agent_id}/deployments/{id}/transition signed
 GET  /api/v1/agents/{agent_id}/deployments/{id}/seed       signed
+GET  /api/v1/agents/{agent_id}/deployments/{id}/checks/{check_id} signed
 POST /api/v1/agents/{agent_id}/deployments/{id}/checks/{check_id} signed
 WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
 ```
@@ -169,6 +177,7 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
   image      name, url, digest
   resources  cpus, memory_mib, disk_gib
   timeouts   bootstrap_seconds, check_seconds, session_minutes
+  check      the id of the pending check, or null
   ```
 
 - `GET .../seed` is the deployment's cloud-init seed:
@@ -178,6 +187,17 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
 - The seed is served only for a deployment the agent holds, only while that
   deployment is STARTING, and only under a live lease; anything else gets
   409. An unknown deployment, or another agent's, gets 404.
+- `GET .../checks/{check_id}` is the script of a pending check:
+  `{"script": "...", "timeout_seconds": n}`, the scenario's check script
+  as text from the stored bundle and the deployment's `check_seconds`.
+- `POST .../checks/{check_id}` is its result: `status` (`passed`,
+  `failed`, `error` or `timeout`), `exit_code`, `message` and `detail`.
+  `passed` goes with exit code 0, `failed` with any other, `timeout` and
+  `error` with none; a body that says otherwise gets 422.
+- Both check routes answer only the agent holding the deployment, under a
+  live lease, while the deployment is READY and the check is `pending`;
+  anything else gets 409. An unknown deployment or check, or another
+  agent's deployment, gets 404.
 - A transition body is `event`, `expected` - the status the agent believes
   the deployment is in - and an optional `reason`. The agent events are
   `assign`, `boot`, `bootstrap`, `destroy` and `fail`.
@@ -269,11 +289,20 @@ Console: see [04](04-console.md). Recording: see [05](05-recording.md).
 Check:
 
 1. Operator or trainee `POST /api/v1/deployments/{id}/checks`; the API
-   stores a Check `pending`.
-2. The agent sees it in its desired state, copies the check script into the
-   guest, runs it with the scenario's `check_seconds` timeout, deletes it.
-3. The agent posts exit code and the first stdout line; the API stores the
-   result and shows it.
+   stores a Check `pending`. The deployment must be READY, and one check
+   is pending at a time: a request while one is answers 409.
+2. The agent sees the check's id in its desired state, fetches the script,
+   writes it into the guest, runs it with the scenario's `check_seconds`
+   timeout and deletes it.
+3. The agent posts the status, the exit code, the first stdout line and
+   the start of stderr; the API stores the result, shows it and writes it
+   into the recording as a marker, see [05](05-recording.md#format).
+4. A check the agent never answers is settled by the API: once it is
+   pending longer than `check_seconds` plus 30 seconds, the next request
+   or read of the deployment's checks stores it as `timeout`. A result
+   that arrives after that gets 409 and changes nothing.
+5. A deployment that ends settles its pending check as `error` with the
+   message `deployment ended`.
 
 Stop:
 

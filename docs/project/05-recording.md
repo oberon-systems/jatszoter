@@ -67,6 +67,9 @@ One JSON header line, then one JSON event per line:
   deployment reaching COMPLETED, FAILED or CANCELLED revokes its links and
   closes the recording the same way, so no recording outlives it open. A
   new trainee link starts a new recording.
+- A close that fails is logged and stops neither the revoke nor the
+  transition; the row keeps size 0 until the sweep of roadmap item 12
+  closes it.
 - A recording that cannot be written never stops the console: the agent
   still gets its answer, the terminals their bytes, and the link still
   opens.

@@ -69,7 +69,8 @@ to cover it. An item marked Done has landed on `main`.
     - Agent: no change.
     - Smoke: the operator and trainee pages load against the smoke stand.
 12. Hardening: limits, TTL sweeps, the recording retention sweep with
-    `JATSZOTER_RECORDING_RETENTION_DAYS`.
+    `JATSZOTER_RECORDING_RETENTION_DAYS`, which also closes a recording
+    of a revoked link that was left open.
     - Agent: bounded retries and backoff towards the API.
     - Smoke: session TTL and bootstrap timeout end their deployments.
 

@@ -2,6 +2,7 @@ import hashlib
 import uuid
 from typing import Any
 
+import httpx
 import pytest
 from sqlmodel import Session
 
@@ -164,6 +165,27 @@ def test_completing_a_deployment_closes_its_recording(session: Session) -> None:
     assert deployment.status is S.COMPLETED
     assert Recording(session=session).load(id=recording.id).size_bytes > 0
     assert live(deployment.id) is None
+
+
+def test_a_recording_that_cannot_be_closed_does_not_stop_the_transition(
+    session: Session, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    deployment = deploy(session, S.STOPPING)
+    [link] = deployment.links
+    recording = Recording(session=session, deployment_id=deployment.id, link_id=link.id)
+    recording.start(deployment.console, "alpha v1", None, 1024)
+
+    def refuse(self: File) -> int:
+        raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(File, "size", refuse)
+
+    deployment.transition("destroy", S.STOPPING, actor=Actor.AGENT, agent_id=AGENT)
+
+    assert deployment.status is S.COMPLETED
+    assert link.revoked_at is not None
+    assert Recording(session=session).load(id=recording.id).size_bytes == 0
+    assert f"recording of deployment {deployment.id} not closed: ConnectError" in caplog.text
 
 
 def test_a_live_deployment_keeps_its_links(session: Session) -> None:

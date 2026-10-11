@@ -1,3 +1,4 @@
+import logging
 import time
 import uuid
 from typing import Any, Self
@@ -14,6 +15,8 @@ from jatszoter_api.models.image import Image
 from jatszoter_api.models.link import Link
 from jatszoter_api.models.scenario import Scenario
 from jatszoter_api.seed import Seed, render
+
+log = logging.getLogger(__name__)
 
 
 class Deployment(Base, table=True):
@@ -145,7 +148,12 @@ class Deployment(Base, table=True):
         if target in TERMINAL:
             self.console.drop()
             for link in self.links:
+                # The deployment has ended either way: a recording left open never undoes that.
                 try:
                     link.recording.close(filer_url)
                 except IndexError:
                     continue
+                except Exception as error:
+                    log.error(
+                        "recording of deployment %s not closed: %s", self.id, type(error).__name__
+                    )

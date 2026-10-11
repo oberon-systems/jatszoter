@@ -52,7 +52,7 @@ to cover it. An item marked Done has landed on `main`.
      the guest agent.
    - Smoke: a trainee link opens the terminal and types; take control cuts
      its input; a resize reaches the guest; a revoked link opens nothing.
-9. Recording and replay ([05](05-recording.md)).
+9. Recording and replay ([05](05-recording.md)). Done.
    - API: the asciicast of a trainee link from its first open - output from
      the READY offset, resizes and control changes as events, the size
      limit - closed on revoke and when the deployment ends; the recordings

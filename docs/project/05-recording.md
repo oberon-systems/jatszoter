@@ -60,8 +60,8 @@ One JSON header line, then one JSON event per line:
   `recording:<recording id>:*`, and `recording:of:<deployment id>` names
   the deployment's live recording; see
   [02](02-domain-model.md#ephemeral-state). When Valkey loses them, the
-  bytes written are read back from the file's size and output resumes with
-  the next frame that arrives.
+  bytes written are read back from the file's size and output resumes
+  from the log end once the trainee's terminal attaches again.
 - Revoking the link closes the recording: the row gets the file's final
   size and the seconds since time zero, and the Valkey keys are deleted. A
   deployment reaching COMPLETED, FAILED or CANCELLED revokes its links and

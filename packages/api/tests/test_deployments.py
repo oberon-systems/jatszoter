@@ -8,7 +8,8 @@ from sqlmodel import Session
 from jatszoter_api.errors import InvalidTransitionError
 from jatszoter_api.file import File
 from jatszoter_api.lifecycle import Actor, DeploymentStatus
-from jatszoter_api.models import Deployment, Image, Link, Role, Scenario, User
+from jatszoter_api.models import Deployment, Image, Link, Recording, Role, Scenario, User
+from jatszoter_api.models.recording import live
 
 S = DeploymentStatus
 AGENT = uuid.uuid4()
@@ -150,6 +151,19 @@ def test_ending_a_deployment_revokes_every_link(session: Session) -> None:
 
     assert len(deployment.links) == 2
     assert all(link.revoked_at is not None for link in deployment.links)
+
+
+def test_completing_a_deployment_closes_its_recording(session: Session) -> None:
+    deployment = deploy(session, S.STOPPING)
+    [link] = deployment.links
+    recording = Recording(session=session, deployment_id=deployment.id, link_id=link.id)
+    recording.start(deployment.console, "alpha v1", None, 1024)
+
+    deployment.transition("destroy", S.STOPPING, actor=Actor.AGENT, agent_id=AGENT)
+
+    assert deployment.status is S.COMPLETED
+    assert Recording(session=session).load(id=recording.id).size_bytes > 0
+    assert live(deployment.id) is None
 
 
 def test_a_live_deployment_keeps_its_links(session: Session) -> None:

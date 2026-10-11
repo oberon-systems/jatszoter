@@ -17,7 +17,17 @@ from starlette.websockets import WebSocketDisconnect
 from jatszoter_api.console_hub import ConsoleHub, Viewer
 from jatszoter_api.file import File
 from jatszoter_api.lifecycle import Actor, DeploymentStatus
-from jatszoter_api.models import Agent, Deployment, Image, Link, Role, Scenario, State, User
+from jatszoter_api.models import (
+    Agent,
+    Deployment,
+    Image,
+    Link,
+    Recording,
+    Role,
+    Scenario,
+    State,
+    User,
+)
 from jatszoter_api.models._cache import Cached
 from jatszoter_api.models.console import Holder
 from jatszoter_api.models.secret import CREDENTIAL_SECONDS
@@ -213,6 +223,16 @@ def log(deployment: Deployment) -> bytes:
     stored = File(deployment.console.path)
     stored.get()
     return stored.data
+
+
+def recorded(session: Session, deployment: Deployment) -> list[tuple[str, str]]:
+    """The events of the deployment's one recording, without their times."""
+    [recording] = Recording._load(session, deployment_id=deployment.id)
+    stored = File(recording.path)
+    stored.get()
+    events = [json.loads(line) for line in stored.data.decode().splitlines()[1:]]
+    assert [at for at, _, _ in events] == sorted(at for at, _, _ in events)
+    return [(code, text) for _, code, text in events]
 
 
 def test_an_agent_frame_is_answered_with_the_new_end_and_lands_in_the_log(
@@ -821,3 +841,144 @@ def test_control_is_refused_to_everyone_but_this_deployments_operator(
     assert ask(api, other.id, cookie).status_code == 401
     assert ready.console.control() is Holder.TRAINEE
     assert other.console.control() is Holder.TRAINEE
+
+
+def test_a_trainee_links_session_is_recorded_in_order(
+    api: TestClient,
+    session: Session,
+    operator: Any,
+    shipper: Shipper,
+    deploy: Callable[..., Deployment],
+) -> None:
+    ready = deploy(status=S.READY)
+    with shipper.connect(ready.id) as agent:
+        offset(agent)
+        ship(agent, 0, b"boot")
+        ready.console.mark_ready(None)
+        _, cookie = opened(api, session, ready, Role.TRAINEE)
+        with join(api, ready.id, cookie) as trainee:
+            attached(trainee)
+            ship(agent, 4, b"alpha")
+            trainee.send_text(resize(100, 30))
+            assert json.loads(agent.receive_text()) == {"cols": 100, "rows": 30}
+            # The next frame is read only once the resize is recorded.
+            trainee.send_bytes(b"x")
+            assert agent.receive_bytes() == b"x"
+            hand(operator, ready.id, "operator")
+            hand(operator, ready.id, "operator")
+            ship(agent, 9, b"beta")
+            hand(operator, ready.id, "trainee")
+
+    assert recorded(session, ready) == [
+        ("o", "alpha"),
+        ("r", "100x30"),
+        ("m", "control operator"),
+        ("o", "beta"),
+        ("m", "control trainee"),
+    ]
+
+
+def test_keys_never_reach_the_recording(
+    api: TestClient,
+    session: Session,
+    operator: Any,
+    shipper: Shipper,
+    deploy: Callable[..., Deployment],
+) -> None:
+    ready = deploy(status=S.READY)
+    ready.console.mark_ready(None)
+    _, cookie = opened(api, session, ready, Role.TRAINEE)
+    with (
+        shipper.connect(ready.id) as agent,
+        join(api, ready.id, cookie) as trainee,
+        watch(operator, ready.id) as signed,
+    ):
+        offset(agent)
+        attached(trainee)
+        attached(signed)
+        trainee.send_bytes(b"gamma")
+        assert agent.receive_bytes() == b"gamma"
+        hand(operator, ready.id, "operator")
+        signed.send_bytes(b"delta")
+        assert agent.receive_bytes() == b"delta"
+        ship(agent, 0, b"alpha")
+
+    assert recorded(session, ready) == [("m", "control operator"), ("o", "alpha")]
+
+
+def test_a_resize_the_agent_did_not_take_or_from_another_party_is_not_recorded(
+    api: TestClient,
+    session: Session,
+    operator: Any,
+    deploy: Callable[..., Deployment],
+) -> None:
+    ready = deploy(status=S.READY)
+    ready.console.mark_ready(None)
+    _, cookie = opened(api, session, ready, Role.TRAINEE)
+    with join(api, ready.id, cookie) as trainee, watch(operator, ready.id) as signed:
+        attached(trainee)
+        attached(signed)
+        signed.send_text(resize(200, 50))
+        signed.send_bytes(b"x" * 4097)
+        assert closed(signed) == 1009
+        trainee.send_text(resize(100, 30))
+        trainee.send_bytes(b"x" * 4097)
+        # 1009 answers the second frame, so the resize before it was read.
+        assert closed(trainee) == 1009
+
+    assert recorded(session, ready) == []
+
+
+def test_a_recording_that_cannot_be_written_leaves_the_console_working(
+    api: TestClient,
+    session: Session,
+    operator: Any,
+    shipper: Shipper,
+    deploy: Callable[..., Deployment],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ready = deploy(status=S.READY)
+    ready.console.mark_ready(None)
+    _, cookie = opened(api, session, ready, Role.TRAINEE)
+    append = File.append
+
+    def refuse(self: File) -> None:
+        if "/recordings/" in self.url:
+            raise httpx.ConnectError("refused")
+        append(self)
+
+    monkeypatch.setattr(File, "append", refuse)
+    with shipper.connect(ready.id) as agent, join(api, ready.id, cookie) as trainee:
+        offset(agent)
+        attached(trainee)
+
+        assert ship(agent, 0, b"alpha") == 5
+        assert trainee.receive_bytes() == b"alpha"
+        trainee.send_text(resize(100, 30))
+        assert json.loads(agent.receive_text()) == {"cols": 100, "rows": 30}
+        assert hand(operator, ready.id, "operator").status_code == 200
+    assert log(ready) == b"alpha"
+    assert recorded(session, ready) == []
+
+
+def test_a_trainee_attaching_after_the_cache_lost_the_recording_resumes_it(
+    api: TestClient, session: Session, shipper: Shipper, deploy: Callable[..., Deployment]
+) -> None:
+    ready = deploy(status=S.READY)
+    ready.console.mark_ready(None)
+    _, cookie = opened(api, session, ready, Role.TRAINEE)
+    with shipper.connect(ready.id) as agent:
+        offset(agent)
+        ship(agent, 0, b"alpha")
+        [recording] = Recording._load(session, deployment_id=ready.id)
+        names = ("offset", "size", "rest", "full")
+        Cached._client().delete(
+            f"recording:of:{ready.id}", *(f"recording:{recording.id}:{name}" for name in names)
+        )
+        ship(agent, 5, b"beta")
+
+        with join(api, ready.id, cookie) as trainee:
+            attached(trainee)
+            ship(agent, 9, b"gamma")
+
+    assert recorded(session, ready) == [("o", "alpha"), ("o", "gamma")]

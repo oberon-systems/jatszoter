@@ -7,7 +7,7 @@ from sqlmodel import Session, select
 
 from jatszoter_api.errors import InvalidTransitionError
 from jatszoter_api.lifecycle import DeploymentStatus
-from jatszoter_api.models import Agent, Deployment, State
+from jatszoter_api.models import Agent, Deployment, Link, Recording, State
 from jatszoter_api.models._cache import Cached
 from jatszoter_api.models.agent import LEASE_SECONDS
 
@@ -175,6 +175,23 @@ def test_a_lapsed_lease_fails_what_it_held_before_a_new_one(session: Session) ->
         assert deployment.reason == "lease expired"
     session.refresh(waiting)
     assert waiting.status is DeploymentStatus.PENDING
+
+
+def test_a_lapsed_lease_closes_the_recording_of_what_it_held(session: Session) -> None:
+    agent = approved(session)
+    agent.heartbeat(0)
+    held = deploy(session, agent, DeploymentStatus.READY)
+    link = Link(session=session, deployment_id=held.id, user_id=uuid.uuid4())
+    link.save()
+    recording = Recording(session=session, deployment_id=held.id, link_id=link.id)
+    recording.start(held.console, "alpha v1", None, 1024)
+    Cached._client().delete(f"lease:{agent.id}")
+
+    agent.heartbeat(0)
+
+    session.refresh(held)
+    assert held.status is DeploymentStatus.FAILED
+    assert Recording(session=session).load(id=recording.id).size_bytes > 0
 
 
 def queued(session: Session, created_at: int, agent: Agent | None = None) -> Deployment:

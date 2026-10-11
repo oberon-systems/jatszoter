@@ -1,4 +1,5 @@
 import hashlib
+import json
 import logging
 import secrets
 import uuid
@@ -12,7 +13,16 @@ from sqlmodel import Session
 from jatszoter_api.errors import ConflictError
 from jatszoter_api.file import File
 from jatszoter_api.lifecycle import DeploymentStatus
-from jatszoter_api.models import Deployment, Image, Link, Role, Scenario, State, User
+from jatszoter_api.models import (
+    Deployment,
+    Image,
+    Link,
+    Recording,
+    Role,
+    Scenario,
+    State,
+    User,
+)
 
 S = DeploymentStatus
 DEPLOYMENTS = "/api/v1/deployments"
@@ -349,3 +359,70 @@ def test_an_unknown_revoked_or_disabled_link_gets_the_same_404_and_no_cookie(
     assert len({response.content for response in refusals}) == 1
     assert not any("set-cookie" in response.headers for response in refusals)
     assert [link.opened_at for link in Link._load(session)] == [None, None]
+
+
+def test_the_first_open_of_a_trainee_link_starts_one_recording(
+    api: TestClient, session: Session, created: dict[str, Any]
+) -> None:
+    token = created["link"]["token"]
+
+    assert open_link(api, token).status_code == 303
+    assert open_link(api, token).status_code == 303
+
+    [recording] = Recording._load(session)
+    assert str(recording.link_id) == created["link"]["id"]
+    assert str(recording.deployment_id) == created["id"]
+    assert (recording.size_bytes, recording.duration_seconds) == (0, 0.0)
+    stored = File(recording.path)
+    stored.get()
+    [header] = stored.data.decode().splitlines()
+    assert json.loads(header) == {
+        "version": 2,
+        "width": 80,
+        "height": 24,
+        "timestamp": recording.created_at,
+        "title": f"nginx-502 v1 {created['id']}",
+    }
+    assert token not in stored.data.decode()
+
+
+@pytest.mark.parametrize("role", [Role.OPERATOR, Role.VIEWER])
+def test_an_operator_or_viewer_link_starts_no_recording(
+    api: TestClient, operator: Any, session: Session, created: dict[str, Any], role: Role
+) -> None:
+    issued = issue(operator, created["id"], user(session, "delta", role)).json()
+
+    assert open_link(api, issued["token"]).status_code == 303
+
+    assert Recording._load(session) == []
+
+
+def test_revoking_a_trainee_link_closes_its_recording(
+    api: TestClient, operator: Any, session: Session, created: dict[str, Any]
+) -> None:
+    open_link(api, created["link"]["token"])
+    [recording] = Recording._load(session)
+    recording.created_at -= 5
+    recording.save()
+
+    assert operator.request("POST", f"{LINKS}/{created['link']['id']}/revoke").is_success
+
+    session.refresh(recording)
+    stored = File(recording.path)
+    stored.get()
+    assert recording.size_bytes == len(stored.data) > 0
+    assert recording.duration_seconds >= 5
+
+
+def test_a_link_whose_recording_cannot_start_still_opens(
+    api: TestClient, created: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(self: File) -> None:
+        raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(File, "append", refuse)
+
+    response = open_link(api, created["link"]["token"])
+
+    assert response.status_code == 303
+    assert "set-cookie" in response.headers

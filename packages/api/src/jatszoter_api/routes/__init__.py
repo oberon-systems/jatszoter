@@ -6,6 +6,7 @@ from jatszoter_api.routes.deps import domain_error_handler
 from jatszoter_api.routes.images import router as images_router
 from jatszoter_api.routes.links import open_router
 from jatszoter_api.routes.links import router as links_router
+from jatszoter_api.routes.recordings import router as recordings_router
 from jatszoter_api.routes.scenarios import router as scenarios_router
 from jatszoter_api.routes.users import router as users_router
 
@@ -18,6 +19,7 @@ __all__ = [
     "images_router",
     "links_router",
     "open_router",
+    "recordings_router",
     "scenarios_router",
     "users_router",
 ]

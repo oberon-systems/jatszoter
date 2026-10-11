@@ -9,7 +9,16 @@ from jatszoter_api.auth import require_operator
 from jatszoter_api.errors import ConflictError, InvalidReferenceError, NotFoundError
 from jatszoter_api.file import File
 from jatszoter_api.lifecycle import TERMINAL, DeploymentStatus
-from jatszoter_api.models import Agent, Deployment, Link, Role, Scenario, State, User
+from jatszoter_api.models import (
+    Agent,
+    Deployment,
+    Link,
+    Recording,
+    Role,
+    Scenario,
+    State,
+    User,
+)
 from jatszoter_api.routes.agents import StrictModel
 from jatszoter_api.routes.deps import SessionDep, SettingsDep
 from jatszoter_api.routes.links import LinkOut, link_out
@@ -45,6 +54,16 @@ class DeploymentOut(BaseModel):
     updated_at: int
     ready_at: int | None
     ended_at: int | None
+
+
+class RecordingOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    link_id: uuid.UUID
+    created_at: int
+    size_bytes: int
+    duration_seconds: float
 
 
 class TraineeLink(BaseModel):
@@ -176,6 +195,16 @@ def issue(body: LinkIn, session: SessionDep, deployment_id: uuid.UUID) -> LinkIs
 def links(session: SessionDep, deployment_id: uuid.UUID) -> list[LinkOut]:
     deployment = _deployment(session, deployment_id)
     return [link_out(session, link) for link in deployment.links]
+
+
+@router.get("/{deployment_id}/recordings")
+def recordings(session: SessionDep, deployment_id: uuid.UUID) -> list[RecordingOut]:
+    deployment = _deployment(session, deployment_id)
+    stored = Recording._load(session, deployment_id=deployment.id)
+    return [
+        RecordingOut.model_validate(recording)
+        for recording in sorted(stored, key=lambda row: row.created_at)
+    ]
 
 
 @router.get("/{deployment_id}/console")

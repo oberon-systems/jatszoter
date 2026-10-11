@@ -21,6 +21,7 @@ from jatszoter_api.routes import (
     images_router,
     links_router,
     open_router,
+    recordings_router,
     scenarios_router,
     users_router,
 )
@@ -93,6 +94,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     v1.include_router(deployments_router)
     v1.include_router(images_router)
     v1.include_router(links_router)
+    v1.include_router(recordings_router)
     v1.include_router(scenarios_router)
     v1.include_router(users_router)
     app.include_router(v1)

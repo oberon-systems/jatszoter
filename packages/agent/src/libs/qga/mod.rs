@@ -14,9 +14,37 @@ use crate::libs::error::AgentError;
 const MAX_MESSAGE: u64 = 1 << 20;
 const DELIMITER: u8 = 0xFF;
 const SYNC: &str = "guest-sync-delimited";
+const STATUS: &str = "guest-exec-status";
 const CHUNK: usize = 64 * 1024;
 const MISSING: &str = "No such file or directory";
 const EXEC_POLL: Duration = Duration::from_millis(100);
+/// How the error of a reply over the message limit ends.
+pub const TRUNCATED: &str = "truncated message";
+
+/// How a captured run ended; the outputs are a script's, so `Debug` prints no content.
+#[derive(PartialEq, Eq)]
+pub enum Ran {
+    Exited {
+        code: i64,
+        stdout: Vec<u8>,
+        stderr: Vec<u8>,
+    },
+    Overdue {
+        pid: i64,
+    },
+}
+
+impl std::fmt::Debug for Ran {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Exited { code, .. } => f
+                .debug_struct("Exited")
+                .field("code", code)
+                .finish_non_exhaustive(),
+            Self::Overdue { pid } => f.debug_struct("Overdue").field("pid", pid).finish(),
+        }
+    }
+}
 
 pub struct Qga {
     reader: BufReader<OwnedReadHalf>,
@@ -56,35 +84,90 @@ impl Qga {
 
     /// Runs `argv` in the guest and returns its exit code; an error once `wait` passes.
     pub async fn exec(&mut self, argv: &[&str], wait: Duration) -> Result<i64, AgentError> {
-        let command = "guest-exec";
-        let (path, args) = argv
-            .split_first()
-            .ok_or_else(|| AgentError::Qga(format!("{command}: no command")))?;
         let deadline = Instant::now() + wait;
-        let started = self
-            .execute(
-                command,
-                Some(json!({ "path": path, "arg": args, "capture-output": false })),
-            )
-            .await?;
-        let pid = started
-            .get("pid")
-            .and_then(Value::as_i64)
-            .ok_or_else(|| AgentError::Qga(format!("{command}: no pid")))?;
-        let command = "guest-exec-status";
+        let pid = self.spawn(argv, false).await?;
         loop {
-            let status = self.execute(command, Some(json!({ "pid": pid }))).await?;
-            if status.get("exited").and_then(Value::as_bool) == Some(true) {
-                return status
-                    .get("exitcode")
-                    .and_then(Value::as_i64)
-                    .ok_or_else(|| AgentError::Qga(format!("{command}: no exit code")));
+            if let Some(status) = self.exited(pid).await? {
+                return exit_code(&status);
             }
             if Instant::now() + EXEC_POLL > deadline {
+                let path = argv.first().copied().unwrap_or_default();
                 return Err(AgentError::Qga(format!("{path}: still running")));
             }
             sleep(EXEC_POLL).await;
         }
+    }
+
+    /// Runs `argv` with captured output; once `wait` passes it answers the pid, still running.
+    pub async fn run(&mut self, argv: &[&str], wait: Duration) -> Result<Ran, AgentError> {
+        let deadline = Instant::now() + wait;
+        let pid = self.spawn(argv, true).await?;
+        loop {
+            if let Some(status) = self.exited(pid).await? {
+                return Ok(Ran::Exited {
+                    code: exit_code(&status)?,
+                    stdout: output(&status, "out-data")?,
+                    stderr: output(&status, "err-data")?,
+                });
+            }
+            if Instant::now() + EXEC_POLL > deadline {
+                return Ok(Ran::Overdue { pid });
+            }
+            sleep(EXEC_POLL).await;
+        }
+    }
+
+    async fn spawn(&mut self, argv: &[&str], capture: bool) -> Result<i64, AgentError> {
+        let command = "guest-exec";
+        let (path, args) = argv
+            .split_first()
+            .ok_or_else(|| AgentError::Qga(format!("{command}: no command")))?;
+        self.execute(
+            command,
+            Some(json!({ "path": path, "arg": args, "capture-output": capture })),
+        )
+        .await?
+        .get("pid")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| AgentError::Qga(format!("{command}: no pid")))
+    }
+
+    async fn exited(&mut self, pid: i64) -> Result<Option<Value>, AgentError> {
+        let status = self.execute(STATUS, Some(json!({ "pid": pid }))).await?;
+        let exited = status.get("exited").and_then(Value::as_bool) == Some(true);
+        Ok(exited.then_some(status))
+    }
+
+    pub async fn write_file(&mut self, path: &str, data: &[u8]) -> Result<(), AgentError> {
+        let open = "guest-file-open";
+        let handle = self
+            .execute(open, Some(json!({ "path": path, "mode": "w" })))
+            .await?
+            .as_i64()
+            .ok_or_else(|| AgentError::Qga(format!("{open}: no handle")))?;
+        let written = self.write_open(handle, data).await;
+        let closed = self
+            .execute("guest-file-close", Some(json!({ "handle": handle })))
+            .await;
+        written?;
+        closed.map(drop)
+    }
+
+    async fn write_open(&mut self, handle: i64, data: &[u8]) -> Result<(), AgentError> {
+        let command = "guest-file-write";
+        for chunk in data.chunks(CHUNK) {
+            let reply = self
+                .execute(
+                    command,
+                    Some(json!({ "handle": handle, "buf-b64": STANDARD.encode(chunk) })),
+                )
+                .await?;
+            let count = reply.get("count").and_then(Value::as_u64);
+            if count != u64::try_from(chunk.len()).ok() {
+                return Err(AgentError::Qga(format!("{command}: short write")));
+            }
+        }
+        Ok(())
     }
 
     pub async fn read_file(
@@ -207,7 +290,7 @@ impl Qga {
             return Err(AgentError::Qga(format!("{command}: connection closed")));
         }
         if line.last() != Some(&b'\n') {
-            return Err(AgentError::Qga(format!("{command}: truncated message")));
+            return Err(AgentError::Qga(format!("{command}: {TRUNCATED}")));
         }
         Ok(line)
     }
@@ -219,6 +302,23 @@ fn returned(command: &str, mut reply: Value) -> Result<Value, AgentError> {
     }
     let desc = desc(&reply).unwrap_or("unexpected reply");
     Err(AgentError::Qga(format!("{command}: {desc}")))
+}
+
+fn exit_code(status: &Value) -> Result<i64, AgentError> {
+    status
+        .get("exitcode")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| AgentError::Qga(format!("{STATUS}: no exit code")))
+}
+
+fn output(status: &Value, field: &str) -> Result<Vec<u8>, AgentError> {
+    let data = status
+        .get(field)
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    STANDARD
+        .decode(data)
+        .map_err(|err| AgentError::Qga(format!("{STATUS}: {field}: {err}")))
 }
 
 fn desc(reply: &Value) -> Option<&str> {

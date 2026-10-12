@@ -11,6 +11,7 @@ use url::Url;
 use crate::libs::agent::{Auth, Runtime};
 use crate::libs::api::{Api, Desired, Event, HttpApi, Moved, Seed, Signed, Status};
 use crate::libs::bootstrap::{self, Verdict, MARKER};
+use crate::libs::check;
 use crate::libs::config::Config;
 use crate::libs::console;
 use crate::libs::error::AgentError;
@@ -66,6 +67,8 @@ pub struct QemuRuntime {
     tasks: HashMap<String, JoinHandle<()>>,
     kinds: HashMap<String, Kind>,
     consoles: HashMap<String, JoinHandle<()>>,
+    // By check id: the deployment and the task; it stays while the API names the check.
+    checks: HashMap<String, (String, JoinHandle<()>)>,
     full: Full,
     fence: Option<JoinHandle<()>>,
 }
@@ -93,6 +96,7 @@ impl QemuRuntime {
             tasks: HashMap::new(),
             kinds: HashMap::new(),
             consoles: HashMap::new(),
+            checks: HashMap::new(),
             full: Full::default(),
             fence: None,
         })
@@ -157,6 +161,50 @@ impl QemuRuntime {
                 .insert(item.id.clone(), tokio::spawn(work.instrument(span)));
         }
     }
+
+    // Check tasks live outside `tasks` as well, so a check never holds up a stop.
+    fn keep_checks(&mut self, auth: &Auth, desired: &[Desired]) {
+        self.checks.retain(|check_id, (deployment_id, task)| {
+            let ready = desired
+                .iter()
+                .find(|item| item.id == *deployment_id && item.status == Status::Ready);
+            if let Some(item) = ready {
+                return item.check.as_ref() == Some(check_id) || !task.is_finished();
+            }
+            if !task.is_finished() {
+                tracing::info!(%deployment_id, %check_id, "aborting the check task");
+                task.abort();
+            }
+            false
+        });
+        for item in desired {
+            let Some(check_id) = &item.check else {
+                continue;
+            };
+            if item.status != Status::Ready
+                || !vm::valid_id(&item.id)
+                || self.checks.contains_key(check_id)
+            {
+                continue;
+            }
+            let span = tracing::info_span!(
+                "deployment",
+                deployment_id = %item.id,
+                vm_id = %item.vm_id,
+                %check_id
+            );
+            let work = run_check(
+                Arc::clone(&self.shared),
+                Arc::clone(auth),
+                item.id.clone(),
+                check_id.clone(),
+            );
+            self.checks.insert(
+                check_id.clone(),
+                (item.id.clone(), tokio::spawn(work.instrument(span))),
+            );
+        }
+    }
 }
 
 impl Runtime for QemuRuntime {
@@ -180,6 +228,7 @@ impl Runtime for QemuRuntime {
             }
         };
         self.keep_consoles(auth, &desired, &on_disk);
+        self.keep_checks(auth, &desired);
         let mut aborted = self.abort_stopping(&desired);
         let busy: HashSet<String> = self.tasks.keys().cloned().collect();
         for action in plan(&desired, &on_disk, &busy, self.capacity) {
@@ -214,10 +263,9 @@ impl Runtime for QemuRuntime {
             .tasks
             .drain()
             .chain(self.consoles.drain())
-            .map(|(_, task)| {
-                task.abort();
-                task
-            })
+            .map(|(_, task)| task)
+            .chain(self.checks.drain().map(|(_, (_, task))| task))
+            .inspect(JoinHandle::abort)
             .collect();
         let root = self.shared.root.clone();
         self.fence = Some(tokio::spawn(async move {
@@ -270,6 +318,11 @@ async fn ship_console(shared: Arc<Shared>, auth: Auth, deployment_id: String, fu
         }
         sleep(CONSOLE_RETRY).await;
     }
+}
+
+async fn run_check(shared: Arc<Shared>, auth: Auth, deployment_id: String, check_id: String) {
+    let socket = shared.root.join(&deployment_id).join(vm::QGA);
+    check::run(&shared.api, &auth, &socket, &deployment_id, &check_id).await;
 }
 
 async fn run(shared: Arc<Shared>, auth: Auth, action: Action, after: Option<JoinHandle<()>>) {

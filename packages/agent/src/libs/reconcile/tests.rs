@@ -31,6 +31,7 @@ fn desired(id: &str, status: Status) -> Desired {
             check_seconds: 30,
             session_minutes: 60,
         },
+        check: None,
     }
 }
 

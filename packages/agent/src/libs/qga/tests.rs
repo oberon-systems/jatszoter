@@ -9,7 +9,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixListener;
 use tokio::task::JoinHandle;
 
-use super::{Qga, CHUNK};
+use super::{Qga, Ran, CHUNK};
 use crate::libs::error::AgentError;
 
 const TIMEOUT: Duration = Duration::from_secs(5);
@@ -287,4 +287,151 @@ async fn exec_without_a_command_sends_nothing() {
 
     assert!(matches!(&err, AgentError::Qga(_)), "{err}");
     assert!(server.await.unwrap().is_empty());
+}
+
+fn written(count: usize) -> Vec<u8> {
+    reply(json!({ "return": { "count": count, "eof": false } }))
+}
+
+fn open_to_write() -> Value {
+    json!({ "execute": "guest-file-open", "arguments": { "path": MARKER, "mode": "w" } })
+}
+
+fn write(data: &[u8]) -> Value {
+    json!({
+        "execute": "guest-file-write",
+        "arguments": { "handle": HANDLE, "buf-b64": STANDARD.encode(data) }
+    })
+}
+
+#[tokio::test]
+async fn a_file_is_written_in_chunks_and_closed() {
+    let dir = TempDir::new().unwrap();
+    let data = vec![b'a'; CHUNK + 5];
+    let (path, server) = serve(&dir, b"", vec![opened(), written(CHUNK), written(5), ok()]);
+
+    let mut qga = Qga::connect(&path, TIMEOUT).await.unwrap();
+    qga.write_file(MARKER, &data).await.unwrap();
+    drop(qga);
+
+    assert_eq!(
+        server.await.unwrap(),
+        vec![
+            open_to_write(),
+            write(&data[..CHUNK]),
+            write(&data[CHUNK..]),
+            close()
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_short_write_is_an_error_and_still_closed() {
+    let dir = TempDir::new().unwrap();
+    let (path, server) = serve(&dir, b"", vec![opened(), written(2), ok()]);
+
+    let mut qga = Qga::connect(&path, TIMEOUT).await.unwrap();
+    let err = qga.write_file(MARKER, b"alpha").await.unwrap_err();
+    drop(qga);
+
+    assert!(
+        matches!(&err, AgentError::Qga(message) if message == "guest-file-write: short write"),
+        "{err}"
+    );
+    assert_eq!(
+        server.await.unwrap(),
+        vec![open_to_write(), write(b"alpha"), close()]
+    );
+}
+
+#[tokio::test]
+async fn a_file_that_does_not_open_is_an_error_and_nothing_is_written() {
+    let dir = TempDir::new().unwrap();
+    let (path, server) = serve(&dir, b"", vec![error("alpha is read-only")]);
+
+    let mut qga = Qga::connect(&path, TIMEOUT).await.unwrap();
+    let err = qga.write_file(MARKER, b"alpha").await.unwrap_err();
+    drop(qga);
+
+    assert!(matches!(&err, AgentError::Qga(_)), "{err}");
+    assert_eq!(server.await.unwrap(), vec![open_to_write()]);
+}
+
+#[tokio::test]
+async fn run_captures_the_exit_code_and_both_outputs() {
+    let dir = TempDir::new().unwrap();
+    let exited = reply(json!({ "return": {
+        "exited": true,
+        "exitcode": 3,
+        "out-data": STANDARD.encode("alpha\n"),
+        "err-data": STANDARD.encode("beta\n")
+    } }));
+    let (path, server) = serve(&dir, b"", vec![started(), running(), exited]);
+
+    let mut qga = Qga::connect(&path, TIMEOUT).await.unwrap();
+    let ran = qga.run(&["alpha", "beta gamma"], TIMEOUT).await.unwrap();
+    drop(qga);
+
+    assert_eq!(
+        ran,
+        Ran::Exited {
+            code: 3,
+            stdout: b"alpha\n".to_vec(),
+            stderr: b"beta\n".to_vec()
+        }
+    );
+    let exec = json!({
+        "execute": "guest-exec",
+        "arguments": { "path": "alpha", "arg": ["beta gamma"], "capture-output": true }
+    });
+    assert_eq!(server.await.unwrap(), vec![exec, status(), status()]);
+}
+
+#[tokio::test]
+async fn run_without_output_answers_empty_outputs() {
+    let dir = TempDir::new().unwrap();
+    let exited = reply(json!({ "return": { "exited": true, "exitcode": 0 } }));
+    let (path, _server) = serve(&dir, b"", vec![started(), exited]);
+
+    let mut qga = Qga::connect(&path, TIMEOUT).await.unwrap();
+    let ran = qga.run(&["alpha"], TIMEOUT).await.unwrap();
+
+    assert_eq!(
+        ran,
+        Ran::Exited {
+            code: 0,
+            stdout: Vec::new(),
+            stderr: Vec::new()
+        }
+    );
+}
+
+#[tokio::test]
+async fn run_past_the_deadline_answers_the_pid() {
+    let dir = TempDir::new().unwrap();
+    let mut replies = vec![started()];
+    replies.extend((0..50).map(|_| running()));
+    let (path, server) = serve(&dir, b"", replies);
+
+    let mut qga = Qga::connect(&path, TIMEOUT).await.unwrap();
+    let ran = qga.run(&["alpha"], Duration::from_millis(250)).await;
+    drop(qga);
+
+    assert_eq!(ran.unwrap(), Ran::Overdue { pid: 7 });
+    let seen = server.await.unwrap();
+    assert!(seen.len() > 1 && seen[1..].iter().all(|sent| sent == &status()));
+}
+
+#[test]
+fn the_debug_of_a_run_shows_no_output() {
+    let ran = Ran::Exited {
+        code: 3,
+        stdout: b"mu-secret".to_vec(),
+        stderr: b"nu-secret".to_vec(),
+    };
+
+    let shown = format!("{ran:?}");
+
+    assert!(shown.contains('3'), "{shown}");
+    assert!(!shown.contains("109"), "{shown}");
 }

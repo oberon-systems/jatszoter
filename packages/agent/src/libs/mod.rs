@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod api;
 pub mod bootstrap;
+pub mod check;
 pub mod config;
 pub mod console;
 pub mod error;

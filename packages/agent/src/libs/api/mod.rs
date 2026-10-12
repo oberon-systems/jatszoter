@@ -91,6 +91,8 @@ pub struct Desired {
     pub image: ImageRef,
     pub resources: Resources,
     pub timeouts: Timeouts,
+    #[serde(default)]
+    pub check: Option<String>,
 }
 
 /// A deployment's NoCloud seed; it carries the scenario's steps, so `Debug` prints no content.
@@ -104,6 +106,52 @@ impl std::fmt::Debug for Seed {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Seed").finish_non_exhaustive()
     }
+}
+
+/// A pending check's script; `Debug` prints no content.
+#[derive(Clone, Deserialize)]
+pub struct Script {
+    pub script: String,
+    pub timeout_seconds: u64,
+}
+
+impl std::fmt::Debug for Script {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Script").finish_non_exhaustive()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CheckStatus {
+    Passed,
+    Failed,
+    Error,
+    Timeout,
+}
+
+/// What a check run came to; `message` and `detail` are the script's output, so `Debug` skips them.
+#[derive(Clone, PartialEq, Eq, Serialize)]
+pub struct CheckResult {
+    pub status: CheckStatus,
+    pub exit_code: Option<i32>,
+    pub message: Option<String>,
+    pub detail: Option<String>,
+}
+
+impl std::fmt::Debug for CheckResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CheckResult")
+            .field("status", &self.status)
+            .field("exit_code", &self.exit_code)
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Posted {
+    Stored,
+    Conflict,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -161,6 +209,26 @@ pub(crate) trait Api {
         _deployment_id: &str,
     ) -> Result<Signed<Option<Seed>>, AgentError> {
         Ok(Signed::Accepted(None))
+    }
+    /// `None` is the 404 or 409 of a check that is no longer there to run.
+    async fn script(
+        &self,
+        _agent_id: &str,
+        _credential: &Credential,
+        _deployment_id: &str,
+        _check_id: &str,
+    ) -> Result<Signed<Option<Script>>, AgentError> {
+        Ok(Signed::Accepted(None))
+    }
+    async fn result(
+        &self,
+        _agent_id: &str,
+        _credential: &Credential,
+        _deployment_id: &str,
+        _check_id: &str,
+        _result: &CheckResult,
+    ) -> Result<Signed<Posted>, AgentError> {
+        Ok(Signed::Accepted(Posted::Conflict))
     }
 }
 
@@ -410,6 +478,53 @@ impl Api for HttpApi {
                 let seed = serde_json::from_slice(&body)
                     .map_err(|_| AgentError::Api("the seed response is not a seed".into()))?;
                 Ok(Signed::Accepted(Some(seed)))
+            }
+        }
+    }
+
+    async fn script(
+        &self,
+        agent_id: &str,
+        credential: &Credential,
+        deployment_id: &str,
+        check_id: &str,
+    ) -> Result<Signed<Option<Script>>, AgentError> {
+        let action = format!("deployments/{deployment_id}/checks/{check_id}");
+        let response = self
+            .signed(Method::GET, agent_id, credential, &action, Vec::new())
+            .await?;
+        match response.status() {
+            StatusCode::UNAUTHORIZED => Ok(Signed::Refused),
+            StatusCode::NOT_FOUND | StatusCode::CONFLICT => Ok(Signed::Accepted(None)),
+            _ => {
+                let body = accepted(response, StatusCode::OK)?.bytes().await?;
+                // A decode error may quote the body, so it is not passed on.
+                let script = serde_json::from_slice(&body)
+                    .map_err(|_| AgentError::Api("the check response is not a script".into()))?;
+                Ok(Signed::Accepted(Some(script)))
+            }
+        }
+    }
+
+    async fn result(
+        &self,
+        agent_id: &str,
+        credential: &Credential,
+        deployment_id: &str,
+        check_id: &str,
+        result: &CheckResult,
+    ) -> Result<Signed<Posted>, AgentError> {
+        let body = serde_json::to_vec(result).map_err(|err| AgentError::Api(err.to_string()))?;
+        let action = format!("deployments/{deployment_id}/checks/{check_id}");
+        let response = self
+            .signed(Method::POST, agent_id, credential, &action, body)
+            .await?;
+        match response.status() {
+            StatusCode::UNAUTHORIZED => Ok(Signed::Refused),
+            StatusCode::CONFLICT => Ok(Signed::Accepted(Posted::Conflict)),
+            _ => {
+                accepted(response, StatusCode::OK)?;
+                Ok(Signed::Accepted(Posted::Stored))
             }
         }
     }

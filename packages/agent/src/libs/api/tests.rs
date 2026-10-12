@@ -5,8 +5,8 @@ use wiremock::matchers::{any, body_json, method, path};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
 use super::{
-    mac, sign, Api, Claim, Desired, Event, HttpApi, ImageRef, Lease, Moved, Resources, ScenarioRef,
-    Seed, Signed, Status, Timeouts,
+    mac, sign, Api, CheckResult, CheckStatus, Claim, Desired, Event, HttpApi, ImageRef, Lease,
+    Moved, Posted, Resources, ScenarioRef, Script, Seed, Signed, Status, Timeouts,
 };
 use crate::libs::error::AgentError;
 use crate::libs::state::Credential;
@@ -241,6 +241,7 @@ fn desired() -> Desired {
             check_seconds: 60,
             session_minutes: 90,
         },
+        check: None,
     }
 }
 
@@ -490,6 +491,182 @@ fn the_debug_of_a_seed_shows_no_content() {
     let shown = format!("{seed:?} {:?}", Signed::Accepted(Some(seed.clone())));
 
     assert!(shown.starts_with("Seed { .. }"), "{shown}");
+    assert!(!shown.contains("secret"));
+}
+
+#[tokio::test]
+async fn a_desired_state_names_the_pending_check() {
+    let mut entry = desired_json();
+    entry["check"] = json!("kappa");
+    let server = answering(200, json!([entry])).await;
+
+    let state = api(&server)
+        .deployments("gamma", &credential())
+        .await
+        .unwrap();
+
+    let named = Desired {
+        check: Some("kappa".into()),
+        ..desired()
+    };
+    assert_eq!(state, Signed::Accepted(Some(vec![named])));
+}
+
+#[tokio::test]
+async fn the_script_is_a_signed_get_and_decodes() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/agents/gamma/deployments/eta/checks/kappa"))
+        .and(|request: &Request| request.body.is_empty())
+        .and(signed_by("beta", "current:1:1790000000"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"script": "exit 0\n", "timeout_seconds": 30})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let script = api(&server)
+        .script("gamma", &credential(), "eta", "kappa")
+        .await
+        .unwrap();
+
+    let Signed::Accepted(Some(script)) = script else {
+        panic!("no script: {script:?}");
+    };
+    assert_eq!(script.script, "exit 0\n");
+    assert_eq!(script.timeout_seconds, 30);
+}
+
+#[tokio::test]
+async fn a_script_is_not_served_on_404_and_409_and_refused_on_401() {
+    let unknown = answering(404, json!({"detail": "unknown"})).await;
+    let conflict = answering(409, json!({"detail": "conflict"})).await;
+    let refused = answering(401, json!({})).await;
+    let credential = credential();
+
+    let gone = api(&unknown)
+        .script("gamma", &credential, "eta", "kappa")
+        .await;
+    let none = api(&conflict)
+        .script("gamma", &credential, "eta", "kappa")
+        .await;
+    let no = api(&refused)
+        .script("gamma", &credential, "eta", "kappa")
+        .await;
+
+    assert!(matches!(gone, Ok(Signed::Accepted(None))), "{gone:?}");
+    assert!(matches!(none, Ok(Signed::Accepted(None))), "{none:?}");
+    assert!(matches!(no, Ok(Signed::Refused)), "{no:?}");
+}
+
+#[tokio::test]
+async fn a_script_that_does_not_decode_is_an_error_without_its_content() {
+    let server = answering(200, json!("mu-secret")).await;
+
+    let err = api(&server)
+        .script("gamma", &credential(), "eta", "kappa")
+        .await
+        .unwrap_err();
+
+    assert!(matches!(&err, AgentError::Api(_)), "{err}");
+    assert!(!err.to_string().contains("mu-secret"));
+}
+
+fn failed() -> CheckResult {
+    CheckResult {
+        status: CheckStatus::Failed,
+        exit_code: Some(3),
+        message: Some("mu-secret".into()),
+        detail: Some("nu-secret".into()),
+    }
+}
+
+#[tokio::test]
+async fn a_result_is_a_signed_post_with_the_four_fields() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/agents/gamma/deployments/eta/checks/kappa"))
+        .and(body_json(json!({
+            "status": "failed", "exit_code": 3, "message": "mu-secret", "detail": "nu-secret"
+        })))
+        .and(signed_by("beta", "current:1:1790000000"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"id": "kappa", "status": "failed"})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let posted = api(&server)
+        .result("gamma", &credential(), "eta", "kappa", &failed())
+        .await
+        .unwrap();
+
+    assert_eq!(posted, Signed::Accepted(Posted::Stored));
+}
+
+#[tokio::test]
+async fn a_timeout_is_posted_with_nulls() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(body_json(json!({
+            "status": "timeout", "exit_code": null, "message": null, "detail": null
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let result = CheckResult {
+        status: CheckStatus::Timeout,
+        exit_code: None,
+        message: None,
+        detail: None,
+    };
+
+    let posted = api(&server)
+        .result("gamma", &credential(), "eta", "kappa", &result)
+        .await
+        .unwrap();
+
+    assert_eq!(posted, Signed::Accepted(Posted::Stored));
+}
+
+#[tokio::test]
+async fn a_result_meets_a_conflict_a_refusal_and_a_server_error() {
+    let conflict = answering(409, json!({"detail": "conflict"})).await;
+    let refused = answering(401, json!({})).await;
+    let broken = answering(500, json!({})).await;
+    let credential = credential();
+    let result = failed();
+
+    let late = api(&conflict)
+        .result("gamma", &credential, "eta", "kappa", &result)
+        .await;
+    let no = api(&refused)
+        .result("gamma", &credential, "eta", "kappa", &result)
+        .await;
+    let err = api(&broken)
+        .result("gamma", &credential, "eta", "kappa", &result)
+        .await;
+
+    assert_eq!(late.unwrap(), Signed::Accepted(Posted::Conflict));
+    assert_eq!(no.unwrap(), Signed::Refused);
+    assert!(matches!(err, Err(AgentError::Api(_))), "{err:?}");
+}
+
+#[test]
+fn the_debug_of_a_script_and_of_a_result_shows_no_content() {
+    let script = Script {
+        script: "mu-secret".into(),
+        timeout_seconds: 30,
+    };
+
+    let shown = format!("{script:?} {:?}", failed());
+
+    assert!(shown.starts_with("Script { .. } CheckResult"), "{shown}");
+    assert!(shown.contains("Failed"), "{shown}");
     assert!(!shown.contains("secret"));
 }
 

@@ -1,5 +1,5 @@
 import uuid
-from typing import Annotated
+from typing import Annotated, NamedTuple
 from urllib.parse import urlsplit
 
 from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
@@ -189,14 +189,21 @@ def socket_link(
     return link, user
 
 
-def require_deployment_operator(
+class Party(NamedTuple):
+    """Who acts on a deployment: the user, and the link they came through, if any."""
+
+    user: User
+    link: Link | None
+
+
+def require_deployment_party(
     deployment_id: uuid.UUID,
     request: Request,
     session: Annotated[Session, Depends(get_session)],
     settings: Annotated[Settings, Depends(app_settings)],
     body: Annotated[bytes, Depends(_body)],
-) -> User:
-    """A signed operator, or the user behind the cookie of an operator link of this deployment."""
+) -> Party:
+    """A signed operator, or the user behind the cookie of a link of this deployment."""
     headers = request.headers
     if "x-signature" in headers:
         user = _signed(
@@ -211,12 +218,19 @@ def require_deployment_operator(
             headers.get("x-timestamp", ""),
             headers.get("x-signature", ""),
         )
-        return require_operator(user)
+        return Party(require_operator(user), None)
     token = request.cookies.get(LINK_COOKIE)
     # Checked before the session is resumed, so a foreign page never renews it.
     if token and _foreign(headers):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
     link, user = _resumed(session, token)
-    if link.deployment_id != deployment_id or user.role is not Role.OPERATOR:
+    if link.deployment_id != deployment_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
-    return user
+    return Party(user, link)
+
+
+def require_deployment_operator(
+    party: Annotated[Party, Depends(require_deployment_party)],
+) -> User:
+    """A signed operator, or the user behind the cookie of an operator link of this deployment."""
+    return require_operator(party.user)

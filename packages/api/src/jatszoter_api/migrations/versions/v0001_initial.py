@@ -141,6 +141,7 @@ def upgrade() -> None:
         sa.Column("status", CHECK_STATUS, nullable=False),
         sa.Column("exit_code", sa.Integer(), nullable=True),
         sa.Column("message", sa.String(), nullable=True),
+        sa.Column("detail", sa.String(), nullable=True),
         sa.Column("created_at", sa.Integer(), nullable=False),
         sa.Column("finished_at", sa.Integer(), nullable=True),
         sa.PrimaryKeyConstraint("id"),

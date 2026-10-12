@@ -1,5 +1,6 @@
 from jatszoter_api.routes.agents import router as agents_router
 from jatszoter_api.routes.auth import router as auth_router
+from jatszoter_api.routes.checks import router as checks_router
 from jatszoter_api.routes.console import router as console_router
 from jatszoter_api.routes.deployments import router as deployments_router
 from jatszoter_api.routes.deps import domain_error_handler
@@ -13,6 +14,7 @@ from jatszoter_api.routes.users import router as users_router
 __all__ = [
     "agents_router",
     "auth_router",
+    "checks_router",
     "console_router",
     "deployments_router",
     "domain_error_handler",

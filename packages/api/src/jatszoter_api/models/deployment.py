@@ -6,10 +6,10 @@ from typing import Any, Self
 from pydantic import PrivateAttr
 from sqlmodel import Field, Session
 
-from jatszoter_api.errors import InvalidTransitionError
+from jatszoter_api.errors import ConflictError, InvalidTransitionError
 from jatszoter_api.lifecycle import TERMINAL, Actor, DeploymentStatus, advance
 from jatszoter_api.models._base import Base
-from jatszoter_api.models.check import Check
+from jatszoter_api.models.check import Check, CheckStatus
 from jatszoter_api.models.console import Console
 from jatszoter_api.models.image import Image
 from jatszoter_api.models.link import Link
@@ -89,6 +89,21 @@ class Deployment(Base, table=True):
             self._console = Console(self.id)
         return self._console
 
+    def expire_checks(self) -> list[Check]:
+        """Settle every overdue pending check as `timeout`; answer the ones this call settled."""
+        return [check for check in self.checks if check.expire(self.check_seconds)]
+
+    def ask(self, check: Check) -> None:
+        """Store `check` as this READY deployment's one pending check."""
+        self._session.refresh(self, with_for_update=True)
+        if self.status is not DeploymentStatus.READY:
+            raise ConflictError(f"deployment {self.id} is {self.status}")
+        self.expire_checks()
+        if any(held.status is CheckStatus.PENDING for held in self.checks):
+            raise ConflictError(f"deployment {self.id} has a pending check")
+        check.save()
+        self._checks = None
+
     def assign(self, agent_id: uuid.UUID) -> bool:
         """Take this PENDING deployment for `agent_id`; False once someone else got it first."""
         self._session.refresh(self, with_for_update=True)
@@ -146,6 +161,8 @@ class Deployment(Base, table=True):
         if target is DeploymentStatus.READY:
             self.console.mark_ready(filer_url)
         if target in TERMINAL:
+            for check in self.checks:
+                check.settle(CheckStatus.ERROR, message="deployment ended")
             self.console.drop()
             for link in self.links:
                 # The deployment has ended either way: a recording left open never undoes that.

@@ -1,3 +1,6 @@
+import hashlib
+import hmac
+import json
 import time
 import uuid
 from collections.abc import Callable
@@ -11,16 +14,20 @@ from sqlmodel import Session
 from jatszoter_api.file import File
 from jatszoter_api.lifecycle import DeploymentStatus
 from jatszoter_api.models import (
+    Agent,
     Check,
     CheckStatus,
     Deployment,
     Image,
     Link,
+    Recording,
     Role,
     Scenario,
     State,
     User,
 )
+from jatszoter_api.models.secret import CREDENTIAL_SECONDS
+from jatszoter_api.settings import Settings
 
 S = DeploymentStatus
 DEPLOYMENTS = "/api/v1/deployments"
@@ -280,3 +287,149 @@ def test_an_unknown_deployment_or_check_is_not_found(
     assert operator.request("GET", path(uuid.uuid4())).status_code == 404
     assert operator.request("GET", path(ready.id, uuid.uuid4())).status_code == 404
     assert operator.request("GET", path(ready.id, elsewhere.id)).status_code == 404
+
+
+class Runner:
+    """An enabled agent with a live lease, signing its requests the way the agent does."""
+
+    def __init__(self, api: TestClient, session: Session, settings: Settings) -> None:
+        self.api = api
+        self.agent = Agent(session=session, name="alpha", state=State.ENABLED)
+        self.agent.save()
+        credential, self.key = self.agent.issue(
+            CREDENTIAL_SECONDS, settings.master_kid, settings.master_keys
+        )
+        self.credential = f"{credential.kid}:{credential.generation}:{credential.expires_at}"
+        self.agent.heartbeat(0)
+
+    def post(self, deployment_id: uuid.UUID, suffix: str, **payload: Any) -> httpx.Response:
+        where = f"/api/v1/agents/{self.agent.id}/deployments/{deployment_id}{suffix}"
+        body = json.dumps(payload).encode()
+        timestamp = str(int(time.time()))
+        message = "\n".join((timestamp, "POST", where, hashlib.sha256(body).hexdigest()))
+        signed = {
+            "Content-Type": "application/json",
+            "X-Credential": self.credential,
+            "X-Timestamp": timestamp,
+            "X-Signature": hmac.new(
+                self.key.encode(), message.encode(), hashlib.sha256
+            ).hexdigest(),
+        }
+        answer: httpx.Response = self.api.post(where, content=body, headers=signed)
+        return answer
+
+    def settle(self, check: Check, **payload: Any) -> httpx.Response:
+        return self.post(check.deployment_id, f"/checks/{check.id}", **payload)
+
+
+@pytest.fixture
+def runner(api: TestClient, session: Session, settings: Settings, ready: Deployment) -> Runner:
+    """The agent holding the READY deployment."""
+    runner = Runner(api, session, settings)
+    ready.agent_id = runner.agent.id
+    ready.save()
+    return runner
+
+
+def recorded(session: Session, deployment: Deployment) -> list[tuple[str, str]]:
+    """The events of the deployment's one recording, without their times."""
+    [recording] = Recording._load(session, deployment_id=deployment.id)
+    stored = File(recording.path)
+    stored.get()
+    events = [json.loads(line) for line in stored.data.decode().splitlines()[1:]]
+    assert [at for at, _, _ in events] == sorted(at for at, _, _ in events)
+    return [(code, text) for _, code, text in events]
+
+
+def test_a_result_is_marked_with_and_without_a_message_in_order_with_a_control_marker(
+    api: TestClient, operator: Any, session: Session, runner: Runner, ready: Deployment
+) -> None:
+    opened(api, session, ready, Role.TRAINEE)
+    control = f"{DEPLOYMENTS}/{ready.id}/control"
+
+    failed = runner.settle(
+        held(session, ready), status="failed", exit_code=1, message="alpha\nbeta", detail="gamma"
+    )
+    handed = operator.request("POST", control, json={"holder": "operator"})
+    passed = runner.settle(held(session, ready), status="passed", exit_code=0)
+
+    assert [answer.status_code for answer in (failed, handed, passed)] == [200, 200, 200]
+    assert recorded(session, ready) == [
+        ("m", "check failed: alpha"),
+        ("m", "control operator"),
+        ("m", "check passed"),
+    ]
+
+
+def test_an_overdue_check_settled_by_a_read_or_a_request_is_marked_once(
+    api: TestClient, session: Session, ready: Deployment
+) -> None:
+    _, cookie = opened(api, session, ready, Role.TRAINEE)
+
+    held(session, ready, age=CHECK_SECONDS + 31)
+    assert linked(api, "GET", path(ready.id), cookie).status_code == 200
+    assert linked(api, "GET", path(ready.id), cookie).status_code == 200
+    overdue = held(session, ready, age=CHECK_SECONDS + 31)
+    assert linked(api, "GET", path(ready.id, overdue.id), cookie).json()["status"] == "timeout"
+    held(session, ready, age=CHECK_SECONDS + 31)
+    asked = linked(api, "POST", path(ready.id), cookie, Origin="http://testserver")
+
+    assert asked.status_code == 201
+    assert recorded(session, ready) == [("m", "check timeout")] * 3
+
+
+def test_a_check_cut_short_by_the_end_of_the_deployment_is_marked_before_the_recording_closes(
+    api: TestClient, session: Session, runner: Runner, ready: Deployment
+) -> None:
+    opened(api, session, ready, Role.TRAINEE)
+    check = held(session, ready)
+
+    ended = runner.post(ready.id, "/transition", event="fail", expected="READY", reason="alpha")
+
+    assert ended.json()["status"] == "FAILED"
+    session.refresh(check)
+    assert (check.status, check.message) == (CheckStatus.ERROR, "deployment ended")
+    assert recorded(session, ready) == [("m", "check error: deployment ended")]
+    [recording] = Recording._load(session, deployment_id=ready.id)
+    session.refresh(recording)
+    assert recording.size_bytes == File(recording.path).size()
+
+
+def test_a_check_settled_without_a_live_recording_leaves_no_marker(
+    api: TestClient, operator: Any, session: Session, runner: Runner, ready: Deployment
+) -> None:
+    check = held(session, ready)
+
+    assert runner.settle(check, status="passed", exit_code=0).status_code == 200
+
+    assert Recording._load(session, deployment_id=ready.id) == []
+    assert operator.request("GET", path(ready.id, check.id)).json()["status"] == "passed"
+
+
+def test_with_the_file_store_failing_a_result_and_a_timeout_are_still_stored(
+    api: TestClient,
+    operator: Any,
+    session: Session,
+    runner: Runner,
+    ready: Deployment,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    opened(api, session, ready, Role.TRAINEE)
+    append = File.append
+
+    def refuse(self: File) -> None:
+        if "/recordings/" in self.url:
+            raise httpx.ConnectError("refused")
+        append(self)
+
+    monkeypatch.setattr(File, "append", refuse)
+    check = held(session, ready)
+
+    answer = runner.settle(check, status="failed", exit_code=1, message="alpha")
+    overdue = held(session, ready, age=CHECK_SECONDS + 31)
+    read = operator.request("GET", path(ready.id, overdue.id))
+
+    assert (answer.status_code, read.json()["status"]) == (200, "timeout")
+    session.refresh(check)
+    assert (check.status, check.exit_code, check.message) == (CheckStatus.FAILED, 1, "alpha")
+    assert recorded(session, ready) == []

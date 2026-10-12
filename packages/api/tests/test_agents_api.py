@@ -16,7 +16,7 @@ from sqlmodel import Session
 from jatszoter_api import bundles
 from jatszoter_api.app import create_app
 from jatszoter_api.file import File
-from jatszoter_api.models import Agent, Deployment, Image, Scenario, State
+from jatszoter_api.models import Agent, Check, CheckStatus, Deployment, Image, Scenario, State
 from jatszoter_api.models._cache import Cached
 from jatszoter_api.models.agent import LEASE_SECONDS
 from jatszoter_api.settings import Settings
@@ -300,6 +300,7 @@ def test_the_desired_state_carries_the_image_of_the_deployment(
         "image": {"name": "debian-13", "url": "https://example.com/b", "digest": "c" * 64},
         "resources": {"cpus": 2, "memory_mib": 2048, "disk_gib": 8},
         "timeouts": {"bootstrap_seconds": 600, "check_seconds": 30, "session_minutes": 45},
+        "check": None,
     }
 
 
@@ -495,3 +496,240 @@ def test_a_stored_bundle_that_no_longer_holds_is_never_served(
 
     with pytest.raises(RuntimeError, match=message):
         fetch(agent, deployment_id)
+
+
+PASSED = {"status": "passed", "exit_code": 0}
+
+
+def ready(client: TestClient, session: Session, scenario: Scenario) -> tuple[Enrolled, str]:
+    agent, deployment_id = starting(client, session, scenario)
+    assert move(agent, deployment_id, event="boot", expected="STARTING").status_code == 200
+    booted = move(agent, deployment_id, event="bootstrap", expected="BOOTSTRAPPING")
+    assert booted.json()["status"] == "READY"
+    return agent, deployment_id
+
+
+def asked(session: Session, deployment_id: Any) -> Check:
+    """A pending check of the deployment, stored the way a request stores it."""
+    owner = uuid.UUID(str(deployment_id))
+    check = Check(session=session, deployment_id=owner, user_id=uuid.uuid4())
+    check.save()
+    return check
+
+
+def checked(agent: Enrolled, check: Check, payload: Any = None, **headers: str) -> Response:
+    """The script of `check` without a payload, its result with one."""
+    suffix = f"/deployments/{check.deployment_id}/checks/{check.id}"
+    return agent.call("GET" if payload is None else "POST", suffix, payload, **headers)
+
+
+def both(agent: Enrolled, check: Check) -> set[int]:
+    return {checked(agent, check).status_code, checked(agent, check, PASSED).status_code}
+
+
+def test_the_desired_state_names_the_pending_check_and_null_without_one(
+    client: TestClient, session: Session, scenario: Scenario
+) -> None:
+    agent, deployment_id = ready(client, session, scenario)
+
+    before = agent.call("GET", "/deployments").json()
+    check = asked(session, deployment_id)
+    pending = agent.call("GET", "/deployments").json()
+    assert checked(agent, check, PASSED).status_code == 200
+    after = agent.call("GET", "/deployments").json()
+
+    assert [entry["check"] for entry in (*before, *pending, *after)] == [None, str(check.id), None]
+
+
+def test_a_pending_check_gets_its_script_and_the_timeout(
+    client: TestClient, session: Session, sample: Scenario, pack: Pack
+) -> None:
+    agent, deployment_id = ready(client, session, sample)
+
+    response = checked(agent, asked(session, deployment_id))
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "script": bundles.read(pack(), LIMIT).files["check.sh"].decode(),
+        "timeout_seconds": SIZING["check_seconds"],
+    }
+
+
+@pytest.mark.parametrize(
+    ("status", "exit_code"), [("passed", 0), ("failed", 2), ("error", None), ("timeout", None)]
+)
+def test_each_status_is_stored_with_its_exit_code(
+    client: TestClient, session: Session, scenario: Scenario, status: str, exit_code: int | None
+) -> None:
+    agent, deployment_id = ready(client, session, scenario)
+    check = asked(session, deployment_id)
+    payload = {"status": status, "exit_code": exit_code, "message": "alpha", "detail": "beta"}
+
+    response = checked(agent, check, payload)
+
+    assert response.status_code == 200
+    assert response.json() == {"id": str(check.id), "status": status}
+    session.refresh(check)
+    assert (check.status, check.exit_code) == (CheckStatus(status), exit_code)
+    assert (check.message, check.detail) == ("alpha", "beta")
+    assert check.finished_at is not None
+
+
+def test_a_long_message_and_a_long_detail_are_cut(
+    client: TestClient, session: Session, scenario: Scenario
+) -> None:
+    agent, deployment_id = ready(client, session, scenario)
+    check = asked(session, deployment_id)
+    payload = {
+        "status": "failed",
+        "exit_code": 1,
+        "message": "a" * 300 + "\nbeta",
+        "detail": "\u00e9" * 4096,
+    }
+
+    assert checked(agent, check, payload).status_code == 200
+
+    session.refresh(check)
+    assert (check.message, check.detail) == ("a" * 200, "\u00e9" * 2048)
+
+
+def test_a_result_without_a_message_or_a_detail_stores_none(
+    client: TestClient, session: Session, scenario: Scenario
+) -> None:
+    agent, deployment_id = ready(client, session, scenario)
+    check = asked(session, deployment_id)
+
+    assert checked(agent, check, PASSED).status_code == 200
+
+    session.refresh(check)
+    assert (check.status, check.message, check.detail) == (CheckStatus.PASSED, None, None)
+
+
+def test_a_check_of_an_unknown_or_foreign_deployment_is_not_found(
+    client: TestClient, session: Session, scenario: Scenario
+) -> None:
+    agent, deployment_id = ready(client, session, scenario)
+    own = asked(session, deployment_id)
+    beta = enroll(client, session, "beta")
+    foreign = asked(session, deploy(session, scenario, beta.id).id)
+    nowhere = Check(session=session, deployment_id=uuid.uuid4(), user_id=uuid.uuid4())
+    unknown = Check(session=session, deployment_id=own.deployment_id, user_id=uuid.uuid4())
+    moved = Check(
+        session=session, id=foreign.id, deployment_id=own.deployment_id, user_id=uuid.uuid4()
+    )
+
+    for check in (foreign, nowhere, unknown, moved):
+        assert both(agent, check) == {404}
+    session.refresh(foreign)
+    assert foreign.status is CheckStatus.PENDING
+
+
+def test_without_a_live_lease_a_check_is_neither_read_nor_settled(
+    client: TestClient, session: Session, scenario: Scenario
+) -> None:
+    agent, deployment_id = ready(client, session, scenario)
+    check = asked(session, deployment_id)
+    Cached._client().delete(f"lease:{agent.id}")
+
+    assert both(agent, check) == {409}
+    session.refresh(check)
+    assert check.status is CheckStatus.PENDING
+
+
+def test_a_check_of_a_deployment_that_is_not_ready_is_refused(
+    client: TestClient, session: Session, scenario: Scenario
+) -> None:
+    agent, deployment_id = starting(client, session, scenario)
+    check = asked(session, deployment_id)
+
+    assert both(agent, check) == {409}
+    session.refresh(check)
+    assert check.status is CheckStatus.PENDING
+
+
+def test_a_settled_check_is_refused_and_a_second_result_changes_nothing(
+    client: TestClient, session: Session, scenario: Scenario
+) -> None:
+    agent, deployment_id = ready(client, session, scenario)
+    check = asked(session, deployment_id)
+    failed = {"status": "failed", "exit_code": 1, "message": "alpha"}
+    assert checked(agent, check, failed).status_code == 200
+    session.refresh(check)
+    finished_at = check.finished_at
+
+    assert both(agent, check) == {409}
+
+    session.refresh(check)
+    assert (check.status, check.exit_code, check.message) == (CheckStatus.FAILED, 1, "alpha")
+    assert check.finished_at == finished_at
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"status": "passed", "exit_code": 1},
+        {"status": "passed"},
+        {"status": "failed", "exit_code": 0},
+        {"status": "failed"},
+        {"status": "timeout", "exit_code": 1},
+        {"status": "error", "exit_code": 0},
+        {"status": "pending"},
+        {"exit_code": 0},
+        {"status": "passed", "exit_code": "0"},
+        {"status": "passed", "exit_code": 0, "extra": 1},
+    ],
+)
+def test_an_inconsistent_result_is_refused(
+    client: TestClient, session: Session, scenario: Scenario, payload: dict[str, Any]
+) -> None:
+    agent, deployment_id = ready(client, session, scenario)
+    check = asked(session, deployment_id)
+
+    assert checked(agent, check, payload).status_code == 422
+    session.refresh(check)
+    assert check.status is CheckStatus.PENDING
+
+
+def test_an_unsigned_check_request_is_refused(
+    client: TestClient, session: Session, scenario: Scenario
+) -> None:
+    agent, deployment_id = ready(client, session, scenario)
+    check = asked(session, deployment_id)
+    forged = {"X-Signature": "0" * 64}
+
+    assert checked(agent, check, **forged).status_code == 401
+    assert checked(agent, check, PASSED, **forged).status_code == 401
+    session.refresh(check)
+    assert check.status is CheckStatus.PENDING
+
+
+@pytest.mark.parametrize(
+    ("stored", "message"),
+    [
+        (lambda pack: None, "does not read"),
+        (lambda pack: b"junk", "does not read"),
+        (lambda pack: pack(changes={"check.sh": b"exit 0\n"}), "changed"),
+    ],
+    ids=["missing", "unreadable", "changed"],
+)
+def test_a_stored_bundle_that_no_longer_holds_serves_no_script_and_the_check_stays_pending(
+    client: TestClient,
+    session: Session,
+    sample: Scenario,
+    pack: Pack,
+    stored: Callable[[Pack], bytes | None],
+    message: str,
+) -> None:
+    agent, deployment_id = ready(client, session, sample)
+    check = asked(session, deployment_id)
+    data = stored(pack)
+    if data is None:
+        File(sample.bundle_path).delete()
+    else:
+        File(sample.bundle_path, data).put()
+
+    with pytest.raises(RuntimeError, match=message):
+        checked(agent, check)
+
+    session.refresh(check)
+    assert check.status is CheckStatus.PENDING

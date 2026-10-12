@@ -9,7 +9,17 @@ from sqlmodel import Session
 from jatszoter_api.errors import InvalidTransitionError
 from jatszoter_api.file import File
 from jatszoter_api.lifecycle import Actor, DeploymentStatus
-from jatszoter_api.models import Deployment, Image, Link, Recording, Role, Scenario, User
+from jatszoter_api.models import (
+    Check,
+    CheckStatus,
+    Deployment,
+    Image,
+    Link,
+    Recording,
+    Role,
+    Scenario,
+    User,
+)
 from jatszoter_api.models.recording import live
 
 S = DeploymentStatus
@@ -186,6 +196,29 @@ def test_a_recording_that_cannot_be_closed_does_not_stop_the_transition(
     assert link.revoked_at is not None
     assert Recording(session=session).load(id=recording.id).size_bytes == 0
     assert f"recording of deployment {deployment.id} not closed: ConnectError" in caplog.text
+
+
+def test_ending_a_deployment_leaves_no_pending_check(session: Session) -> None:
+    deployment = deploy(session, S.READY)
+    passed = Check(
+        session=session,
+        deployment_id=deployment.id,
+        user_id=uuid.uuid4(),
+        status=CheckStatus.PASSED,
+        exit_code=0,
+        message="alpha",
+    )
+    passed.save()
+    pending = Check(session=session, deployment_id=deployment.id, user_id=uuid.uuid4())
+    pending.save()
+
+    deployment.transition("abort", S.READY, "lease expired", actor=Actor.API)
+
+    stored = Check(session=session).load(id=pending.id)
+    assert (stored.status, stored.message) == (CheckStatus.ERROR, "deployment ended")
+    assert stored.finished_at is not None
+    kept = Check(session=session).load(id=passed.id)
+    assert (kept.status, kept.message) == (CheckStatus.PASSED, "alpha")
 
 
 def test_a_live_deployment_keeps_its_links(session: Session) -> None:

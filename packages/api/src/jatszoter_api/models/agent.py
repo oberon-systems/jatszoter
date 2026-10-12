@@ -57,7 +57,9 @@ class Agent(SecretOwner, table=True):
             self._deployments = Deployment._load(self._session, agent_id=self.id)
         return self._deployments
 
-    def heartbeat(self, capacity: int, filer_url: str | None = None) -> Lease:
+    def heartbeat(
+        self, capacity: int, filer_url: str | None = None, limit_bytes: int | None = None
+    ) -> Lease:
         """Renew the lease, failing what it held once it lapsed; then take waiting deployments,
         pinned ones first, oldest first, while `capacity` has room."""
         current = self.lease
@@ -70,6 +72,7 @@ class Agent(SecretOwner, table=True):
                         "lease expired",
                         actor=Actor.API,
                         filer_url=filer_url,
+                        limit_bytes=limit_bytes,
                     )
         now = int(time.time())
         lease = Lease(
@@ -122,6 +125,7 @@ class Agent(SecretOwner, table=True):
                     "check_seconds": row.check_seconds,
                     "session_minutes": row.session_minutes,
                 },
+                "check": None if row.pending is None else row.pending.id,
             }
             for row in self.deployments
             if row.status not in TERMINAL and row.vm_id

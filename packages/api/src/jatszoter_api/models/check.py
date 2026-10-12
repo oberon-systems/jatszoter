@@ -41,6 +41,11 @@ class Check(Base, table=True):
     def save(self) -> None:
         self._save()
 
+    @property
+    def marker(self) -> str:
+        """What a settled check writes into the recording."""
+        return f"check {self.status}: {self.message}" if self.message else f"check {self.status}"
+
     def settle(
         self,
         status: CheckStatus,

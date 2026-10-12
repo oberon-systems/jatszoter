@@ -9,6 +9,7 @@ from typing import Annotated, Any
 from fastapi import (
     APIRouter,
     Depends,
+    FastAPI,
     HTTPException,
     Query,
     Request,
@@ -18,7 +19,6 @@ from fastapi import (
     status,
 )
 from pydantic import BaseModel
-from sqlalchemy import Engine
 from sqlmodel import Session
 from starlette.types import Message
 from valkey.exceptions import ValkeyError
@@ -35,7 +35,7 @@ from jatszoter_api.lifecycle import TERMINAL, DeploymentStatus
 from jatszoter_api.models import Console, Deployment, Link, Recording, Role
 from jatszoter_api.models.console import Holder
 from jatszoter_api.models.recording import live
-from jatszoter_api.routes.deps import SessionDep, SettingsDep
+from jatszoter_api.routes.deps import SessionDep, SettingsDep, recorded
 from jatszoter_api.settings import Settings
 
 OFFSET_BYTES = 8
@@ -75,22 +75,8 @@ def _filer_url(settings: Settings) -> str | None:
     return None if settings.seaweed_url is None else str(settings.seaweed_url)
 
 
-def _recorded(
-    engine: Engine, deployment_id: uuid.UUID, write: Callable[..., None], *args: Any
-) -> None:
-    """Hand the deployment's live recording to `write`; a failure is logged and goes no further."""
-    try:
-        recording_id = live(deployment_id)
-        if recording_id is None:
-            return
-        with Session(engine) as session:
-            write(Recording(session=session).load(id=recording_id), *args)
-    except Exception as error:
-        log.error("recording of deployment %s not written: %s", deployment_id, type(error).__name__)
-
-
 def _stored(
-    engine: Engine, console: Console, offset: int, data: bytes, settings: Settings
+    app: FastAPI, console: Console, offset: int, data: bytes, settings: Settings
 ) -> tuple[int, bytes]:
     """Store a frame and record what was kept of it; answer where that starts and the bytes."""
     filer_url = _filer_url(settings)
@@ -98,8 +84,8 @@ def _stored(
         offset, data, filer_url, settings.console_tail_bytes, settings.console_limit_bytes
     )
     if new:
-        _recorded(
-            engine,
+        recorded(
+            app,
             console.deployment_id,
             Recording.output,
             start,
@@ -200,7 +186,7 @@ async def ship(websocket: WebSocket, agent_id: uuid.UUID, deployment_id: uuid.UU
                     try:
                         start, new = await asyncio.to_thread(
                             _stored,
-                            websocket.app.state.engine,
+                            websocket.app,
                             console,
                             offset,
                             frame[OFFSET_BYTES:],
@@ -321,8 +307,8 @@ async def _forward(
             if isinstance(sent, str):
                 size = json.loads(sent)
                 await asyncio.to_thread(
-                    _recorded,
-                    websocket.app.state.engine,
+                    recorded,
+                    websocket.app,
                     console.deployment_id,
                     Recording.resize,
                     size["cols"],
@@ -358,8 +344,8 @@ def control(
     changed = deployment.console.control() is not body.holder
     deployment.console.give(body.holder)
     if changed:
-        _recorded(
-            request.app.state.engine,
+        recorded(
+            request.app,
             deployment_id,
             Recording.mark,
             f"control {body.holder.value}",

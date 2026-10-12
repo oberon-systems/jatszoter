@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict
 from jatszoter_api.auth import Party, require_deployment_party
 from jatszoter_api.errors import ForbiddenError, NotFoundError
 from jatszoter_api.models import Check, CheckStatus, Deployment, Role
-from jatszoter_api.routes.deps import SessionDep
+from jatszoter_api.routes.deps import MarkDep, SessionDep
 
 PartyDep = Annotated[Party, Depends(require_deployment_party)]
 
@@ -45,7 +45,9 @@ router = APIRouter(prefix="/deployments")
 
 
 @router.post("/{deployment_id}/checks", status_code=201)
-def request(session: SessionDep, party: PartyDep, deployment_id: uuid.UUID) -> dict[str, Any]:
+def request(
+    session: SessionDep, party: PartyDep, mark: MarkDep, deployment_id: uuid.UUID
+) -> dict[str, Any]:
     deployment = _deployment(session, deployment_id)
     if party.user.role is Role.VIEWER:
         raise ForbiddenError("a viewer requests no check")
@@ -55,24 +57,33 @@ def request(session: SessionDep, party: PartyDep, deployment_id: uuid.UUID) -> d
         link_id=None if party.link is None else party.link.id,
         user_id=party.user.id,
     )
-    deployment.ask(check)
+    for settled in deployment.ask(check):
+        mark(settled)
     return check_out(check, party)
 
 
 @router.get("/{deployment_id}/checks")
-def index(session: SessionDep, party: PartyDep, deployment_id: uuid.UUID) -> list[dict[str, Any]]:
+def index(
+    session: SessionDep, party: PartyDep, mark: MarkDep, deployment_id: uuid.UUID
+) -> list[dict[str, Any]]:
     deployment = _deployment(session, deployment_id)
-    deployment.expire_checks()
+    for settled in deployment.expire_checks():
+        mark(settled)
     stored = sorted(deployment.checks, key=lambda row: row.created_at)
     return [check_out(check, party) for check in stored]
 
 
 @router.get("/{deployment_id}/checks/{check_id}")
 def show(
-    session: SessionDep, party: PartyDep, deployment_id: uuid.UUID, check_id: uuid.UUID
+    session: SessionDep,
+    party: PartyDep,
+    mark: MarkDep,
+    deployment_id: uuid.UUID,
+    check_id: uuid.UUID,
 ) -> dict[str, Any]:
     deployment = _deployment(session, deployment_id)
-    deployment.expire_checks()
+    for settled in deployment.expire_checks():
+        mark(settled)
     try:
         check = Check(session=session).load(id=check_id, deployment_id=deployment.id)
     except IndexError:

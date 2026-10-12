@@ -13,10 +13,11 @@ from jatszoter_api.auth import require_agent, unauthorized
 from jatszoter_api.errors import ConflictError, DomainError, NotFoundError
 from jatszoter_api.file import File
 from jatszoter_api.lifecycle import Actor, DeploymentStatus
-from jatszoter_api.models import Agent, Credential, Deployment
+from jatszoter_api.models import Agent, Check, CheckStatus, Credential, Deployment
 from jatszoter_api.models.agent import Lease
 from jatszoter_api.models.secret import CREDENTIAL_SECONDS
-from jatszoter_api.routes.deps import SessionDep, SettingsDep
+from jatszoter_api.routes.deps import MarkDep, SessionDep, SettingsDep
+from jatszoter_api.settings import Settings
 
 AgentDep = Annotated[Agent, Depends(require_agent)]
 
@@ -109,6 +110,7 @@ class DesiredOut(BaseModel):
     image: ImageRef
     resources: Resources
     timeouts: Timeouts
+    check: uuid.UUID | None
 
 
 class TransitionIn(StrictModel):
@@ -133,6 +135,35 @@ class SeedOut(BaseModel):
     meta_data: str
 
 
+class ScriptOut(BaseModel):
+    script: str
+    timeout_seconds: int
+
+
+class ResultIn(StrictModel):
+    status: Literal["passed", "failed", "error", "timeout"]
+    exit_code: Annotated[StrictInt, Field(ge=-(2**31), lt=2**31)] | None = None
+    message: str | None = None
+    detail: str | None = None
+
+    @model_validator(mode="after")
+    def _consistent(self) -> Self:
+        if self.status == "passed":
+            fits = self.exit_code == 0
+        elif self.status == "failed":
+            fits = self.exit_code not in (None, 0)
+        else:
+            fits = self.exit_code is None
+        if not fits:
+            raise ValueError(f"{self.status} does not go with this exit code")
+        return self
+
+
+class ResultOut(BaseModel):
+    id: uuid.UUID
+    status: CheckStatus
+
+
 router = APIRouter(prefix="/agents")
 
 
@@ -141,6 +172,38 @@ def _held(session: Session, agent: Agent, deployment_id: uuid.UUID) -> Deploymen
         return Deployment(session=session).load(id=deployment_id, agent_id=agent.id)
     except IndexError:
         raise NotFoundError(f"deployment {deployment_id} is not known") from None
+
+
+def _pending(
+    session: Session, agent: Agent, deployment_id: uuid.UUID, check_id: uuid.UUID
+) -> tuple[Deployment, Check]:
+    """The agent's READY deployment and its pending check; anything else is refused."""
+    deployment = _held(session, agent, deployment_id)
+    try:
+        check = Check(session=session).load(id=check_id, deployment_id=deployment.id)
+    except IndexError:
+        raise NotFoundError(f"check {check_id} is not known") from None
+    if deployment.status is not DeploymentStatus.READY:
+        raise ConflictError(f"deployment {deployment_id} is {deployment.status}, not READY")
+    if check.status is not CheckStatus.PENDING:
+        raise ConflictError(f"check {check_id} is {check.status}")
+    return deployment, check
+
+
+def _bundle(deployment: Deployment, settings: Settings) -> bundles.Bundle:
+    """The stored bundle of the deployment's scenario, read and compared with its digest."""
+    scenario = deployment.scenario
+    filer_url = None if settings.seaweed_url is None else str(settings.seaweed_url)
+    stored = File(scenario.bundle_path, filer_url=filer_url)
+    # Not a DomainError: a stored bundle that no longer reads is the API's fault, a 500.
+    try:
+        stored.get()
+        bundle = bundles.read(stored.data, settings.scenario_bundle_limit_bytes)
+    except (httpx.HTTPError, DomainError):
+        raise RuntimeError(f"the stored bundle of scenario {scenario.id} does not read") from None
+    if bundle.digest != scenario.digest:
+        raise RuntimeError(f"the stored bundle of scenario {scenario.id} changed")
+    return bundle
 
 
 @router.post("/register", status_code=201)
@@ -165,7 +228,7 @@ def claim(body: ClaimIn, session: SessionDep, settings: SettingsDep) -> Response
 @router.post("/{agent_id}/heartbeat")
 def heartbeat(body: HeartbeatIn, agent: AgentDep, settings: SettingsDep) -> Lease:
     filer_url = None if settings.seaweed_url is None else str(settings.seaweed_url)
-    return agent.heartbeat(body.capacity, filer_url)
+    return agent.heartbeat(body.capacity, filer_url, settings.recording_limit_bytes)
 
 
 @router.post("/{agent_id}/credential")
@@ -196,6 +259,7 @@ def transition(
         actor=Actor.AGENT,
         agent_id=agent.id,
         filer_url=None if settings.seaweed_url is None else str(settings.seaweed_url),
+        limit_bytes=settings.recording_limit_bytes,
     )
     return TransitionOut(id=deployment.id, status=deployment.status)
 
@@ -207,18 +271,45 @@ def seed(
     deployment = _held(session, agent, deployment_id)
     if deployment.status is not DeploymentStatus.STARTING:
         raise ConflictError(f"deployment {deployment_id} is {deployment.status}, not STARTING")
-    scenario = deployment.scenario
-    filer_url = None if settings.seaweed_url is None else str(settings.seaweed_url)
-    stored = File(scenario.bundle_path, filer_url=filer_url)
-    # Not a DomainError: a stored bundle that no longer reads is the API's fault, a 500.
-    try:
-        stored.get()
-        bundle = bundles.read(stored.data, settings.scenario_bundle_limit_bytes)
-    except (httpx.HTTPError, DomainError):
-        raise RuntimeError(f"the stored bundle of scenario {scenario.id} does not read") from None
-    if bundle.digest != scenario.digest:
-        raise RuntimeError(f"the stored bundle of scenario {scenario.id} changed")
     rendered = deployment.seed(
-        bundle.files, settings.default_trainee_user, settings.default_trainee_sudo
+        _bundle(deployment, settings).files,
+        settings.default_trainee_user,
+        settings.default_trainee_sudo,
     )
     return SeedOut(user_data=rendered.user_data, meta_data=rendered.meta_data)
+
+
+@router.get("/{agent_id}/deployments/{deployment_id}/checks/{check_id}")
+def script(
+    agent: LeasedDep,
+    session: SessionDep,
+    settings: SettingsDep,
+    deployment_id: uuid.UUID,
+    check_id: uuid.UUID,
+) -> ScriptOut:
+    deployment, _ = _pending(session, agent, deployment_id, check_id)
+    bundle = _bundle(deployment, settings)
+    # `from None`: the decoding error quotes the script's bytes, which are never logged.
+    try:
+        text = bundle.files[bundle.document["check"]].decode()
+    except UnicodeDecodeError:
+        raise RuntimeError(
+            f"the check script of scenario {deployment.scenario_id} is not text"
+        ) from None
+    return ScriptOut(script=text, timeout_seconds=deployment.check_seconds)
+
+
+@router.post("/{agent_id}/deployments/{deployment_id}/checks/{check_id}")
+def result(
+    body: ResultIn,
+    agent: LeasedDep,
+    session: SessionDep,
+    mark: MarkDep,
+    deployment_id: uuid.UUID,
+    check_id: uuid.UUID,
+) -> ResultOut:
+    _, check = _pending(session, agent, deployment_id, check_id)
+    if not check.settle(CheckStatus(body.status), body.exit_code, body.message, body.detail):
+        raise ConflictError(f"check {check_id} is {check.status}")
+    mark(check)
+    return ResultOut(id=check.id, status=check.status)

@@ -185,7 +185,7 @@ class Guest:
 
     def _stubs(self) -> None:
         marker = self.path("/var/lib/jatszoter/marker")
-        for name in ("systemctl", "setsebool", "selinuxenabled"):
+        for name in ("systemctl", "setsebool", "selinuxenabled", "semodule"):
             stub = self.root / "bin" / name
             stub.parent.mkdir(exist_ok=True)
             stub.write_text(
@@ -207,6 +207,7 @@ class Guest:
 GUEST_AGENT = [
     "selinuxenabled",
     "setsebool -P virt_qemu_ga_read_nonsecurity_files 1",
+    "semodule -i jatszoter_guest_agent.cil",
     "systemctl enable qemu-guest-agent",
     "systemctl restart qemu-guest-agent",
 ]

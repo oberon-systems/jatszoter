@@ -1,0 +1,180 @@
+{
+  "id": "f6f9f4a9-ca04-8082-8008-c8f0f22b83d7",
+  "name": "Hand this link to alpha. It is shown onc",
+  "type": "text",
+  "x": 56,
+  "y": 1396,
+  "width": 640,
+  "height": 34,
+  "rotation": 0,
+  "selrect": {
+    "x": 56,
+    "y": 1396,
+    "width": 640,
+    "height": 34,
+    "x1": 56,
+    "y1": 1396,
+    "x2": 696,
+    "y2": 1430
+  },
+  "points": [
+    {
+      "x": 56,
+      "y": 1396
+    },
+    {
+      "x": 696,
+      "y": 1396
+    },
+    {
+      "x": 696,
+      "y": 1430
+    },
+    {
+      "x": 56,
+      "y": 1430
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "f6f9f4a9-ca04-8082-8008-c8f0f1fe993e",
+  "frameId": "f6f9f4a9-ca04-8082-8008-c8f0f1fe993e",
+  "flipX": null,
+  "flipY": null,
+  "layoutItemAbsolute": false,
+  "growType": "auto-height",
+  "content": {
+    "type": "root",
+    "children": [
+      {
+        "type": "paragraph-set",
+        "children": [
+          {
+            "lineHeight": "1.2",
+            "fontStyle": "normal",
+            "children": [
+              {
+                "lineHeight": "1.2",
+                "fontStyle": "normal",
+                "typographyRefId": null,
+                "textTransform": "none",
+                "textAlign": "left",
+                "fontId": "sourcesanspro",
+                "fontSize": "14",
+                "fontWeight": "400",
+                "typographyRefFile": null,
+                "textDirection": "ltr",
+                "fontVariantId": "regular",
+                "textDecoration": "none",
+                "letterSpacing": "0",
+                "fills": [
+                  {
+                    "fillColor": "#3d444d",
+                    "fillOpacity": 1
+                  }
+                ],
+                "fontFamily": "sourcesanspro",
+                "text": "Hand this link to alpha. It is shown once: the page does not keep it and cannot show it again. A lost link is revoked on the deployment and issued anew."
+              }
+            ],
+            "typographyRefId": null,
+            "textTransform": "none",
+            "textAlign": "left",
+            "fontId": "sourcesanspro",
+            "fontSize": "14",
+            "fontWeight": "400",
+            "typographyRefFile": null,
+            "textDirection": "ltr",
+            "type": "paragraph",
+            "fontVariantId": "regular",
+            "textDecoration": "none",
+            "letterSpacing": "0",
+            "fills": [
+              {
+                "fillColor": "#3d444d",
+                "fillOpacity": 1
+              }
+            ],
+            "fontFamily": "sourcesanspro"
+          }
+        ]
+      }
+    ]
+  },
+  "blendMode": "normal",
+  "layoutItemHSizing": "fix",
+  "pageId": "f6f9f4a9-ca04-8082-8008-c8f0e117749d",
+  "layoutItemVSizing": "fix",
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "hidden": false,
+  "positionData": [
+    {
+      "x": 56,
+      "y": 1413.5999996066093,
+      "width": 611.1000366210938,
+      "height": 18.399999618530273,
+      "x1": 0,
+      "y1": -0.800000011920929,
+      "x2": 611.1000366210938,
+      "y2": 17.599999606609344,
+      "fontStyle": "normal",
+      "textTransform": "none",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "textDecoration": "none",
+      "letterSpacing": "normal",
+      "fills": [
+        {
+          "fillColor": "#3d444d",
+          "fillOpacity": 1
+        }
+      ],
+      "direction": "ltr",
+      "fontFamily": "sourcesanspro",
+      "text": "Hand this link to alpha. It is shown once: the page does not keep it and cannot show it again. A lost link is "
+    },
+    {
+      "x": 56,
+      "y": 1430.400001525879,
+      "width": 264.5249938964844,
+      "height": 18.400001525878906,
+      "x1": 0,
+      "y1": 16,
+      "x2": 264.5249938964844,
+      "y2": 34.400001525878906,
+      "fontStyle": "normal",
+      "textTransform": "none",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "textDecoration": "none",
+      "letterSpacing": "normal",
+      "fills": [
+        {
+          "fillColor": "#3d444d",
+          "fillOpacity": 1
+        }
+      ],
+      "direction": "ltr",
+      "fontFamily": "sourcesanspro",
+      "text": "revoked on the deployment and issued anew."
+    }
+  ],
+  "strokes": [],
+  "shadow": [],
+  "layoutItemZIndex": 0
+}

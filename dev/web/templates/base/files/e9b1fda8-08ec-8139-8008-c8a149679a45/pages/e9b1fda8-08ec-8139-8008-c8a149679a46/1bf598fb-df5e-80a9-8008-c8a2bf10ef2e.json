@@ -120,34 +120,34 @@
       }
     ]
   },
+  "pageId": "e9b1fda8-08ec-8139-8008-c8a149679a46",
   "constraintsV": "top",
   "constraintsH": "left",
   "positionData": [
     {
-      "x": 3912,
       "y": 2737.4000007510185,
-      "width": 732.1375122070312,
-      "height": 15.200000762939453,
-      "x1": 0,
-      "y1": -0.800000011920929,
-      "x2": 732.1375122070312,
-      "y2": 14.400000751018524,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "12px",
       "fontWeight": "400",
+      "y1": -0.800000011920929,
+      "width": 732.1375122070312,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 3912,
+      "x1": 0,
+      "y2": 14.400000751018524,
       "fills": [
         {
           "fillColor": "#57606a",
           "fillOpacity": 1
         }
       ],
+      "x2": 732.1375122070312,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
+      "height": 15.200000762939453,
       "text": "A viewer only watches: no control action, no check. After 4429 or 1011 the frame says reconnecting and retries; after 4403 it says the link has ended."
     }
-  ],
-  "pageId": "e9b1fda8-08ec-8139-8008-c8a149679a46"
+  ]
 }

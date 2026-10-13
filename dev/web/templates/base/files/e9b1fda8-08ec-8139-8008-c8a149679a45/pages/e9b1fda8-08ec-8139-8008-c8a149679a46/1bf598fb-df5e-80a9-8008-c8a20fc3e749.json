@@ -120,34 +120,34 @@
       }
     ]
   },
+  "pageId": "e9b1fda8-08ec-8139-8008-c8a149679a46",
   "constraintsV": "top",
   "constraintsH": "left",
   "positionData": [
     {
-      "x": 1576,
       "y": 1387.0999996066093,
-      "width": 120.88750457763672,
-      "height": 18.399999618530273,
-      "x1": 0,
-      "y1": -0.800000011920929,
-      "x2": 120.88750457763672,
-      "y2": 17.599999606609344,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "14px",
       "fontWeight": "400",
+      "y1": -0.800000011920929,
+      "width": 120.88750457763672,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 1576,
+      "x1": 0,
+      "y2": 17.599999606609344,
       "fills": [
         {
           "fillColor": "#57606a",
           "fillOpacity": 1
         }
       ],
+      "x2": 120.88750457763672,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
+      "height": 18.399999618530273,
       "text": "waiting for the agent"
     }
-  ],
-  "pageId": "e9b1fda8-08ec-8139-8008-c8a149679a46"
+  ]
 }

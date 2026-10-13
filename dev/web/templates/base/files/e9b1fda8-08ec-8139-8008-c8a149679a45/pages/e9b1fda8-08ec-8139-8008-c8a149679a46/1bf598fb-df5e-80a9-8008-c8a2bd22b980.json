@@ -120,34 +120,34 @@
       }
     ]
   },
+  "pageId": "e9b1fda8-08ec-8139-8008-c8a149679a46",
   "constraintsV": "top",
   "constraintsH": "left",
   "positionData": [
     {
-      "x": 4380,
       "y": 1750.4000007510185,
-      "width": 57.61249923706055,
-      "height": 15.200000762939453,
-      "x1": 0,
-      "y1": -0.800000011920929,
-      "x2": 57.61249923706055,
-      "y2": 14.400000751018524,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "12px",
       "fontWeight": "400",
+      "y1": -0.800000011920929,
+      "width": 57.61249923706055,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 4380,
+      "x1": 0,
+      "y2": 14.400000751018524,
       "fills": [
         {
           "fillColor": "#57606a",
           "fillOpacity": 1
         }
       ],
+      "x2": 57.61249923706055,
       "direction": "ltr",
       "fontFamily": "\"Source Code Pro\"",
+      "height": 15.200000762939453,
       "text": "09:52:10"
     }
-  ],
-  "pageId": "e9b1fda8-08ec-8139-8008-c8a149679a46"
+  ]
 }

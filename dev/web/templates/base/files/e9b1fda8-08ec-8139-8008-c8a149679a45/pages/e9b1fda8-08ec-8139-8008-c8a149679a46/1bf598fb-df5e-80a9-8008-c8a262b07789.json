@@ -120,34 +120,34 @@
       }
     ]
   },
+  "pageId": "e9b1fda8-08ec-8139-8008-c8a149679a46",
   "constraintsV": "top",
   "constraintsH": "left",
   "positionData": [
     {
-      "x": 2426,
       "y": 1297.0000003576279,
-      "width": 96.26250457763672,
-      "height": 17.600000381469727,
-      "x1": 0,
-      "y1": -1.600000023841858,
-      "x2": 96.26250457763672,
-      "y2": 16.00000035762787,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "13px",
       "fontWeight": "600",
+      "y1": -1.600000023841858,
+      "width": 96.26250457763672,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 2426,
+      "x1": 0,
+      "y2": 16.00000035762787,
       "fills": [
         {
           "fillColor": "#164a94",
           "fillOpacity": 1
         }
       ],
+      "x2": 96.26250457763672,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
+      "height": 17.600000381469727,
       "text": "BOOTSTRAPPING"
     }
-  ],
-  "pageId": "e9b1fda8-08ec-8139-8008-c8a149679a46"
+  ]
 }

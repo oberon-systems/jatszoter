@@ -1,0 +1,114 @@
+{
+  "id": "f6f9f4a9-ca04-8082-8008-c8f0f1fe993e",
+  "name": "trainee link",
+  "type": "frame",
+  "x": 32,
+  "y": 1334,
+  "width": 700,
+  "height": 248,
+  "rotation": 0,
+  "selrect": {
+    "x": 32,
+    "y": 1334,
+    "width": 700,
+    "height": 248,
+    "x1": 32,
+    "y1": 1334,
+    "x2": 732,
+    "y2": 1582
+  },
+  "points": [
+    {
+      "x": 32,
+      "y": 1334
+    },
+    {
+      "x": 732,
+      "y": 1334
+    },
+    {
+      "x": 732,
+      "y": 1582
+    },
+    {
+      "x": 32,
+      "y": 1582
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "f6f9f4a9-ca04-8082-8008-c8f0f132645f",
+  "frameId": "f6f9f4a9-ca04-8082-8008-c8f0f132645f",
+  "flipX": null,
+  "flipY": null,
+  "hideFillOnExport": false,
+  "layoutItemAbsolute": false,
+  "layoutGapType": "multiple",
+  "layoutPadding": {
+    "p1": 24,
+    "p2": 24,
+    "p3": 24,
+    "p4": 24
+  },
+  "layoutWrapType": "nowrap",
+  "layout": "flex",
+  "hideInViewer": true,
+  "layoutAlignItems": "start",
+  "layoutPaddingType": "simple",
+  "r2": 6,
+  "showContent": true,
+  "layoutItemHSizing": "fix",
+  "proportionLock": false,
+  "layoutGap": {
+    "rowGap": 16,
+    "columnGap": 16
+  },
+  "pageId": "f6f9f4a9-ca04-8082-8008-c8f0e117749d",
+  "layoutItemVSizing": "auto",
+  "r3": 6,
+  "layoutJustifyContent": "start",
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "r1": 6,
+  "layoutFlexDir": "column",
+  "layoutAlignContent": "stretch",
+  "strokes": [
+    {
+      "strokeStyle": "solid",
+      "strokeColor": "#d5d9e0",
+      "strokeOpacity": 1,
+      "strokeAlignment": "inner",
+      "strokeWidth": 1
+    }
+  ],
+  "proportion": 1,
+  "shadow": [],
+  "r4": 6,
+  "fills": [
+    {
+      "fillColor": "#ffffff",
+      "fillOpacity": 1
+    }
+  ],
+  "layoutItemZIndex": 0,
+  "shapes": [
+    "f6f9f4a9-ca04-8082-8008-c8f0f2af7a66",
+    "f6f9f4a9-ca04-8082-8008-c8f0f23aae81",
+    "f6f9f4a9-ca04-8082-8008-c8f0f22b83d7",
+    "f6f9f4a9-ca04-8082-8008-c8f0f219557e"
+  ]
+}

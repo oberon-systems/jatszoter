@@ -120,34 +120,34 @@
       }
     ]
   },
+  "pageId": "e9b1fda8-08ec-8139-8008-c8a149679a46",
   "constraintsV": "top",
   "constraintsH": "left",
   "positionData": [
     {
-      "x": 4743,
       "y": 1379.6000007390976,
-      "width": 74.2249984741211,
-      "height": 19.200000762939453,
-      "x1": 0,
-      "y1": -1.600000023841858,
-      "x2": 74.2249984741211,
-      "y2": 17.600000739097595,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "14px",
       "fontWeight": "600",
+      "y1": -1.600000023841858,
+      "width": 74.2249984741211,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 4743,
+      "x1": 0,
+      "y2": 17.600000739097595,
       "fills": [
         {
           "fillColor": "#1b1f24",
           "fillOpacity": 1
         }
       ],
+      "x2": 74.2249984741211,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
+      "height": 19.200000762939453,
       "text": "Take control"
     }
-  ],
-  "pageId": "e9b1fda8-08ec-8139-8008-c8a149679a46"
+  ]
 }

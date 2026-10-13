@@ -1,0 +1,115 @@
+{
+  "id": "1bf598fb-df5e-80a9-8008-c8bdd7079cf6",
+  "name": "login form",
+  "type": "frame",
+  "x": 5140,
+  "y": 176,
+  "width": 400,
+  "height": 370,
+  "rotation": 0,
+  "selrect": {
+    "x": 5140,
+    "y": 176,
+    "width": 400,
+    "height": 370,
+    "x1": 5140,
+    "y1": 176,
+    "x2": 5540,
+    "y2": 546
+  },
+  "points": [
+    {
+      "x": 5140,
+      "y": 176
+    },
+    {
+      "x": 5540,
+      "y": 176
+    },
+    {
+      "x": 5540,
+      "y": 546
+    },
+    {
+      "x": 5140,
+      "y": 546
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "1bf598fb-df5e-80a9-8008-c8bdd7013f5f",
+  "frameId": "1bf598fb-df5e-80a9-8008-c8bdd7013f5f",
+  "flipX": null,
+  "flipY": null,
+  "hideFillOnExport": false,
+  "layoutItemAbsolute": false,
+  "layoutGapType": "multiple",
+  "layoutPadding": {
+    "p1": 32,
+    "p2": 32,
+    "p3": 32,
+    "p4": 32
+  },
+  "layoutWrapType": "nowrap",
+  "layout": "flex",
+  "hideInViewer": true,
+  "layoutAlignItems": "start",
+  "layoutPaddingType": "simple",
+  "r2": 8,
+  "showContent": true,
+  "layoutItemHSizing": "fix",
+  "proportionLock": false,
+  "layoutGap": {
+    "rowGap": 16,
+    "columnGap": 16
+  },
+  "pageId": "1bf598fb-df5e-80a9-8008-c8bd7c11ae2a",
+  "layoutItemVSizing": "auto",
+  "r3": 8,
+  "layoutJustifyContent": "start",
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "r1": 8,
+  "layoutFlexDir": "column",
+  "layoutAlignContent": "stretch",
+  "strokes": [
+    {
+      "strokeStyle": "solid",
+      "strokeColor": "#d5d9e0",
+      "strokeOpacity": 1,
+      "strokeAlignment": "inner",
+      "strokeWidth": 1
+    }
+  ],
+  "proportion": 1,
+  "shadow": [],
+  "r4": 8,
+  "fills": [
+    {
+      "fillColor": "#ffffff",
+      "fillOpacity": 1
+    }
+  ],
+  "layoutItemZIndex": 0,
+  "shapes": [
+    "1bf598fb-df5e-80a9-8008-c8bdd7bf8979",
+    "1bf598fb-df5e-80a9-8008-c8bdd78eb8f2",
+    "1bf598fb-df5e-80a9-8008-c8bdd75e343d",
+    "1bf598fb-df5e-80a9-8008-c8bdd71a5300",
+    "1bf598fb-df5e-80a9-8008-c8bdd711e59d"
+  ]
+}

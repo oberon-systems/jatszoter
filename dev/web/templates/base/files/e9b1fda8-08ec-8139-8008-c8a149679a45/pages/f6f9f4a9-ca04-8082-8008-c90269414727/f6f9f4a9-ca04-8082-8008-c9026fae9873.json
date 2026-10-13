@@ -1,0 +1,122 @@
+{
+  "id": "f6f9f4a9-ca04-8082-8008-c9026fae9873",
+  "name": "check bar",
+  "type": "frame",
+  "x": 1976,
+  "y": 507.00000000000006,
+  "width": 972,
+  "height": 52.99999999999994,
+  "rotation": 0,
+  "selrect": {
+    "x": 1976,
+    "y": 507.00000000000006,
+    "width": 972,
+    "height": 52.99999999999994,
+    "x1": 1976,
+    "y1": 507.00000000000006,
+    "x2": 2948,
+    "y2": 560
+  },
+  "points": [
+    {
+      "x": 1976,
+      "y": 507.0000000000001
+    },
+    {
+      "x": 2948,
+      "y": 507.0000000000001
+    },
+    {
+      "x": 2948,
+      "y": 560
+    },
+    {
+      "x": 1976,
+      "y": 560
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "f6f9f4a9-ca04-8082-8008-c9026f277629",
+  "frameId": "f6f9f4a9-ca04-8082-8008-c9026f277629",
+  "flipX": null,
+  "flipY": null,
+  "hideFillOnExport": false,
+  "layoutItemAbsolute": false,
+  "layoutGapType": "multiple",
+  "layoutPadding": {
+    "p1": 10,
+    "p2": 16,
+    "p3": 10,
+    "p4": 16
+  },
+  "layoutWrapType": "nowrap",
+  "layout": "flex",
+  "hideInViewer": true,
+  "blendMode": "normal",
+  "layoutAlignItems": "center",
+  "layoutPaddingType": "simple",
+  "r2": 0,
+  "showContent": false,
+  "layoutItemHSizing": "fill",
+  "proportionLock": false,
+  "layoutGap": {
+    "rowGap": 12,
+    "columnGap": 12
+  },
+  "pageId": "f6f9f4a9-ca04-8082-8008-c90269414727",
+  "layoutItemVSizing": "auto",
+  "r3": 0,
+  "layoutJustifyContent": "start",
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "r1": 0,
+  "hidden": false,
+  "layoutFlexDir": "row",
+  "layoutAlignContent": "stretch",
+  "strokes": [
+    {
+      "strokeColor": "#d5d9e0",
+      "strokeOpacity": 1,
+      "strokeAlignment": "inner",
+      "strokeWidth": 1
+    }
+  ],
+  "proportion": 1,
+  "shadow": [],
+  "r4": 0,
+  "layoutItemMargin": {
+    "m1": 0,
+    "m2": 0,
+    "m3": 0,
+    "m4": 0
+  },
+  "fills": [
+    {
+      "fillColor": "#ffffff",
+      "fillOpacity": 1
+    }
+  ],
+  "layoutItemZIndex": 0,
+  "shapes": [
+    "f6f9f4a9-ca04-8082-8008-c90270333e71",
+    "f6f9f4a9-ca04-8082-8008-c902702766d2",
+    "f6f9f4a9-ca04-8082-8008-c9026ff0a052",
+    "f6f9f4a9-ca04-8082-8008-c9026fe526b5",
+    "f6f9f4a9-ca04-8082-8008-c9026fc0744c"
+  ]
+}

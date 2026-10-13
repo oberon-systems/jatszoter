@@ -1,0 +1,108 @@
+{
+  "id": "f6f9f4a9-ca04-8082-8008-c9008190b12d",
+  "name": "main",
+  "type": "frame",
+  "x": 3080,
+  "y": 56,
+  "width": 1440,
+  "height": 844,
+  "rotation": 0,
+  "selrect": {
+    "x": 3080,
+    "y": 56,
+    "width": 1440,
+    "height": 844,
+    "x1": 3080,
+    "y1": 56,
+    "x2": 4520,
+    "y2": 900
+  },
+  "points": [
+    {
+      "x": 3080,
+      "y": 56
+    },
+    {
+      "x": 4520,
+      "y": 56
+    },
+    {
+      "x": 4520,
+      "y": 900
+    },
+    {
+      "x": 3080,
+      "y": 900
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "f6f9f4a9-ca04-8082-8008-c900804a4633",
+  "frameId": "f6f9f4a9-ca04-8082-8008-c900804a4633",
+  "flipX": null,
+  "flipY": null,
+  "hideFillOnExport": false,
+  "layoutItemAbsolute": false,
+  "layoutGapType": "multiple",
+  "layoutPadding": {
+    "p1": 24,
+    "p2": 32,
+    "p3": 24,
+    "p4": 32
+  },
+  "layoutWrapType": "nowrap",
+  "layout": "flex",
+  "hideInViewer": true,
+  "blendMode": "normal",
+  "layoutAlignItems": "start",
+  "layoutPaddingType": "simple",
+  "r2": 0,
+  "showContent": false,
+  "layoutItemHSizing": "fill",
+  "proportionLock": false,
+  "layoutGap": {
+    "rowGap": 24,
+    "columnGap": 24
+  },
+  "pageId": "f6f9f4a9-ca04-8082-8008-c90072e8c1b4",
+  "layoutItemVSizing": "fill",
+  "r3": 0,
+  "layoutJustifyContent": "start",
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "r1": 0,
+  "hidden": false,
+  "layoutFlexDir": "column",
+  "layoutAlignContent": "stretch",
+  "strokes": [],
+  "proportion": 1,
+  "shadow": [],
+  "r4": 0,
+  "layoutItemMargin": {
+    "m1": 0,
+    "m2": 0,
+    "m3": 0,
+    "m4": 0
+  },
+  "fills": [],
+  "layoutItemZIndex": 0,
+  "shapes": [
+    "f6f9f4a9-ca04-8082-8008-c9008284b1e5",
+    "f6f9f4a9-ca04-8082-8008-c90081e21358",
+    "f6f9f4a9-ca04-8082-8008-c900819eed3f"
+  ]
+}

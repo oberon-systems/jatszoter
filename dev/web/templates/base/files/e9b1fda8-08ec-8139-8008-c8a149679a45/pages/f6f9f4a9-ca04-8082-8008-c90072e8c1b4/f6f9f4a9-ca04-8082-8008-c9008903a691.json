@@ -1,0 +1,186 @@
+{
+  "id": "f6f9f4a9-ca04-8082-8008-c9008903a691",
+  "name": "Its console log and 2 recordings are del",
+  "type": "text",
+  "x": 3584,
+  "y": 427.4999999999999,
+  "width": 432,
+  "height": 34.000000000000114,
+  "rotation": 0,
+  "selrect": {
+    "x": 3584,
+    "y": 427.4999999999999,
+    "width": 432,
+    "height": 34.000000000000114,
+    "x1": 3584,
+    "y1": 427.4999999999999,
+    "x2": 4016,
+    "y2": 461.5
+  },
+  "points": [
+    {
+      "x": 3584,
+      "y": 427.4999999999999
+    },
+    {
+      "x": 4016,
+      "y": 427.4999999999999
+    },
+    {
+      "x": 4016,
+      "y": 461.5
+    },
+    {
+      "x": 3584,
+      "y": 461.5
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "f6f9f4a9-ca04-8082-8008-c90088e485b8",
+  "frameId": "f6f9f4a9-ca04-8082-8008-c90088e485b8",
+  "flipX": null,
+  "flipY": null,
+  "layoutItemAbsolute": false,
+  "growType": "auto-height",
+  "content": {
+    "type": "root",
+    "children": [
+      {
+        "type": "paragraph-set",
+        "children": [
+          {
+            "lineHeight": "1.2",
+            "fontStyle": "normal",
+            "children": [
+              {
+                "lineHeight": "1.2",
+                "fontStyle": "normal",
+                "typographyRefId": null,
+                "textTransform": "none",
+                "textAlign": "left",
+                "fontId": "sourcesanspro",
+                "fontSize": "14",
+                "fontWeight": "400",
+                "typographyRefFile": null,
+                "textDirection": "ltr",
+                "fontVariantId": "regular",
+                "textDecoration": "none",
+                "letterSpacing": "0",
+                "fills": [
+                  {
+                    "fillColor": "#3d444d",
+                    "fillOpacity": 1
+                  }
+                ],
+                "fontFamily": "sourcesanspro",
+                "text": "Its console log and 2 recordings are deleted, files and rows. The deployment and its checks stay. This cannot be undone."
+              }
+            ],
+            "typographyRefId": null,
+            "textTransform": "none",
+            "textAlign": "left",
+            "fontId": "sourcesanspro",
+            "fontSize": "14",
+            "fontWeight": "400",
+            "typographyRefFile": null,
+            "textDirection": "ltr",
+            "type": "paragraph",
+            "fontVariantId": "regular",
+            "textDecoration": "none",
+            "letterSpacing": "0",
+            "fills": [
+              {
+                "fillColor": "#3d444d",
+                "fillOpacity": 1
+              }
+            ],
+            "fontFamily": "sourcesanspro"
+          }
+        ]
+      }
+    ]
+  },
+  "blendMode": "normal",
+  "layoutItemHSizing": "fix",
+  "pageId": "f6f9f4a9-ca04-8082-8008-c90072e8c1b4",
+  "layoutItemVSizing": "fix",
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "hidden": false,
+  "positionData": [
+    {
+      "x": 3584,
+      "y": 445.09999960660923,
+      "width": 369.8125,
+      "height": 18.399999618530273,
+      "x1": 0,
+      "y1": -0.800000011920929,
+      "x2": 369.8125,
+      "y2": 17.599999606609344,
+      "fontStyle": "normal",
+      "textTransform": "none",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "textDecoration": "none",
+      "letterSpacing": "normal",
+      "fills": [
+        {
+          "fillColor": "#3d444d",
+          "fillOpacity": 1
+        }
+      ],
+      "direction": "ltr",
+      "fontFamily": "sourcesanspro",
+      "text": "Its console log and 2 recordings are deleted, files and rows. The "
+    },
+    {
+      "x": 3584,
+      "y": 461.9000015258788,
+      "width": 326.2250061035156,
+      "height": 18.400001525878906,
+      "x1": 0,
+      "y1": 16,
+      "x2": 326.2250061035156,
+      "y2": 34.400001525878906,
+      "fontStyle": "normal",
+      "textTransform": "none",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "textDecoration": "none",
+      "letterSpacing": "normal",
+      "fills": [
+        {
+          "fillColor": "#3d444d",
+          "fillOpacity": 1
+        }
+      ],
+      "direction": "ltr",
+      "fontFamily": "sourcesanspro",
+      "text": "deployment and its checks stay. This cannot be undone."
+    }
+  ],
+  "strokes": [],
+  "shadow": [],
+  "layoutItemMargin": {
+    "m1": 0,
+    "m2": 0,
+    "m3": 0,
+    "m4": 0
+  },
+  "layoutItemZIndex": 0
+}

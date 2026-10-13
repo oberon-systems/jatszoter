@@ -1,0 +1,118 @@
+{
+  "id": "f6f9f4a9-ca04-8082-8008-c900411441fb",
+  "name": "table",
+  "type": "frame",
+  "x": 32,
+  "y": 1234,
+  "width": 1376,
+  "height": 276,
+  "rotation": 0,
+  "selrect": {
+    "x": 32,
+    "y": 1234,
+    "width": 1376,
+    "height": 276,
+    "x1": 32,
+    "y1": 1234,
+    "x2": 1408,
+    "y2": 1510
+  },
+  "points": [
+    {
+      "x": 32,
+      "y": 1234
+    },
+    {
+      "x": 1408,
+      "y": 1234
+    },
+    {
+      "x": 1408,
+      "y": 1510
+    },
+    {
+      "x": 32,
+      "y": 1510
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "f6f9f4a9-ca04-8082-8008-c90041083b35",
+  "frameId": "f6f9f4a9-ca04-8082-8008-c90041083b35",
+  "flipX": null,
+  "flipY": null,
+  "hideFillOnExport": false,
+  "layoutItemAbsolute": false,
+  "layoutGapType": "multiple",
+  "layoutPadding": {
+    "p1": 0,
+    "p2": 0,
+    "p3": 0,
+    "p4": 0
+  },
+  "layoutWrapType": "nowrap",
+  "layout": "flex",
+  "hideInViewer": true,
+  "blendMode": "normal",
+  "layoutAlignItems": "start",
+  "layoutPaddingType": "simple",
+  "r2": 6,
+  "showContent": false,
+  "layoutItemHSizing": "fill",
+  "proportionLock": false,
+  "layoutGap": {
+    "rowGap": 0,
+    "columnGap": 0
+  },
+  "pageId": "f6f9f4a9-ca04-8082-8008-c9002c53cc99",
+  "layoutItemVSizing": "auto",
+  "r3": 6,
+  "layoutJustifyContent": "start",
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "r1": 6,
+  "hidden": false,
+  "layoutFlexDir": "column",
+  "layoutAlignContent": "stretch",
+  "strokes": [
+    {
+      "strokeColor": "#d5d9e0",
+      "strokeOpacity": 1,
+      "strokeAlignment": "inner",
+      "strokeWidth": 1
+    }
+  ],
+  "proportion": 1,
+  "shadow": [],
+  "r4": 6,
+  "layoutItemMargin": {
+    "m1": 0,
+    "m2": 0,
+    "m3": 0,
+    "m4": 0
+  },
+  "fills": [],
+  "layoutItemZIndex": 0,
+  "shapes": [
+    "f6f9f4a9-ca04-8082-8008-c9004726c4e6",
+    "f6f9f4a9-ca04-8082-8008-c90045ae140a",
+    "f6f9f4a9-ca04-8082-8008-c900444d5733",
+    "f6f9f4a9-ca04-8082-8008-c9004335c08d",
+    "f6f9f4a9-ca04-8082-8008-c90041dcd9cc",
+    "f6f9f4a9-ca04-8082-8008-c900412150dd"
+  ]
+}

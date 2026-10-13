@@ -187,9 +187,10 @@ agent sets it in the guest through the guest agent: `guest-exec` of `stty -F
   meanwhile. A resize that fails or times out is tried again at the next
   resize frame.
 - A size equal to the last one applied runs nothing.
-- This is proven on the Rocky 9 smoke guest with SELinux enforcing: from
-  the guest agent's confined domain the command exits 0 and `stty size`
-  reads the new size back.
+- This is proven on the Rocky 9 smoke guest with SELinux enforcing: the
+  command exits 0 and `stty size` reads the new size back. The bootstrap
+  makes the guest agent's domain permissive there, see
+  [03](03-scenario-format.md#check).
 - The API writes an `r` event into the recording when it passes the
   holder's resize to the agent, whether or not the guest then applies it;
   see [05](05-recording.md#writing).

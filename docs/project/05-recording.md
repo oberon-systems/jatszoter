@@ -107,8 +107,10 @@ One JSON header line, then one JSON event per line:
   answers 404.
 - Both take a signed operator request and nothing else: a link, of any
   role, never reads a recording.
-- The web UI plays it with a vendored asciinema-player and lists markers
-  as jump points; that page arrives with roadmap item 11.
+- The replay page of `web`,
+  `/deployments/{id}/recordings/{recording_id}`, plays it with a vendored
+  asciinema-player and lists markers as jump points, see
+  [08](08-web-ui.md#replay-page).
 
 ## Acceptance criteria
 

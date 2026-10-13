@@ -35,11 +35,13 @@ API.
 
 - `api` - control plane: agents, leases, images, scenarios, deployments,
   links, recordings, checks. It is the only writer to the database and to
-  the file store, and the only component browsers and agents talk to.
+  the file store, and the only component agents talk to.
 - `agent` - host daemon: registers, keeps its lease, starts and destroys
   VMs, bootstraps them, runs checks inside them, ships their consoles.
-- `web` - operator and trainee pages. It holds no state of its own and
-  relays the terminal WebSocket to the API.
+- `web` - operator and trainee pages, and the one origin browsers talk to.
+  It holds no state of its own, signs an operator's calls to the API and
+  relays a link's requests and terminal WebSocket to it unchanged, see
+  [08](08-web-ui.md).
 
 ## Stack
 
@@ -67,7 +69,8 @@ API.
 
 ## Operator API
 
-Operators and the web UI call the API under `/api/v1`.
+Operators and the web UI call the API under `/api/v1`. The routes the web UI
+still needs are listed in [08](08-web-ui.md#api-gaps).
 
 ```text
 POST /api/v1/auth/login                    open

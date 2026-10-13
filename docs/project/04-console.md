@@ -141,9 +141,10 @@ link can do:
   and returns the plain value once, in the response that creates the link.
 - A link has no expiry of its own. It can be revoked at any time, and the
   deployment reaching COMPLETED, FAILED or CANCELLED revokes all its links.
-- `GET /s/{token}`, served by the API outside `/api/v1`, opens the link: it
-  sets the session cookie and answers 303 to `/t/{deployment_id}`, a URL
-  without the token; the page there arrives with the web UI. An unknown or
+- `GET /s/{token}`, served by the API outside `/api/v1` and reached through
+  the relay of `web`, opens the link: it sets the session cookie and answers
+  303 to `/t/{deployment_id}`, a URL without the token, where `web` serves
+  the trainee page, see [08](08-web-ui.md#trainee-page). An unknown or
   revoked link and a link of a disabled user get the same 404. The link
   opens in any non-terminal status; the terminal attaches at READY.
 - The cookie `jatszoter_link` is HttpOnly, Secure, SameSite=Strict, without

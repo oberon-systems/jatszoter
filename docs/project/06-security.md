@@ -27,9 +27,10 @@ operator has not taken control.
 
 ## Credentials
 
-- **Operator** - logs in with name and password at `POST
-  /api/v1/auth/login` and gets a credential and signing key, like an agent's
-  claim. On first start, when no operator exists, the API creates `admin` /
+- **Operator** - logs in with name and password on the login page of
+  `web`, which calls `POST /api/v1/auth/login`, gets a credential and
+  signing key, like an agent's claim, and keeps them in an encrypted
+  cookie, see [08](08-web-ui.md#operator-session). On first start, when no operator exists, the API creates `admin` /
   `admin` with `password_changed` 0; such a login is refused until it
   sends `new_password`. OIDC is on the [roadmap](07-roadmap.md).
 - **Passwords** - stored as scrypt hashes, the parameters kept with the
@@ -58,13 +59,15 @@ operator has not taken control.
   due for refresh 15 minutes before it expires. Every refresh hands out a
   fresh pending generation;
   the live one keeps working until the pending one signs its first request.
-  A superseded generation that still signs means two parties hold the key:
-  the owner turns `disabled` at once, and only an operator enables it again.
-  A stolen key therefore lasts at most until the next refresh.
+  An agent's superseded generation that still signs means two parties
+  hold the key: the agent turns `disabled` at once, and only an operator
+  enables it again. A stolen key therefore lasts at most until the next
+  refresh. A user's superseded generation gets 401 and disables nobody: a
+  user's key never leaves `web`, and its tabs race the refresh.
 - **Logout** - `POST /api/v1/auth/logout` ends every credential the user
   holds: the live generation moves past both the live and the pending one.
-  A credential issued before is then a superseded generation, so using it
-  disables the user like any other; only an operator enables them again.
+  A credential issued before is then a superseded generation and gets
+  401.
 - **Link** - the token is exchanged once for a session cookie, see
   [04](04-console.md#links). A request or an upgrade that authenticates by
   that cookie is bound by SameSite=Strict and by its `Origin`, which, when
@@ -130,14 +133,17 @@ The check script is guarded the same way:
 
 - A cookie request that changes state and a cookie WebSocket upgrade are
   refused when they send an `Origin` that does not name their own host;
-  SameSite=Strict keeps the cookie off cross-site requests. CSRF tokens on
-  every state-changing request arrive with the web UI, roadmap item 11.
+  SameSite=Strict keeps the cookie off cross-site requests. `web` checks a
+  CSRF token on every state-changing request, an operator's and a link's,
+  before it reaches the API; see [08](08-web-ui.md#csrf).
 - Signed requests carry no cookie and need neither.
 - Security headers: `Content-Security-Policy` without inline scripts,
-  `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`.
+  `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`; the full set is
+  in [08](08-web-ui.md#security-headers).
 - Operator pages and trainee pages are separate routes; a link cookie
   reaches nothing outside its deployment's routes under
-  `/api/v1/deployments/{id}`: the attach socket, control and the check.
+  `/api/v1/deployments/{id}`: the attach socket, control, the checks and
+  the task.
 
 ## Acceptance criteria
 

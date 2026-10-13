@@ -66,9 +66,12 @@ to cover it. An item marked Done has landed on `main`.
       routes of the agent; results as markers in the recording.
     - Agent: run the pending check in the guest and post the result.
     - Smoke: a check fails before the fix and passes after it.
-11. Web UI, design-first in Penpot: design system, then each screen; CSRF
-    tokens on state-changing requests; the replay page with a vendored
-    asciinema-player and markers as jump points.
+11. Web UI, design-first in Penpot ([08](08-web-ui.md)): design system,
+    then each screen; CSRF tokens on state-changing requests; the replay
+    page with a vendored asciinema-player and markers as jump points.
+    - API: the routes of [08](08-web-ui.md#api-gaps), and a user's
+      superseded credential answering 401.
+    - Web: the operator session, the relay, every screen of version one.
     - Agent: no change.
     - Smoke: the operator and trainee pages load against the smoke stand.
 12. Hardening: limits, TTL sweeps, the recording retention sweep with

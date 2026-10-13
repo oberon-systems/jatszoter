@@ -48,11 +48,15 @@ when needed and replays the recording later.
 
 | Role     | How it authenticates | What it can do                                |
 | -------- | -------------------- | --------------------------------------------- |
-| Operator | login, signed calls  | everything: agents, scenarios, deployments    |
+| Operator | login on the web UI  | everything: agents, scenarios, deployments    |
 | Trainee  | trainee link         | one deployment's terminal and its check       |
 | Viewer   | viewer link          | watches one deployment's terminal             |
 | Author   | git                  | writes scenarios; an operator registers them  |
 | Agent    | signed requests      | its lease, its deployments, their consoles    |
+
+Every browser, an operator's or a link holder's, talks to the web UI alone;
+it signs the operator's calls and relays a link's to the API, see
+[08](08-web-ui.md).
 
 ## How it works
 

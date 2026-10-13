@@ -7,7 +7,7 @@ landed before this set was written; git history keeps them.
 
 | #  | Prompt                 | Component | Result                                            |
 | -- | ---------------------- | --------- | ------------------------------------------------- |
-| 01 | `01-design-stack.md`   | dev/web   | the Penpot stack is current and exports lint      |
+| 01 | landed, git keeps it   | dev/web   | the Penpot stack is current and exports lint      |
 | 02 | `02-docs.md`           | docs      | the Web UI contract, a new `08-web-ui.md`         |
 | 03 | `03-design-system.md`  | dev/web   | the `Design system` boards, approved and exported |
 | 04 | `04-design-screens.md` | dev/web   | a board for every screen, approved and exported   |

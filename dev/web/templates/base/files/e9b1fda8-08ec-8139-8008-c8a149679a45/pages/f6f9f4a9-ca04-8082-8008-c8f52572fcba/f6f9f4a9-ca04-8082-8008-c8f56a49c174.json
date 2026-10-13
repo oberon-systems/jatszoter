@@ -1,0 +1,161 @@
+{
+  "id": "f6f9f4a9-ca04-8082-8008-c8f56a49c174",
+  "name": "The VM is being prepared. The terminal o",
+  "type": "text",
+  "x": 3511,
+  "y": 437,
+  "width": 578,
+  "height": 16,
+  "rotation": 0,
+  "selrect": {
+    "x": 3511,
+    "y": 437,
+    "width": 578,
+    "height": 16,
+    "x1": 3511,
+    "y1": 437,
+    "x2": 4089,
+    "y2": 453
+  },
+  "points": [
+    {
+      "x": 3511,
+      "y": 437
+    },
+    {
+      "x": 4089,
+      "y": 437
+    },
+    {
+      "x": 4089,
+      "y": 453
+    },
+    {
+      "x": 3511,
+      "y": 453
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "f6f9f4a9-ca04-8082-8008-c8f56a3128d4",
+  "frameId": "f6f9f4a9-ca04-8082-8008-c8f56a3128d4",
+  "flipX": null,
+  "flipY": null,
+  "layoutItemAbsolute": false,
+  "growType": "auto-width",
+  "content": {
+    "type": "root",
+    "children": [
+      {
+        "type": "paragraph-set",
+        "children": [
+          {
+            "lineHeight": "1.2",
+            "fontStyle": "normal",
+            "children": [
+              {
+                "lineHeight": "1.2",
+                "fontStyle": "normal",
+                "typographyRefId": null,
+                "textTransform": "none",
+                "textAlign": "left",
+                "fontId": "gfont-source-code-pro",
+                "fontSize": "13",
+                "fontWeight": "400",
+                "typographyRefFile": null,
+                "textDirection": "ltr",
+                "fontVariantId": "regular",
+                "textDecoration": "none",
+                "letterSpacing": "0",
+                "fills": [
+                  {
+                    "fillColor": "#aeb6c0",
+                    "fillOpacity": 1
+                  }
+                ],
+                "fontFamily": "Source Code Pro",
+                "text": "The VM is being prepared. The terminal opens when the deployment is READY."
+              }
+            ],
+            "typographyRefId": null,
+            "textTransform": "none",
+            "textAlign": "left",
+            "fontId": "gfont-source-code-pro",
+            "fontSize": "13",
+            "fontWeight": "400",
+            "typographyRefFile": null,
+            "textDirection": "ltr",
+            "type": "paragraph",
+            "fontVariantId": "regular",
+            "textDecoration": "none",
+            "letterSpacing": "0",
+            "fills": [
+              {
+                "fillColor": "#aeb6c0",
+                "fillOpacity": 1
+              }
+            ],
+            "fontFamily": "Source Code Pro"
+          }
+        ]
+      }
+    ]
+  },
+  "blendMode": "normal",
+  "layoutItemHSizing": "fix",
+  "pageId": "f6f9f4a9-ca04-8082-8008-c8f52572fcba",
+  "layoutItemVSizing": "fix",
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "hidden": false,
+  "positionData": [
+    {
+      "x": 3511,
+      "y": 452.19999998807907,
+      "width": 577.2000122070312,
+      "height": 16,
+      "x1": 0,
+      "y1": -0.800000011920929,
+      "x2": 577.2000122070312,
+      "y2": 15.199999988079071,
+      "fontStyle": "normal",
+      "textTransform": "none",
+      "fontSize": "13px",
+      "fontWeight": "400",
+      "textDecoration": "none",
+      "letterSpacing": "normal",
+      "fills": [
+        {
+          "fillColor": "#aeb6c0",
+          "fillOpacity": 1
+        }
+      ],
+      "direction": "ltr",
+      "fontFamily": "\"Source Code Pro\"",
+      "text": "The VM is being prepared. The terminal opens when the deployment is READY."
+    }
+  ],
+  "strokes": [],
+  "shadow": [],
+  "layoutItemMargin": {
+    "m1": 0,
+    "m2": 0,
+    "m3": 0,
+    "m4": 0
+  },
+  "layoutItemZIndex": 0
+}

@@ -1,0 +1,117 @@
+{
+  "id": "f6f9f4a9-ca04-8082-8008-c8f712b941bf",
+  "name": "summary",
+  "type": "frame",
+  "x": 4652,
+  "y": 1650,
+  "width": 1376,
+  "height": 74,
+  "rotation": 0,
+  "selrect": {
+    "x": 4652,
+    "y": 1650,
+    "width": 1376,
+    "height": 74,
+    "x1": 4652,
+    "y1": 1650,
+    "x2": 6028,
+    "y2": 1724
+  },
+  "points": [
+    {
+      "x": 4652,
+      "y": 1650
+    },
+    {
+      "x": 6028,
+      "y": 1650
+    },
+    {
+      "x": 6028,
+      "y": 1724
+    },
+    {
+      "x": 4652,
+      "y": 1724
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "f6f9f4a9-ca04-8082-8008-c8f7106eaed2",
+  "frameId": "f6f9f4a9-ca04-8082-8008-c8f7106eaed2",
+  "flipX": null,
+  "flipY": null,
+  "hideFillOnExport": false,
+  "layoutItemAbsolute": false,
+  "layoutGapType": "multiple",
+  "layoutPadding": {
+    "p1": 16,
+    "p2": 20,
+    "p3": 16,
+    "p4": 20
+  },
+  "layoutWrapType": "nowrap",
+  "layout": "flex",
+  "hideInViewer": true,
+  "layoutAlignItems": "start",
+  "layoutPaddingType": "simple",
+  "r2": 6,
+  "showContent": true,
+  "layoutItemHSizing": "fill",
+  "proportionLock": false,
+  "layoutGap": {
+    "rowGap": 40,
+    "columnGap": 40
+  },
+  "pageId": "f6f9f4a9-ca04-8082-8008-c8f52572fcba",
+  "layoutItemVSizing": "auto",
+  "r3": 6,
+  "layoutJustifyContent": "start",
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "r1": 6,
+  "layoutFlexDir": "row",
+  "layoutAlignContent": "stretch",
+  "strokes": [
+    {
+      "strokeStyle": "solid",
+      "strokeColor": "#d5d9e0",
+      "strokeOpacity": 1,
+      "strokeAlignment": "inner",
+      "strokeWidth": 1
+    }
+  ],
+  "proportion": 1,
+  "shadow": [],
+  "r4": 6,
+  "fills": [
+    {
+      "fillColor": "#ffffff",
+      "fillOpacity": 1
+    }
+  ],
+  "layoutItemZIndex": 0,
+  "shapes": [
+    "f6f9f4a9-ca04-8082-8008-c8f7168c8a2a",
+    "f6f9f4a9-ca04-8082-8008-c8f7161a2336",
+    "f6f9f4a9-ca04-8082-8008-c8f715a5425e",
+    "f6f9f4a9-ca04-8082-8008-c8f7152ac9f1",
+    "f6f9f4a9-ca04-8082-8008-c8f714b403f6",
+    "f6f9f4a9-ca04-8082-8008-c8f713f1c176",
+    "f6f9f4a9-ca04-8082-8008-c8f712e239b2"
+  ]
+}

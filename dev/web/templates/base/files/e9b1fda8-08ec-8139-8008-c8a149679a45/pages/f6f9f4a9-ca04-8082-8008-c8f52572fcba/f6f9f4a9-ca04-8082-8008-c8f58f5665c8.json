@@ -1,0 +1,99 @@
+{
+  "id": "f6f9f4a9-ca04-8082-8008-c8f58f5665c8",
+  "name": "fact Trainee",
+  "type": "frame",
+  "x": 408,
+  "y": 1666,
+  "width": 42,
+  "height": 39,
+  "rotation": 0,
+  "selrect": {
+    "x": 408,
+    "y": 1666,
+    "width": 42,
+    "height": 39,
+    "x1": 408,
+    "y1": 1666,
+    "x2": 450,
+    "y2": 1705
+  },
+  "points": [
+    {
+      "x": 408,
+      "y": 1666
+    },
+    {
+      "x": 450,
+      "y": 1666
+    },
+    {
+      "x": 450,
+      "y": 1705
+    },
+    {
+      "x": 408,
+      "y": 1705
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "f6f9f4a9-ca04-8082-8008-c8f58dd5a632",
+  "frameId": "f6f9f4a9-ca04-8082-8008-c8f58dd5a632",
+  "flipX": null,
+  "flipY": null,
+  "hideFillOnExport": false,
+  "layoutItemAbsolute": false,
+  "layoutGapType": "multiple",
+  "layoutPadding": {
+    "p1": 0,
+    "p2": 0,
+    "p3": 0,
+    "p4": 0
+  },
+  "layoutWrapType": "nowrap",
+  "layout": "flex",
+  "hideInViewer": true,
+  "layoutAlignItems": "start",
+  "layoutPaddingType": "simple",
+  "r2": 0,
+  "showContent": true,
+  "layoutItemHSizing": "auto",
+  "proportionLock": false,
+  "layoutGap": {
+    "rowGap": 6,
+    "columnGap": 6
+  },
+  "pageId": "f6f9f4a9-ca04-8082-8008-c8f52572fcba",
+  "layoutItemVSizing": "auto",
+  "r3": 0,
+  "layoutJustifyContent": "start",
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "r1": 0,
+  "layoutFlexDir": "column",
+  "layoutAlignContent": "stretch",
+  "strokes": [],
+  "proportion": 1,
+  "shadow": [],
+  "r4": 0,
+  "fills": [],
+  "layoutItemZIndex": 0,
+  "shapes": [
+    "f6f9f4a9-ca04-8082-8008-c8f58f911e2b",
+    "f6f9f4a9-ca04-8082-8008-c8f58f716a83"
+  ]
+}

@@ -1,0 +1,107 @@
+{
+  "id": "f6f9f4a9-ca04-8082-8008-c8f555369d2c",
+  "name": "titles",
+  "type": "frame",
+  "x": 1572,
+  "y": 80.00000000000001,
+  "width": 243,
+  "height": 45.99999999999996,
+  "rotation": 0,
+  "selrect": {
+    "x": 1572,
+    "y": 80.00000000000001,
+    "width": 243,
+    "height": 45.99999999999996,
+    "x1": 1572,
+    "y1": 80.00000000000001,
+    "x2": 1815,
+    "y2": 125.99999999999997
+  },
+  "points": [
+    {
+      "x": 1572,
+      "y": 80.00000000000001
+    },
+    {
+      "x": 1815,
+      "y": 80.00000000000001
+    },
+    {
+      "x": 1815,
+      "y": 125.99999999999997
+    },
+    {
+      "x": 1572,
+      "y": 125.99999999999997
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "f6f9f4a9-ca04-8082-8008-c8f5552880a0",
+  "frameId": "f6f9f4a9-ca04-8082-8008-c8f5552880a0",
+  "flipX": null,
+  "flipY": null,
+  "hideFillOnExport": false,
+  "layoutItemAbsolute": false,
+  "layoutGapType": "multiple",
+  "layoutPadding": {
+    "p1": 0,
+    "p2": 0,
+    "p3": 0,
+    "p4": 0
+  },
+  "layoutWrapType": "nowrap",
+  "layout": "flex",
+  "hideInViewer": true,
+  "blendMode": "normal",
+  "layoutAlignItems": "start",
+  "layoutPaddingType": "simple",
+  "r2": 0,
+  "showContent": false,
+  "layoutItemHSizing": "auto",
+  "proportionLock": false,
+  "layoutGap": {
+    "rowGap": 2,
+    "columnGap": 2
+  },
+  "pageId": "f6f9f4a9-ca04-8082-8008-c8f52572fcba",
+  "layoutItemVSizing": "auto",
+  "r3": 0,
+  "layoutJustifyContent": "start",
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "r1": 0,
+  "hidden": false,
+  "layoutFlexDir": "column",
+  "layoutAlignContent": "stretch",
+  "strokes": [],
+  "proportion": 1,
+  "shadow": [],
+  "r4": 0,
+  "layoutItemMargin": {
+    "m1": 0,
+    "m2": 0,
+    "m3": 0,
+    "m4": 0
+  },
+  "fills": [],
+  "layoutItemZIndex": 0,
+  "shapes": [
+    "f6f9f4a9-ca04-8082-8008-c8f5555da9a0",
+    "f6f9f4a9-ca04-8082-8008-c8f5554a1946"
+  ]
+}

@@ -12,6 +12,10 @@ guest_agent() {
         sed -i 's/^FILTER_RPC_ARGS=.*/FILTER_RPC_ARGS=/' /etc/sysconfig/qemu-ga
         if command -v selinuxenabled >/dev/null && selinuxenabled; then
             setsebool -P virt_qemu_ga_read_nonsecurity_files 1
+            # A check runs in the guest agent's domain and must reach what it checks.
+            echo '(typepermissive virt_qemu_ga_t)' >"$base/jatszoter_guest_agent.cil"
+            (cd "$base" && semodule -i jatszoter_guest_agent.cil)
+            rm -f "$base/jatszoter_guest_agent.cil"
         fi
         systemctl enable qemu-guest-agent
         systemctl restart qemu-guest-agent

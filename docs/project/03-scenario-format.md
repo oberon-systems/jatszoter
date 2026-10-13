@@ -110,6 +110,9 @@ marker as reason, and `bootstrap_seconds` passing does so with reason
   the guest for each run and deletes it afterwards.
 - It runs as root with `check_seconds` as the timeout; at the deadline the
   agent kills it in the guest.
+- It runs in the guest agent's SELinux domain. Where SELinux is on, the
+  bootstrap makes that domain permissive, so a check can open a socket or
+  read whatever it checks.
 - Exit 0 is `passed`, any other code `failed`, a timeout `timeout`, and a
   guest agent error `error`.
 - The first line of stdout, up to 200 characters, is the message shown to

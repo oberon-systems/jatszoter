@@ -1,0 +1,178 @@
+{
+  "id": "1bf598fb-df5e-80a9-8008-c8a29287f1c6",
+  "name": "The VM of web-basics v3 for alpha is des",
+  "type": "text",
+  "x": 4164,
+  "y": 885,
+  "width": 432,
+  "height": 34,
+  "rotation": 0,
+  "selrect": {
+    "x": 4164,
+    "y": 885,
+    "width": 432,
+    "height": 34,
+    "x1": 4164,
+    "y1": 885,
+    "x2": 4596,
+    "y2": 919
+  },
+  "points": [
+    {
+      "x": 4164,
+      "y": 885
+    },
+    {
+      "x": 4596,
+      "y": 885
+    },
+    {
+      "x": 4596,
+      "y": 919
+    },
+    {
+      "x": 4164,
+      "y": 919
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "1bf598fb-df5e-80a9-8008-c8a292780748",
+  "frameId": "1bf598fb-df5e-80a9-8008-c8a292780748",
+  "flipX": null,
+  "flipY": null,
+  "growType": "auto-height",
+  "content": {
+    "type": "root",
+    "children": [
+      {
+        "type": "paragraph-set",
+        "children": [
+          {
+            "lineHeight": "1.2",
+            "path": "type",
+            "fontStyle": "normal",
+            "fontHeight": "1.4285714285714286",
+            "children": [
+              {
+                "lineHeight": "1.2",
+                "path": "type",
+                "fontStyle": "normal",
+                "fontHeight": "1.4285714285714286",
+                "typographyRefId": "1bf598fb-df5e-80a9-8008-c8a1c09144f8",
+                "textTransform": "none",
+                "textAlign": "left",
+                "fontId": "sourcesanspro",
+                "fontSize": "14",
+                "fontWeight": "400",
+                "typographyRefFile": "e9b1fda8-08ec-8139-8008-c8a149679a45",
+                "textDirection": "ltr",
+                "modifiedAt": "2026-10-13T13:32:08.651Z",
+                "fontVariantId": "regular",
+                "textDecoration": "none",
+                "letterSpacing": "0",
+                "fills": [
+                  {
+                    "fillColor": "#3d444d",
+                    "fillOpacity": 1
+                  }
+                ],
+                "fontFamily": "sourcesanspro",
+                "text": "The VM of web-basics v3 for alpha is destroyed and every link of the deployment is revoked. This cannot be undone."
+              }
+            ],
+            "typographyRefId": "1bf598fb-df5e-80a9-8008-c8a1c09144f8",
+            "textTransform": "none",
+            "textAlign": "left",
+            "fontId": "sourcesanspro",
+            "fontSize": "14",
+            "fontWeight": "400",
+            "typographyRefFile": "e9b1fda8-08ec-8139-8008-c8a149679a45",
+            "textDirection": "ltr",
+            "type": "paragraph",
+            "modifiedAt": "2026-10-13T13:32:08.651Z",
+            "fontVariantId": "regular",
+            "textDecoration": "none",
+            "letterSpacing": "0",
+            "fills": [
+              {
+                "fillColor": "#3d444d",
+                "fillOpacity": 1
+              }
+            ],
+            "fontFamily": "sourcesanspro"
+          }
+        ]
+      }
+    ]
+  },
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "positionData": [
+    {
+      "x": 4164,
+      "y": 902.5999996066093,
+      "width": 394.45001220703125,
+      "height": 18.399999618530273,
+      "x1": 0,
+      "y1": -0.800000011920929,
+      "x2": 394.45001220703125,
+      "y2": 17.599999606609344,
+      "fontStyle": "normal",
+      "textTransform": "none",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "textDecoration": "none",
+      "letterSpacing": "normal",
+      "fills": [
+        {
+          "fillColor": "#3d444d",
+          "fillOpacity": 1
+        }
+      ],
+      "direction": "ltr",
+      "fontFamily": "sourcesanspro",
+      "text": "The VM of web-basics v3 for alpha is destroyed and every link of the "
+    },
+    {
+      "x": 4164,
+      "y": 919.4000015258789,
+      "width": 276.7875061035156,
+      "height": 18.400001525878906,
+      "x1": 0,
+      "y1": 16,
+      "x2": 276.7875061035156,
+      "y2": 34.400001525878906,
+      "fontStyle": "normal",
+      "textTransform": "none",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "textDecoration": "none",
+      "letterSpacing": "normal",
+      "fills": [
+        {
+          "fillColor": "#3d444d",
+          "fillOpacity": 1
+        }
+      ],
+      "direction": "ltr",
+      "fontFamily": "sourcesanspro",
+      "text": "deployment is revoked. This cannot be undone."
+    }
+  ],
+  "pageId": "e9b1fda8-08ec-8139-8008-c8a149679a46"
+}

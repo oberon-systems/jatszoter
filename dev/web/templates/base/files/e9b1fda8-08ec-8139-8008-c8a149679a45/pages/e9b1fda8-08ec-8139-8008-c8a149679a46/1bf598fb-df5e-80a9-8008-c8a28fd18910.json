@@ -1,0 +1,106 @@
+{
+  "id": "1bf598fb-df5e-80a9-8008-c8a28fd18910",
+  "name": "input",
+  "type": "frame",
+  "x": 4224,
+  "y": 189.99999999999997,
+  "width": 288,
+  "height": 33,
+  "rotation": 0,
+  "selrect": {
+    "x": 4224,
+    "y": 189.99999999999997,
+    "width": 288,
+    "height": 33,
+    "x1": 4224,
+    "y1": 189.99999999999997,
+    "x2": 4512,
+    "y2": 222.99999999999997
+  },
+  "points": [
+    {
+      "x": 4224,
+      "y": 189.99999999999997
+    },
+    {
+      "x": 4512,
+      "y": 189.99999999999997
+    },
+    {
+      "x": 4512,
+      "y": 222.99999999999997
+    },
+    {
+      "x": 4224,
+      "y": 222.99999999999997
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "1bf598fb-df5e-80a9-8008-c8a28fc357f7",
+  "frameId": "1bf598fb-df5e-80a9-8008-c8a28fc357f7",
+  "flipX": null,
+  "flipY": null,
+  "hideFillOnExport": false,
+  "layoutGapType": "multiple",
+  "layoutPadding": {
+    "p1": 8,
+    "p2": 12,
+    "p3": 8,
+    "p4": 12
+  },
+  "layoutWrapType": "nowrap",
+  "layout": "flex",
+  "hideInViewer": true,
+  "layoutAlignItems": "center",
+  "layoutPaddingType": "simple",
+  "r2": 6,
+  "layoutItemHSizing": "fix",
+  "proportionLock": false,
+  "layoutGap": {
+    "rowGap": 8,
+    "columnGap": 8
+  },
+  "pageId": "e9b1fda8-08ec-8139-8008-c8a149679a46",
+  "layoutItemVSizing": "fix",
+  "r3": 6,
+  "layoutJustifyContent": "start",
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "r1": 6,
+  "layoutFlexDir": "row",
+  "layoutAlignContent": "stretch",
+  "strokes": [
+    {
+      "strokeColor": "#1f5fbf",
+      "strokeOpacity": 1,
+      "strokeAlignment": "inner",
+      "strokeWidth": 2
+    }
+  ],
+  "proportion": 1,
+  "r4": 6,
+  "fills": [
+    {
+      "fillColor": "#ffffff",
+      "fillOpacity": 1
+    }
+  ],
+  "shapes": [
+    "1bf598fb-df5e-80a9-8008-c8a28fdfc60b"
+  ]
+}

@@ -1,0 +1,153 @@
+{
+  "id": "1bf598fb-df5e-80a9-8008-c8a1f611960e",
+  "name": "Source Sans Pro for the interface, Sourc",
+  "type": "text",
+  "x": 1312,
+  "y": 85,
+  "width": 798,
+  "height": 17,
+  "rotation": 0,
+  "selrect": {
+    "x": 1312,
+    "y": 85,
+    "width": 798,
+    "height": 17,
+    "x1": 1312,
+    "y1": 85,
+    "x2": 2110,
+    "y2": 102
+  },
+  "points": [
+    {
+      "x": 1312,
+      "y": 85
+    },
+    {
+      "x": 2110,
+      "y": 85
+    },
+    {
+      "x": 2110,
+      "y": 102
+    },
+    {
+      "x": 1312,
+      "y": 102
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "1bf598fb-df5e-80a9-8008-c8a1f6036b0d",
+  "frameId": "1bf598fb-df5e-80a9-8008-c8a1f6036b0d",
+  "flipX": null,
+  "flipY": null,
+  "growType": "auto-width",
+  "content": {
+    "type": "root",
+    "children": [
+      {
+        "type": "paragraph-set",
+        "children": [
+          {
+            "lineHeight": "1.2",
+            "path": "type",
+            "fontStyle": "normal",
+            "fontHeight": "1.4285714285714286",
+            "children": [
+              {
+                "lineHeight": "1.2",
+                "path": "type",
+                "fontStyle": "normal",
+                "fontHeight": "1.4285714285714286",
+                "typographyRefId": "1bf598fb-df5e-80a9-8008-c8a1c09144f8",
+                "textTransform": "none",
+                "textAlign": "left",
+                "fontId": "sourcesanspro",
+                "fontSize": "14",
+                "fontWeight": "400",
+                "typographyRefFile": "e9b1fda8-08ec-8139-8008-c8a149679a45",
+                "textDirection": "ltr",
+                "modifiedAt": "2026-10-13T13:32:08.651Z",
+                "fontVariantId": "regular",
+                "textDecoration": "none",
+                "letterSpacing": "0",
+                "fills": [
+                  {
+                    "fillColor": "#57606a",
+                    "fillOpacity": 1
+                  }
+                ],
+                "fontFamily": "sourcesanspro",
+                "text": "Source Sans Pro for the interface, Source Code Pro for the terminal, ids and digests. Both OFL, vendored, never loaded from another host."
+              }
+            ],
+            "typographyRefId": "1bf598fb-df5e-80a9-8008-c8a1c09144f8",
+            "textTransform": "none",
+            "textAlign": "left",
+            "fontId": "sourcesanspro",
+            "fontSize": "14",
+            "fontWeight": "400",
+            "typographyRefFile": "e9b1fda8-08ec-8139-8008-c8a149679a45",
+            "textDirection": "ltr",
+            "type": "paragraph",
+            "modifiedAt": "2026-10-13T13:32:08.651Z",
+            "fontVariantId": "regular",
+            "textDecoration": "none",
+            "letterSpacing": "0",
+            "fills": [
+              {
+                "fillColor": "#57606a",
+                "fillOpacity": 1
+              }
+            ],
+            "fontFamily": "sourcesanspro"
+          }
+        ]
+      }
+    ]
+  },
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "positionData": [
+    {
+      "x": 1312,
+      "y": 102.59999960660934,
+      "width": 797.8250122070312,
+      "height": 18.399999618530273,
+      "x1": 0,
+      "y1": -0.800000011920929,
+      "x2": 797.8250122070312,
+      "y2": 17.599999606609344,
+      "fontStyle": "normal",
+      "textTransform": "none",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "textDecoration": "none",
+      "letterSpacing": "normal",
+      "fills": [
+        {
+          "fillColor": "#57606a",
+          "fillOpacity": 1
+        }
+      ],
+      "direction": "ltr",
+      "fontFamily": "sourcesanspro",
+      "text": "Source Sans Pro for the interface, Source Code Pro for the terminal, ids and digests. Both OFL, vendored, never loaded from another host."
+    }
+  ],
+  "pageId": "e9b1fda8-08ec-8139-8008-c8a149679a46"
+}

@@ -1,0 +1,112 @@
+{
+  "id": "1bf598fb-df5e-80a9-8008-c8a263832de4",
+  "name": "row",
+  "type": "frame",
+  "x": 2392,
+  "y": 1313,
+  "width": 1376,
+  "height": 48,
+  "rotation": 0,
+  "selrect": {
+    "x": 2392,
+    "y": 1313,
+    "width": 1376,
+    "height": 48,
+    "x1": 2392,
+    "y1": 1313,
+    "x2": 3768,
+    "y2": 1361
+  },
+  "points": [
+    {
+      "x": 2392,
+      "y": 1313
+    },
+    {
+      "x": 3768,
+      "y": 1313
+    },
+    {
+      "x": 3768,
+      "y": 1361
+    },
+    {
+      "x": 2392,
+      "y": 1361
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "1bf598fb-df5e-80a9-8008-c8a260ee1e34",
+  "frameId": "1bf598fb-df5e-80a9-8008-c8a260ee1e34",
+  "flipX": null,
+  "flipY": null,
+  "hideFillOnExport": false,
+  "layoutGapType": "multiple",
+  "layoutPadding": {
+    "p1": 0,
+    "p2": 0,
+    "p3": 0,
+    "p4": 0
+  },
+  "layoutWrapType": "nowrap",
+  "layout": "flex",
+  "hideInViewer": true,
+  "layoutAlignItems": "center",
+  "layoutPaddingType": "simple",
+  "r2": 0,
+  "layoutItemHSizing": "fill",
+  "proportionLock": false,
+  "layoutGap": {
+    "rowGap": 0,
+    "columnGap": 0
+  },
+  "pageId": "e9b1fda8-08ec-8139-8008-c8a149679a46",
+  "layoutItemVSizing": "fix",
+  "r3": 0,
+  "layoutJustifyContent": "start",
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "r1": 0,
+  "layoutFlexDir": "row",
+  "layoutAlignContent": "stretch",
+  "strokes": [
+    {
+      "strokeColor": "#d5d9e0",
+      "strokeOpacity": 1,
+      "strokeAlignment": "inner",
+      "strokeWidth": 1
+    }
+  ],
+  "proportion": 1,
+  "r4": 0,
+  "fills": [
+    {
+      "fillColor": "#ffffff",
+      "fillOpacity": 1
+    }
+  ],
+  "shapes": [
+    "1bf598fb-df5e-80a9-8008-c8a263ee1907",
+    "1bf598fb-df5e-80a9-8008-c8a263e1c4fe",
+    "1bf598fb-df5e-80a9-8008-c8a263d52988",
+    "1bf598fb-df5e-80a9-8008-c8a263c137c9",
+    "1bf598fb-df5e-80a9-8008-c8a263aab760",
+    "1bf598fb-df5e-80a9-8008-c8a2639b8e36",
+    "1bf598fb-df5e-80a9-8008-c8a2638c2c59"
+  ]
+}

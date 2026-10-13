@@ -1,0 +1,106 @@
+{
+  "id": "1bf598fb-df5e-80a9-8008-c8a2914b5285",
+  "name": "box",
+  "type": "frame",
+  "x": 4080,
+  "y": 537.4999999999998,
+  "width": 16,
+  "height": 16,
+  "rotation": 0,
+  "selrect": {
+    "x": 4080,
+    "y": 537.4999999999998,
+    "width": 16,
+    "height": 16,
+    "x1": 4080,
+    "y1": 537.4999999999998,
+    "x2": 4096,
+    "y2": 553.4999999999998
+  },
+  "points": [
+    {
+      "x": 4080,
+      "y": 537.4999999999998
+    },
+    {
+      "x": 4096,
+      "y": 537.4999999999998
+    },
+    {
+      "x": 4096,
+      "y": 553.4999999999998
+    },
+    {
+      "x": 4080,
+      "y": 553.4999999999998
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "1bf598fb-df5e-80a9-8008-c8a29140b940",
+  "frameId": "1bf598fb-df5e-80a9-8008-c8a29140b940",
+  "flipX": null,
+  "flipY": null,
+  "hideFillOnExport": false,
+  "layoutGapType": "multiple",
+  "layoutPadding": {
+    "p1": 0,
+    "p2": 0,
+    "p3": 0,
+    "p4": 0
+  },
+  "layoutWrapType": "nowrap",
+  "layout": "flex",
+  "hideInViewer": true,
+  "layoutAlignItems": "center",
+  "layoutPaddingType": "simple",
+  "r2": 4,
+  "layoutItemHSizing": "fix",
+  "proportionLock": false,
+  "layoutGap": {
+    "rowGap": 0,
+    "columnGap": 0
+  },
+  "pageId": "e9b1fda8-08ec-8139-8008-c8a149679a46",
+  "layoutItemVSizing": "fix",
+  "r3": 4,
+  "layoutJustifyContent": "center",
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "r1": 4,
+  "layoutFlexDir": "row",
+  "layoutAlignContent": "stretch",
+  "strokes": [
+    {
+      "strokeColor": "#1f5fbf",
+      "strokeOpacity": 1,
+      "strokeAlignment": "inner",
+      "strokeWidth": 1
+    }
+  ],
+  "proportion": 1,
+  "r4": 4,
+  "fills": [
+    {
+      "fillColor": "#1f5fbf",
+      "fillOpacity": 1
+    }
+  ],
+  "shapes": [
+    "1bf598fb-df5e-80a9-8008-c8a2915806ab"
+  ]
+}

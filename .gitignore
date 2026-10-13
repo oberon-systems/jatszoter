@@ -23,6 +23,9 @@ build/
 # Local stack, tokens and agent state
 dev/stack/local/
 
+# Packed Penpot archives; git tracks the unpacked template under dev/web/templates
+dev/web/*.penpot
+
 # Local file store and databases
 data/
 *.db

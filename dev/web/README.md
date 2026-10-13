@@ -42,7 +42,7 @@ make -C dev/web up
 through the printed `/autologin` link. If that session is lost, log in as
 `designer@example.com` with password `jatszoter-design`.
 
-Draw in the browser at `http://localhost:9001`. When you are done, pick the
+Draw in the browser at `http://localhost:9002`. When you are done, pick the
 file to export and the template to write it to, then let the stack go down:
 
 ```bash
@@ -72,19 +72,20 @@ they touch anything.
 `extract` and `convert` are the offline pair and need no stack at all.
 `extract` reads a `.penpot` file from `dev/web/` under the same rules as
 `export`; `convert` goes the other way and writes `<name>.penpot`, which is
-what you hand to a Penpot that is not this one.
+what you hand to a Penpot that is not this one. Git ignores `*.penpot` here
+and tracks only the unpacked template.
 
 ## Settings
 
 `.penpot.yaml` sits next to the `Makefile` and every command reads it:
 
-```yaml
-templates: templates
-port: 9001
-project: jatszoter-design
-version: 2.17.2
-password: jatszoter-design
-```
+| Key         | What it sets                                         |
+| ----------- | ---------------------------------------------------- |
+| `templates` | Directory the templates are read from and written to |
+| `port`      | Port the stack listens on                            |
+| `project`   | Compose project name                                 |
+| `version`   | Penpot image tag; the package default when dropped   |
+| `password`  | Password of the throwaway profile                    |
 
 Drop a key to fall back to the package default. Every key also answers to an
 environment variable with a `PENPOT_` prefix, and the variable wins over the
@@ -96,7 +97,9 @@ PENPOT_PORT=9100 make -C dev/web up
 
 ## Templates
 
-- One directory per template: `manifest.json`, `files/` and `objects/`.
+- One directory per template: `manifest.json`, `files/`, `objects/` and
+  `state.json`. `state.json` holds the page, shape and component names
+  Penpot had live at export; import leaves it out.
 - Images and icons must be SVG. An export that holds raster images is refused
   and the offending files are listed, so you can replace them and export
   again.
@@ -112,7 +115,7 @@ behind the fixed `/mcp/claude` URL, so Claude needs the server added only
 once. Add it, then restart Claude:
 
 ```bash
-claude mcp add --transport http penpot http://localhost:9001/mcp/claude
+claude mcp add --transport http penpot http://localhost:9002/mcp/claude
 ```
 
 After later `up` runs, reconnect `penpot` from `/mcp` instead of restarting.

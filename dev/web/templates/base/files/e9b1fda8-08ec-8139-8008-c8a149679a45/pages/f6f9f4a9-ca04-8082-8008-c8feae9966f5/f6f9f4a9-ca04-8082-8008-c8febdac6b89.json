@@ -1,0 +1,100 @@
+{
+  "id": "f6f9f4a9-ca04-8082-8008-c8febdac6b89",
+  "name": "section Agents",
+  "type": "frame",
+  "x": 3112,
+  "y": 291.9999999999991,
+  "width": 1376,
+  "height": 241,
+  "rotation": 0,
+  "selrect": {
+    "x": 3112,
+    "y": 291.9999999999991,
+    "width": 1376,
+    "height": 241,
+    "x1": 3112,
+    "y1": 291.9999999999991,
+    "x2": 4488,
+    "y2": 532.9999999999991
+  },
+  "points": [
+    {
+      "x": 3112,
+      "y": 291.9999999999991
+    },
+    {
+      "x": 4488,
+      "y": 291.9999999999991
+    },
+    {
+      "x": 4488,
+      "y": 532.9999999999991
+    },
+    {
+      "x": 3112,
+      "y": 532.9999999999991
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "f6f9f4a9-ca04-8082-8008-c8febbc8510f",
+  "frameId": "f6f9f4a9-ca04-8082-8008-c8febbc8510f",
+  "flipX": null,
+  "flipY": null,
+  "hideFillOnExport": false,
+  "layoutItemAbsolute": false,
+  "layoutGapType": "multiple",
+  "layoutPadding": {
+    "p1": 0,
+    "p2": 0,
+    "p3": 0,
+    "p4": 0
+  },
+  "layoutWrapType": "nowrap",
+  "layout": "flex",
+  "hideInViewer": true,
+  "layoutAlignItems": "start",
+  "layoutPaddingType": "simple",
+  "r2": 0,
+  "showContent": true,
+  "layoutItemHSizing": "fill",
+  "proportionLock": false,
+  "layoutGap": {
+    "rowGap": 12,
+    "columnGap": 12
+  },
+  "pageId": "f6f9f4a9-ca04-8082-8008-c8feae9966f5",
+  "layoutItemVSizing": "auto",
+  "r3": 0,
+  "layoutJustifyContent": "start",
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "r1": 0,
+  "layoutFlexDir": "column",
+  "layoutAlignContent": "stretch",
+  "strokes": [],
+  "proportion": 1,
+  "shadow": [],
+  "r4": 0,
+  "fills": [],
+  "layoutItemZIndex": 0,
+  "shapes": [
+    "f6f9f4a9-ca04-8082-8008-c8fec1bd1d74",
+    "f6f9f4a9-ca04-8082-8008-c8febdf1fc8f",
+    "f6f9f4a9-ca04-8082-8008-c8febdbd5ab0"
+  ]
+}

@@ -1,0 +1,111 @@
+{
+  "id": "f6f9f4a9-ca04-8082-8008-c8fec61ce304",
+  "name": "icon",
+  "type": "frame",
+  "x": 4668,
+  "y": 161.9999999999999,
+  "width": 20,
+  "height": 20,
+  "rotation": 0,
+  "selrect": {
+    "x": 4668,
+    "y": 161.9999999999999,
+    "width": 20,
+    "height": 20,
+    "x1": 4668,
+    "y1": 161.9999999999999,
+    "x2": 4688,
+    "y2": 181.9999999999999
+  },
+  "points": [
+    {
+      "x": 4668,
+      "y": 161.9999999999999
+    },
+    {
+      "x": 4688,
+      "y": 161.9999999999999
+    },
+    {
+      "x": 4688,
+      "y": 181.9999999999999
+    },
+    {
+      "x": 4668,
+      "y": 181.9999999999999
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "f6f9f4a9-ca04-8082-8008-c8fec60c2e0e",
+  "frameId": "f6f9f4a9-ca04-8082-8008-c8fec60c2e0e",
+  "flipX": null,
+  "flipY": null,
+  "hideFillOnExport": false,
+  "layoutItemAbsolute": false,
+  "layoutGapType": "multiple",
+  "layoutPadding": {
+    "p1": 0,
+    "p2": 0,
+    "p3": 0,
+    "p4": 0
+  },
+  "layoutWrapType": "nowrap",
+  "layout": "flex",
+  "hideInViewer": true,
+  "blendMode": "normal",
+  "layoutAlignItems": "center",
+  "layoutPaddingType": "simple",
+  "r2": 999,
+  "showContent": false,
+  "layoutItemHSizing": "fix",
+  "proportionLock": false,
+  "layoutGap": {
+    "rowGap": 0,
+    "columnGap": 0
+  },
+  "pageId": "f6f9f4a9-ca04-8082-8008-c8feae9966f5",
+  "layoutItemVSizing": "fix",
+  "r3": 999,
+  "layoutJustifyContent": "center",
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "r1": 999,
+  "hidden": false,
+  "layoutFlexDir": "row",
+  "layoutAlignContent": "stretch",
+  "strokes": [],
+  "proportion": 1,
+  "shadow": [],
+  "r4": 999,
+  "layoutItemMargin": {
+    "m1": 0,
+    "m2": 0,
+    "m3": 0,
+    "m4": 0
+  },
+  "fills": [
+    {
+      "fillColor": "#11632a",
+      "fillOpacity": 1
+    }
+  ],
+  "layoutItemZIndex": 0,
+  "shapes": [
+    "f6f9f4a9-ca04-8082-8008-c8fec62a5a2e"
+  ]
+}

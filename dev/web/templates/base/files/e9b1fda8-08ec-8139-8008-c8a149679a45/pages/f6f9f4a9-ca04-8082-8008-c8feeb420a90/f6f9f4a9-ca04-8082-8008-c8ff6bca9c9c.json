@@ -1,0 +1,112 @@
+{
+  "id": "f6f9f4a9-ca04-8082-8008-c8ff6bca9c9c",
+  "name": "badge disabled",
+  "type": "frame",
+  "x": 5354,
+  "y": 1421,
+  "width": 80,
+  "height": 20,
+  "rotation": 0,
+  "selrect": {
+    "x": 5354,
+    "y": 1421,
+    "width": 80,
+    "height": 20,
+    "x1": 5354,
+    "y1": 1421,
+    "x2": 5434,
+    "y2": 1441
+  },
+  "points": [
+    {
+      "x": 5354,
+      "y": 1421
+    },
+    {
+      "x": 5434,
+      "y": 1421
+    },
+    {
+      "x": 5434,
+      "y": 1441
+    },
+    {
+      "x": 5354,
+      "y": 1441
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "f6f9f4a9-ca04-8082-8008-c8ff6bb07373",
+  "frameId": "f6f9f4a9-ca04-8082-8008-c8ff6bb07373",
+  "flipX": null,
+  "flipY": null,
+  "hideFillOnExport": false,
+  "layoutItemAbsolute": false,
+  "layoutGapType": "multiple",
+  "layoutPadding": {
+    "p1": 2,
+    "p2": 10,
+    "p3": 2,
+    "p4": 10
+  },
+  "layoutWrapType": "nowrap",
+  "layout": "flex",
+  "hideInViewer": true,
+  "blendMode": "normal",
+  "layoutAlignItems": "center",
+  "layoutPaddingType": "simple",
+  "r2": 999,
+  "showContent": false,
+  "layoutItemHSizing": "auto",
+  "proportionLock": false,
+  "layoutGap": {
+    "rowGap": 6,
+    "columnGap": 6
+  },
+  "pageId": "f6f9f4a9-ca04-8082-8008-c8feeb420a90",
+  "layoutItemVSizing": "auto",
+  "r3": 999,
+  "layoutJustifyContent": "start",
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "r1": 999,
+  "hidden": false,
+  "layoutFlexDir": "row",
+  "layoutAlignContent": "stretch",
+  "strokes": [],
+  "proportion": 1,
+  "shadow": [],
+  "r4": 999,
+  "layoutItemMargin": {
+    "m1": 0,
+    "m2": 0,
+    "m3": 0,
+    "m4": 0
+  },
+  "fills": [
+    {
+      "fillColor": "#eaecef",
+      "fillOpacity": 1
+    }
+  ],
+  "layoutItemZIndex": 0,
+  "shapes": [
+    "f6f9f4a9-ca04-8082-8008-c8ff6c0c71e9",
+    "f6f9f4a9-ca04-8082-8008-c8ff6bf11fb5"
+  ]
+}

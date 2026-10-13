@@ -1,0 +1,105 @@
+{
+  "id": "f6f9f4a9-ca04-8082-8008-c8fbc0ec856a",
+  "name": "Tabs",
+  "type": "frame",
+  "x": 0,
+  "y": 1400,
+  "width": 1000,
+  "height": 322,
+  "rotation": 0,
+  "selrect": {
+    "x": 0,
+    "y": 1400,
+    "width": 1000,
+    "height": 322,
+    "x1": 0,
+    "y1": 1400,
+    "x2": 1000,
+    "y2": 1722
+  },
+  "points": [
+    {
+      "x": 0,
+      "y": 1400
+    },
+    {
+      "x": 1000,
+      "y": 1400
+    },
+    {
+      "x": 1000,
+      "y": 1722
+    },
+    {
+      "x": 0,
+      "y": 1722
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "00000000-0000-0000-0000-000000000000",
+  "frameId": "00000000-0000-0000-0000-000000000000",
+  "flipX": null,
+  "flipY": null,
+  "hideFillOnExport": false,
+  "layoutGapType": "multiple",
+  "layoutPadding": {
+    "p1": 32,
+    "p2": 32,
+    "p3": 32,
+    "p4": 32
+  },
+  "layoutWrapType": "nowrap",
+  "layout": "flex",
+  "blendMode": "normal",
+  "layoutAlignItems": "start",
+  "layoutPaddingType": "simple",
+  "r2": 0,
+  "showContent": true,
+  "layoutItemHSizing": "fix",
+  "proportionLock": false,
+  "layoutGap": {
+    "rowGap": 20,
+    "columnGap": 20
+  },
+  "pageId": "e9b1fda8-08ec-8139-8008-c8a149679a46",
+  "layoutItemVSizing": "auto",
+  "r3": 0,
+  "layoutJustifyContent": "start",
+  "r1": 0,
+  "hidden": false,
+  "layoutFlexDir": "column",
+  "layoutAlignContent": "stretch",
+  "strokes": [],
+  "proportion": 1,
+  "shadow": [],
+  "r4": 0,
+  "fills": [
+    {
+      "fillColor": "#ffffff",
+      "fillOpacity": 1
+    }
+  ],
+  "shapes": [
+    "f6f9f4a9-ca04-8082-8008-c8fbc294f158",
+    "f6f9f4a9-ca04-8082-8008-c8fbc2730804",
+    "f6f9f4a9-ca04-8082-8008-c8fbc15d4713",
+    "f6f9f4a9-ca04-8082-8008-c8fbc13ffa43",
+    "f6f9f4a9-ca04-8082-8008-c8fbc1229cbc",
+    "f6f9f4a9-ca04-8082-8008-c8fbc104c387"
+  ]
+}

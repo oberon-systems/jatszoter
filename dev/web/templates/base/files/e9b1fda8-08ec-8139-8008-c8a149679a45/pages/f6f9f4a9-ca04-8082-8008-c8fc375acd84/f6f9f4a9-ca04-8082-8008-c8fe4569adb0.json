@@ -1,0 +1,112 @@
+{
+  "id": "f6f9f4a9-ca04-8082-8008-c8fe4569adb0",
+  "name": "navigation",
+  "type": "frame",
+  "x": 1634,
+  "y": 2013.5,
+  "width": 519,
+  "height": 29,
+  "rotation": 0,
+  "selrect": {
+    "x": 1634,
+    "y": 2013.5,
+    "width": 519,
+    "height": 29,
+    "x1": 1634,
+    "y1": 2013.5,
+    "x2": 2153,
+    "y2": 2042.5
+  },
+  "points": [
+    {
+      "x": 1634,
+      "y": 2013.5
+    },
+    {
+      "x": 2153,
+      "y": 2013.5
+    },
+    {
+      "x": 2153,
+      "y": 2042.5
+    },
+    {
+      "x": 1634,
+      "y": 2042.5
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "f6f9f4a9-ca04-8082-8008-c8fe45344596",
+  "frameId": "f6f9f4a9-ca04-8082-8008-c8fe45344596",
+  "flipX": null,
+  "flipY": null,
+  "hideFillOnExport": false,
+  "layoutItemAbsolute": false,
+  "layoutGapType": "multiple",
+  "layoutPadding": {
+    "p1": 0,
+    "p2": 0,
+    "p3": 0,
+    "p4": 0
+  },
+  "layoutWrapType": "nowrap",
+  "layout": "flex",
+  "hideInViewer": true,
+  "blendMode": "normal",
+  "layoutAlignItems": "center",
+  "layoutPaddingType": "simple",
+  "r2": 0,
+  "showContent": false,
+  "layoutItemHSizing": "auto",
+  "proportionLock": false,
+  "layoutGap": {
+    "rowGap": 4,
+    "columnGap": 4
+  },
+  "pageId": "f6f9f4a9-ca04-8082-8008-c8fc375acd84",
+  "layoutItemVSizing": "auto",
+  "r3": 0,
+  "layoutJustifyContent": "start",
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "r1": 0,
+  "hidden": false,
+  "layoutFlexDir": "row",
+  "layoutAlignContent": "stretch",
+  "strokes": [],
+  "proportion": 1,
+  "shadow": [],
+  "r4": 0,
+  "layoutItemMargin": {
+    "m1": 0,
+    "m2": 0,
+    "m3": 0,
+    "m4": 0
+  },
+  "fills": [],
+  "layoutItemZIndex": 0,
+  "shapes": [
+    "f6f9f4a9-ca04-8082-8008-c8fe46f0b0ca",
+    "f6f9f4a9-ca04-8082-8008-c8fe46adddd3",
+    "f6f9f4a9-ca04-8082-8008-c8fe46743a84",
+    "f6f9f4a9-ca04-8082-8008-c8fe46319d25",
+    "f6f9f4a9-ca04-8082-8008-c8fe45f59828",
+    "f6f9f4a9-ca04-8082-8008-c8fe45ba0cf9",
+    "f6f9f4a9-ca04-8082-8008-c8fe4582680c"
+  ]
+}

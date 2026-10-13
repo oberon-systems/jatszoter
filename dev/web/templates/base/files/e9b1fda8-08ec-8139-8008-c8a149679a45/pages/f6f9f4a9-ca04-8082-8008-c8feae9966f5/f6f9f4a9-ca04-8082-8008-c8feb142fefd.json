@@ -1,0 +1,107 @@
+{
+  "id": "f6f9f4a9-ca04-8082-8008-c8feb142fefd",
+  "name": "titles",
+  "type": "frame",
+  "x": 32,
+  "y": 79.99999999999997,
+  "width": 248,
+  "height": 45.99999999999994,
+  "rotation": 0,
+  "selrect": {
+    "x": 32,
+    "y": 79.99999999999997,
+    "width": 248,
+    "height": 45.99999999999994,
+    "x1": 32,
+    "y1": 79.99999999999997,
+    "x2": 280,
+    "y2": 125.99999999999991
+  },
+  "points": [
+    {
+      "x": 32,
+      "y": 79.99999999999997
+    },
+    {
+      "x": 280,
+      "y": 79.99999999999997
+    },
+    {
+      "x": 280,
+      "y": 125.99999999999991
+    },
+    {
+      "x": 32,
+      "y": 125.99999999999991
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "f6f9f4a9-ca04-8082-8008-c8feb1378eb0",
+  "frameId": "f6f9f4a9-ca04-8082-8008-c8feb1378eb0",
+  "flipX": null,
+  "flipY": null,
+  "hideFillOnExport": false,
+  "layoutItemAbsolute": false,
+  "layoutGapType": "multiple",
+  "layoutPadding": {
+    "p1": 0,
+    "p2": 0,
+    "p3": 0,
+    "p4": 0
+  },
+  "layoutWrapType": "nowrap",
+  "layout": "flex",
+  "hideInViewer": true,
+  "blendMode": "normal",
+  "layoutAlignItems": "start",
+  "layoutPaddingType": "simple",
+  "r2": 0,
+  "showContent": false,
+  "layoutItemHSizing": "auto",
+  "proportionLock": false,
+  "layoutGap": {
+    "rowGap": 2,
+    "columnGap": 2
+  },
+  "pageId": "f6f9f4a9-ca04-8082-8008-c8feae9966f5",
+  "layoutItemVSizing": "auto",
+  "r3": 0,
+  "layoutJustifyContent": "start",
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "r1": 0,
+  "hidden": false,
+  "layoutFlexDir": "column",
+  "layoutAlignContent": "stretch",
+  "strokes": [],
+  "proportion": 1,
+  "shadow": [],
+  "r4": 0,
+  "layoutItemMargin": {
+    "m1": 0,
+    "m2": 0,
+    "m3": 0,
+    "m4": 0
+  },
+  "fills": [],
+  "layoutItemZIndex": 0,
+  "shapes": [
+    "f6f9f4a9-ca04-8082-8008-c8feb15aaad8",
+    "f6f9f4a9-ca04-8082-8008-c8feb14d2a10"
+  ]
+}

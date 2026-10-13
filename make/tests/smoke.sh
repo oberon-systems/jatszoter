@@ -153,6 +153,54 @@ header() {
     sed -n "s/^$1: //Ip" <<<"$opened"
 }
 
+# The cookie reaches curl on stdin; an error answer is left to the caller.
+linked() {
+    printf 'request = "%s"\nurl = "%s"\nheader = "Cookie: jatszoter_link=%s"\n' \
+        "$1" "$api$2" "$cookie" | curl -sS -K - "${@:3}"
+}
+
+# Asks as `linked` or `signed` and prints the status the check settles with, nothing else.
+check() {
+    local ask="$1" path="/api/v1/deployments/$deployment/checks" id again status
+    local left=$((check_seconds + 60))
+    id="$("$ask" POST "$path" | jq -er .id)" || {
+        echo "the check asked as $ask was not accepted" >&2
+        exit 1
+    }
+    if [ "${2:-}" = twice ]; then
+        again="$(linked POST "$path" -o /dev/null -w '%{http_code}')"
+        if [ "$again" != 409 ]; then
+            echo "a second check while one is pending answered $again, not 409" >&2
+            exit 1
+        fi
+    fi
+    while :; do
+        "$ask" GET "$path/$id" >"$TEMP_DIR/check.json"
+        status="$(jq -er .status "$TEMP_DIR/check.json")" || {
+            echo "the check asked as $ask could not be read" >&2
+            exit 1
+        }
+        if [ "$status" != pending ]; then break; fi
+        left=$((left - 1))
+        if [ "$left" -le 0 ]; then
+            echo "the check is still pending after $((check_seconds + 60)) seconds" >&2
+            exit 1
+        fi
+        sleep 1
+    done
+    printf '%s\n' "$status"
+}
+
+# Fails by name unless the last check read has the status and the message.
+settled() {
+    local message
+    message="$(jq -r .message "$TEMP_DIR/check.json")"
+    if [ "$2" != "$3" ] || [ "$message" != "$4" ]; then
+        echo "the check $1 is $2 with the message '$message', not $3 with '$4'" >&2
+        exit 1
+    fi
+}
+
 # A trainee socket by cookie and an operator socket by signature; prints check names only.
 # shellcheck disable=SC2016
 terminal_py='
@@ -206,8 +254,8 @@ class Terminal:
         return self.until(lambda: text.encode() in self.seen, seconds)
 
     # The echo shows the arithmetic as typed; only the guest expands it.
-    def runs(self, mark, seconds=30):
-        return self.prints(f"printf {mark}-%d $((40 + 2))", f"{mark}-42", seconds)
+    def runs(self, mark, seconds=30, before=""):
+        return self.prints(f"{before}printf {mark}-%d $((40 + 2))", f"{mark}-42", seconds)
 
 
 def take_control():
@@ -225,14 +273,35 @@ def resize():
     return operator.prints("stty size", "30 100")
 
 
-checks = [
-    ("the trainee attaches holding control", lambda: trainee.held_by("trainee")),
-    ("the trainee types into the guest", lambda: trainee.runs("one")),
-    ("the operator takes control", take_control),
-    ("the keys of the trainee are cut", lambda: not trainee.runs("two", 5)),
-    ("the operator types into the guest", lambda: operator.runs("three")),
-    ("a resize reaches the guest", resize),
-]
+def fixes(mark, command):
+    return operator.runs(mark, 60, f"sudo {command} && ")
+
+
+# A 502 is retried, so the page is waited for while the app unit comes up.
+def serves():
+    line = "curl -fsS --retry 10 --retry-delay 1 http://127.0.0.1/"
+    return operator.prints(line, "hello from app", 60)
+
+
+unit = "sed -i s/8018/8081/ /etc/systemd/system/app.service"
+parts = {
+    "handover": [
+        ("the trainee attaches holding control", lambda: trainee.held_by("trainee")),
+        ("the trainee types into the guest", lambda: trainee.runs("one")),
+        ("the operator takes control", take_control),
+        ("the keys of the trainee are cut", lambda: not trainee.runs("two", 5)),
+        ("the operator types into the guest", lambda: operator.runs("three")),
+        ("a resize reaches the guest", resize),
+    ],
+    "fix": [
+        ("the operator still holds control", lambda: operator.held_by("operator")),
+        ("the app unit goes back to port 8081", lambda: fixes("unit", unit)),
+        ("systemd reloads its units", lambda: fixes("reload", "systemctl daemon-reload")),
+        ("the app unit restarts", lambda: fixes("restart", "systemctl restart app.service")),
+        ("nginx serves the app page", serves),
+    ],
+}
+checks = parts[os.environ["TERMINAL_PART"]]
 def attach(headers):
     return connect(target.geturl(), additional_headers=headers, open_timeout=30)
 
@@ -253,7 +322,7 @@ except (OSError, WebSocketException) as err:
 
 # The cookie and the key reach the terminal through its environment, never a command line.
 terminal() {
-    TERMINAL_URL="ws://${api#http://}/api/v1/deployments/$deployment/attach" \
+    TERMINAL_PART="$1" TERMINAL_URL="ws://${api#http://}/api/v1/deployments/$deployment/attach" \
         TERMINAL_COOKIE="$cookie" \
         TERMINAL_OWNER="$owner" TERMINAL_CREDENTIAL="$credential" TERMINAL_KEY="$key" \
         "$VENV/bin/python" -I -c "$terminal_py"
@@ -311,12 +380,24 @@ def marked():
     return any(reached(first) < index < reached(second) for index in marks)
 
 
+# The first marker starting with the text; None when there is none.
+def mark(text):
+    marks = (index for index, (code, part) in enumerate(events) if code == "m")
+    return next((index for index in marks if events[index][1].startswith(text)), None)
+
+
+def checked():
+    order = [mark(text) for text in ("control operator", "check failed", "check passed")]
+    return None not in order and order == sorted(order)
+
+
 checks = [
     ("the first line is an asciicast header", header),
     ("every event is well formed and in order", well_formed),
     ("the output holds what both typed and not the cut line", typed),
     ("the control change sits between the two", marked),
     ("the resize is an event", lambda: ("r", "100x30") in events),
+    ("a failed check comes before a passed one, after the control change", checked),
 ]
 for name, check in checks:
     try:
@@ -435,6 +516,7 @@ created="$(signed POST /api/v1/deployments \
     "$(jq -cn --arg id "$(jq -r .id <<<"$scenario")" --arg trainee "$trainee" \
         '{scenario_id: $id, trainee_id: $trainee}')")"
 deployment="$(jq -r .id <<<"$created")"
+check_seconds="$(jq -r .check_seconds <<<"$created")"
 wait_for "$(($(jq -r .bootstrap_seconds <<<"$created") + 120))" vm_ready
 if ! vm_alive; then
     echo "the VM is not running at READY" >&2
@@ -494,7 +576,22 @@ for attribute in httponly secure samesite=strict "path=/api/v1/deployments/$depl
 done
 
 echo "typing as the trainee, then taking control..."
-terminal
+terminal handover
+
+echo "checking the broken guest as the trainee..."
+status="$(check linked twice)"
+settled "before the fix" "$status" failed 'nginx still does not serve the app page'
+if ! jq -e 'has("detail") | not' "$TEMP_DIR/check.json" >/dev/null; then
+    echo "the trainee's answer to a check carries a detail key" >&2
+    exit 1
+fi
+
+echo "repairing the guest as the operator..."
+terminal fix
+
+echo "checking the repaired guest as the operator..."
+status="$(check signed)"
+settled "after the fix" "$status" passed solved
 
 echo "replaying the recording..."
 listed="$(recordings)"

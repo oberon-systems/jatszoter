@@ -60,7 +60,7 @@ to cover it. An item marked Done has landed on `main`.
    - Agent: no change; the API records the stream it already receives.
    - Smoke: a session leaves a recording that replays.
 10. Checks through the guest agent
-    ([01](01-architecture.md#data-flows)).
+    ([01](01-architecture.md#data-flows)). Done.
     - API: a check requested by an operator or a trainee link, one pending
       at a time, timed out without an answer; the script and the result
       routes of the agent; results as markers in the recording.

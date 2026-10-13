@@ -73,9 +73,9 @@ Each prompt starts by pointing here. These hold for all of them.
     for it; the `Design system` page is approved before any screen board;
   - a board is addressed by its page and board name, and read from the
     export in `dev/web/templates/base`; the stack is started only to draw;
-  - starting and stopping the stack is the user's: ask for `make design`
-    and `make -C dev/web down`, and keep a file open in the Penpot tab
-    while the Penpot MCP server is used;
+  - starting and stopping the stack is the user's: ask for
+    `make -C dev/web up` and `make -C dev/web down`, and keep a file open
+    in the Penpot tab while the Penpot MCP server is used;
   - boards are handed to the user and the prompt stops; only an explicit
     approval lets the export be committed and the build begin;
   - images and icons are SVG; an export with a raster image is refused.

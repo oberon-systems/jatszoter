@@ -19,7 +19,7 @@ template, built from the design system, approved and exported.
 
 `dev/web/templates/base/` only, through the stack. No code.
 
-Ask the user for `make design` with the `base` template. One Penpot page
+Ask the user for `make -C dev/web up` with the `base` template. One Penpot page
 per screen, named as the screen is named in `08-web-ui.md`; one board per
 state:
 

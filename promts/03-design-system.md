@@ -19,7 +19,7 @@ is later assembled from, approved by the user and exported.
 
 `dev/web/templates/base/` only, through the stack. No code.
 
-Ask the user for `make design`, then draw on page `Design system`:
+Ask the user for `make -C dev/web up`, then draw on page `Design system`:
 
 - colors, as named tokens, with the contrast of each text and surface
   pair;

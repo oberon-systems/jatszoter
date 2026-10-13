@@ -14,11 +14,12 @@ and packed archives kept out of git.
 
 - The stack is already wired: `dev/web/Makefile` passes `up`, `down`,
   `import`, `export`, `extract` and `convert` to
-  `../../.venv/bin/penpot-stack`; the root `make design` runs `up`;
-  `dev/web/.penpot.yaml` names the Compose project, the port 9001 and the
-  Penpot version; `dev/web/README.md` describes the loop.
+  `../../.venv/bin/penpot-stack`; the root `Makefile` has no design
+  target, the stack lives in `dev/web` alone; `dev/web/.penpot.yaml`
+  names the Compose project, the port 9002 and the Penpot version; `dev/web/README.md` describes the loop.
 - `requirements.txt` pins `penpot-local-stack==0.1.1`; the latest release
-  is 0.1.2, whose Compose file carries literal image tags.
+  is 0.1.3: 0.1.2 made the image tags literal and moved to Postgres 18,
+  whose tmpfs mount only 0.1.3 fixes.
 - `dev/web/templates/` holds only `.gitkeep`: no template was exported yet.
 - An export is a directory with `manifest.json`, `files/`, `objects/` and
   `state.json`; `state.json` may carry non-ASCII text, which the
@@ -29,10 +30,10 @@ and packed archives kept out of git.
 
 ## Scope
 
-`requirements.txt`, `.pre-commit-config.yaml`, `.gitignore`,
+`requirements.txt`, `.pre-commit-config.yaml`, `.gitignore`, `Makefile`,
 `dev/web/README.md`. Nothing under `packages/`.
 
-- Pin `penpot-local-stack==0.1.2`.
+- Pin `penpot-local-stack==0.1.3`.
 - Ignore `dev/web/*.penpot`, with a one-line comment saying the unpacked
   template is what git tracks.
 - Let an exported template pass the hooks: exclude from a hook only what
@@ -51,8 +52,8 @@ never switched off. An export holding a raster image stays refused.
 
 ## Acceptance
 
-- `make install` installs 0.1.2 and `.venv/bin/penpot-stack` starts.
-- `make design` brings the stack up with `(empty)`; a file named `base`
+- `make install` installs 0.1.3 and `.venv/bin/penpot-stack` starts.
+- `make -C dev/web up` brings the stack up with `(empty)`; a file named `base`
   with one empty page is exported by `make -C dev/web down` into
   `dev/web/templates/base/`.
 - `.venv/bin/pre-commit run --files` over that export and the edited files

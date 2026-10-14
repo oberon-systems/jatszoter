@@ -434,3 +434,36 @@ def test_with_the_file_store_failing_a_result_and_a_timeout_are_still_stored(
     session.refresh(check)
     assert (check.status, check.exit_code, check.message) == (CheckStatus.FAILED, 1, "alpha")
     assert recorded(session, ready) == []
+
+
+CHECKS = "/api/v1/checks"
+
+
+def test_the_operator_lists_every_check_newest_first_with_its_deployment(
+    operator: Any, session: Session, deploy: Callable[..., Deployment]
+) -> None:
+    first, second = deploy(), deploy()
+    old = held(session, first, age=100, status=CheckStatus.PASSED, exit_code=0, detail="alpha")
+    new = held(session, second, age=10)
+
+    response = operator.request("GET", CHECKS)
+
+    assert response.status_code == 200
+    rows = response.json()
+    assert [(row["id"], row["deployment_id"]) for row in rows] == [
+        (str(new.id), str(second.id)),
+        (str(old.id), str(first.id)),
+    ]
+    assert set(rows[0]) == SHOWN | {"detail", "deployment_id"}
+    assert rows[1]["detail"] == "alpha"
+
+
+def test_only_an_operator_lists_every_check(
+    sign_in: Callable[..., Any], api: TestClient, session: Session, ready: Deployment
+) -> None:
+    held(session, ready)
+    _, cookie = opened(api, session, ready, Role.TRAINEE)
+    trainee = sign_in(name="gamma", role=Role.TRAINEE)
+
+    assert trainee.request("GET", CHECKS).status_code == 403
+    assert linked(api, "GET", CHECKS, cookie).status_code == 401

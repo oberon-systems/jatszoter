@@ -983,3 +983,30 @@ def test_a_trainee_attaching_after_the_cache_lost_the_recording_resumes_it(
             ship(agent, 9, b"gamma")
 
     assert recorded(session, ready) == [("o", "alpha"), ("o", "gamma")]
+
+
+def test_disabling_a_user_closes_the_sockets_of_their_links_with_4403_and_no_other(
+    api: TestClient,
+    session: Session,
+    operator: Any,
+    shipper: Shipper,
+    deploy: Callable[..., Deployment],
+) -> None:
+    ready = deploy(status=S.READY)
+    link, cookie = opened(api, session, ready, Role.TRAINEE)
+    _, other = opened(api, session, ready, Role.VIEWER, name="gamma")
+    with (
+        shipper.connect(ready.id) as agent,
+        join(api, ready.id, cookie) as disabled,
+        join(api, ready.id, other) as kept,
+    ):
+        offset(agent)
+        assert (attached(disabled), attached(kept)) == (0, 0)
+
+        where = f"/api/v1/users/{link.user_id}/state"
+        assert operator.request("POST", where, json={"state": "disabled"}).is_success
+
+        assert closed(disabled) == 4403
+        ship(agent, 0, b"alpha")
+        assert kept.receive_bytes() == b"alpha"
+    assert refused(join(api, ready.id, cookie)) == 1008

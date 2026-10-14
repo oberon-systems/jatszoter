@@ -16,7 +16,17 @@ from sqlmodel import Session
 from jatszoter_api import bundles
 from jatszoter_api.app import create_app
 from jatszoter_api.file import File
-from jatszoter_api.models import Agent, Check, CheckStatus, Deployment, Image, Scenario, State
+from jatszoter_api.lifecycle import DeploymentStatus
+from jatszoter_api.models import (
+    Agent,
+    Check,
+    CheckStatus,
+    Deployment,
+    Image,
+    Role,
+    Scenario,
+    State,
+)
 from jatszoter_api.models._cache import Cached
 from jatszoter_api.models.agent import LEASE_SECONDS
 from jatszoter_api.settings import Settings
@@ -734,3 +744,120 @@ def test_a_stored_bundle_that_no_longer_holds_serves_no_script_and_the_check_sta
 
     session.refresh(check)
     assert check.status is CheckStatus.PENDING
+
+
+AGENTS = "/api/v1/agents"
+
+
+def test_the_operator_lists_registrations_and_agents_with_their_lease(
+    operator: Any, session: Session
+) -> None:
+    code = register(operator.client, "beta")
+    agent = enroll(operator.client, session)
+    assert agent.call("POST", "/heartbeat", {"capacity": 2}).status_code == 200
+
+    response = operator.request("GET", AGENTS)
+
+    assert response.status_code == 200
+    answer = response.json()
+    [pending] = answer["registrations"]
+    assert set(pending) == {"id", "name", "labels", "registered_at"}
+    assert (pending["name"], pending["labels"]) == ("beta", ["beta"])
+    [listed] = answer["agents"]
+    assert (listed["id"], listed["state"], listed["capacity"]) == (agent.id, "enabled", 2)
+    assert listed["lease_expires_at"] == listed["heartbeat_at"] + LEASE_SECONDS
+    assert code not in response.text
+    assert agent.key not in response.text
+
+
+def test_a_lapsed_registration_leaves_the_list(operator: Any) -> None:
+    register(operator.client)
+    [pending] = operator.request("GET", AGENTS).json()["registrations"]
+
+    Cached._client().delete(f"registration:{pending['id']}")
+
+    assert operator.request("GET", AGENTS).json()["registrations"] == []
+    assert Cached._client().zcard("registrations") == 0
+
+
+def test_enabling_a_registration_approves_it(operator: Any) -> None:
+    code = register(operator.client)
+    [pending] = operator.request("GET", AGENTS).json()["registrations"]
+
+    response = operator.request(
+        "POST", f"{AGENTS}/{pending['id']}/state", json={"state": "enabled"}
+    )
+
+    assert response.status_code == 200
+    assert (response.json()["id"], response.json()["state"]) == (pending["id"], "enabled")
+    assert operator.request("GET", AGENTS).json()["registrations"] == []
+    assert claim(operator.client, code).status_code == 200
+
+
+def test_disabling_an_agent_ends_its_lease_and_fails_what_it_runs(
+    operator: Any, session: Session
+) -> None:
+    agent = enroll(operator.client, session)
+    assert agent.call("POST", "/heartbeat", {"capacity": 2}).status_code == 200
+    running = Deployment(
+        session=session,
+        scenario_id=uuid.uuid4(),
+        image_id=uuid.uuid4(),
+        trainee_id=uuid.uuid4(),
+        agent_id=uuid.UUID(agent.id),
+        vm_id=uuid.uuid4(),
+        status=DeploymentStatus.READY,
+        **SIZING,
+    )
+    running.save()
+
+    response = operator.request("POST", f"{AGENTS}/{agent.id}/state", json={"state": "disabled"})
+
+    assert response.status_code == 200
+    assert (response.json()["state"], response.json()["lease_expires_at"]) == ("disabled", None)
+    session.expire_all()
+    failed = Deployment(session=session).load(id=running.id)
+    assert (failed.status, failed.reason) == (DeploymentStatus.FAILED, "agent disabled")
+    assert agent.call("POST", "/heartbeat", {"capacity": 2}).status_code == 401
+
+
+def test_an_enabled_agent_is_enabled_again_and_keeps_its_lease(
+    operator: Any, session: Session
+) -> None:
+    agent = enroll(operator.client, session)
+    assert agent.call("POST", "/heartbeat", {"capacity": 1}).status_code == 200
+
+    response = operator.request("POST", f"{AGENTS}/{agent.id}/state", json={"state": "enabled"})
+
+    assert response.status_code == 200
+    assert response.json()["capacity"] == 1
+
+
+@pytest.mark.parametrize("state", ["enabled", "disabled"])
+def test_an_unknown_agent_is_not_found(operator: Any, state: str) -> None:
+    response = operator.request("POST", f"{AGENTS}/{uuid.uuid4()}/state", json={"state": state})
+
+    assert response.status_code == 404
+
+
+@pytest.mark.parametrize("body", [{}, {"state": "pending"}, {"state": "enabled", "extra": 1}])
+def test_a_malformed_state_is_unprocessable(
+    operator: Any, session: Session, body: dict[str, Any]
+) -> None:
+    agent = enroll(operator.client, session)
+
+    assert operator.request("POST", f"{AGENTS}/{agent.id}/state", json=body).status_code == 422
+
+
+def test_only_an_operator_lists_or_switches_agents(
+    sign_in: Callable[..., Any], operator: Any, session: Session
+) -> None:
+    trainee = sign_in(name="gamma", role=Role.TRAINEE)
+    agent = enroll(operator.client, session)
+    switch = f"{AGENTS}/{agent.id}/state"
+
+    assert trainee.request("GET", AGENTS).status_code == 403
+    assert trainee.request("POST", switch, json={"state": "disabled"}).status_code == 403
+    assert operator.client.get(AGENTS).status_code == 401
+    session.expire_all()
+    assert Agent(session=session).load(id=uuid.UUID(agent.id)).state is State.ENABLED

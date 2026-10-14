@@ -14,9 +14,11 @@ from jatszoter_api.models._cache import Cached
 from jatszoter_api.models.user import ADMIN
 from jatszoter_api.routes import (
     agents_router,
+    all_checks_router,
     auth_router,
     checks_router,
     console_router,
+    deployment_party_router,
     deployments_router,
     domain_error_handler,
     images_router,
@@ -24,6 +26,7 @@ from jatszoter_api.routes import (
     open_router,
     recordings_router,
     scenarios_router,
+    storage_router,
     users_router,
 )
 from jatszoter_api.settings import Settings
@@ -90,14 +93,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     v1 = APIRouter(prefix="/api/v1")
     v1.include_router(agents_router)
+    v1.include_router(all_checks_router)
     v1.include_router(auth_router)
     v1.include_router(checks_router)
     v1.include_router(console_router)
     v1.include_router(deployments_router)
+    v1.include_router(deployment_party_router)
     v1.include_router(images_router)
     v1.include_router(links_router)
     v1.include_router(recordings_router)
     v1.include_router(scenarios_router)
+    v1.include_router(storage_router)
     v1.include_router(users_router)
     app.include_router(v1)
     app.include_router(open_router)

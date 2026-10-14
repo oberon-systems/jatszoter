@@ -72,6 +72,7 @@ def deploy(
         session=session,
         scenario_id=scenario.id,
         image_id=scenario.image.id,
+        trainee_id=uuid.uuid4(),
         status=status,
         **SIZING,
         **known,

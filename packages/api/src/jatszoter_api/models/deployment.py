@@ -7,6 +7,7 @@ from pydantic import PrivateAttr
 from sqlmodel import Field, Session
 
 from jatszoter_api.errors import ConflictError, InvalidTransitionError
+from jatszoter_api.file import File
 from jatszoter_api.lifecycle import TERMINAL, Actor, DeploymentStatus, advance
 from jatszoter_api.models._base import Base
 from jatszoter_api.models.check import Check, CheckStatus
@@ -25,6 +26,7 @@ class Deployment(Base, table=True):
 
     scenario_id: uuid.UUID = Field(index=True)
     image_id: uuid.UUID = Field(index=True)
+    trainee_id: uuid.UUID = Field(index=True)
     agent_id: uuid.UUID | None = Field(default=None, index=True)
     vm_id: uuid.UUID | None = None
     status: DeploymentStatus = Field(default=DeploymentStatus.PENDING, index=True)
@@ -42,6 +44,7 @@ class Deployment(Base, table=True):
     _image: Image | None = PrivateAttr(default=None)
     _links: list[Link] | None = PrivateAttr(default=None)
     _checks: list[Check] | None = PrivateAttr(default=None)
+    _recordings: list[Recording] | None = PrivateAttr(default=None)
     _console: Console | None = PrivateAttr(default=None)
 
     def __init__(self, session: Session, **data: Any) -> None:
@@ -87,6 +90,16 @@ class Deployment(Base, table=True):
         return self._checks
 
     @property
+    def recordings(self) -> list[Recording]:
+        if not self._recordings:
+            self._recordings = Recording._load(self._session, deployment_id=self.id)
+        return self._recordings
+
+    @property
+    def session_ends_at(self) -> int | None:
+        return None if self.ready_at is None else self.ready_at + self.session_minutes * 60
+
+    @property
     def console(self) -> Console:
         if not self._console:
             self._console = Console(self.id)
@@ -96,6 +109,23 @@ class Deployment(Base, table=True):
     def pending(self) -> Check | None:
         """The check waiting for its result, if there is one."""
         return next((held for held in self.checks if held.status is CheckStatus.PENDING), None)
+
+    def stored(self, filer_url: str | None) -> tuple[int, int]:
+        """Bytes held in the file store by the console log and by the recordings."""
+        console = File(self.console.path, filer_url=filer_url).size()
+        recordings = sum(
+            row.size_bytes or File(row.path, filer_url=filer_url).size() for row in self.recordings
+        )
+        return console, recordings
+
+    def purge(self, filer_url: str | None) -> None:
+        """Delete the console log and the recordings of an ended deployment, files and rows."""
+        if self.status not in TERMINAL:
+            raise ConflictError(f"deployment {self.id} is {self.status}")
+        File(self.console.path, filer_url=filer_url).delete()
+        for recording in self.recordings:
+            recording.drop(filer_url)
+        self._recordings = None
 
     def expire_checks(self) -> list[Check]:
         """Settle every overdue pending check as `timeout`; answer the ones this call settled."""

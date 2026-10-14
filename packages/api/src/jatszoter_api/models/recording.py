@@ -164,6 +164,12 @@ class Recording(Base, table=True):
     def mark(self, text: str, filer_url: str | None, limit_bytes: int) -> None:
         self._event("m", text, filer_url, limit_bytes)
 
+    def drop(self, filer_url: str | None) -> None:
+        """Delete the asciicast, then the row."""
+        File(self.path, filer_url=filer_url).delete()
+        self._session.delete(self)
+        self._session.commit()
+
     def close(self, filer_url: str | None) -> None:
         """Store the file's size and the duration once; a repeated call changes nothing."""
         if self.size_bytes:

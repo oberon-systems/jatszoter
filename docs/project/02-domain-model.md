@@ -150,6 +150,9 @@ and tests always - the API uses an in-memory
 - A pending registration under `registration:<agent id>`, and its claim code
   under `claim:<sha256 of the code>`, until an operator approves it and the
   agent claims it, or their TTL runs out.
+- The index of pending registrations, the sorted set `registrations`: each
+  agent id scored by its registration time. A reader drops the ids whose
+  registration has lapsed, so nothing scans the cache to list them.
 - A link session under `session:<sha256 of the session token>`: the link
   id, for a day, renewed on every use. A revoked link's sessions are left
   to expire; they open nothing, since every use loads the link row.

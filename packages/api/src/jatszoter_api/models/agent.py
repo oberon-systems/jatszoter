@@ -2,7 +2,7 @@ import hashlib
 import secrets
 import time
 import uuid
-from typing import Any, Self
+from typing import Any, Self, cast
 
 from pydantic import PrivateAttr
 from sqlmodel import JSON, Column, Field, Session, SQLModel
@@ -16,6 +16,7 @@ from jatszoter_api.models.secret import SecretOwner
 
 LEASE_SECONDS = 30
 CLAIM_SECONDS = 24 * 60 * 60
+REGISTRATIONS = "registrations"
 RUNNING = (
     DeploymentStatus.STARTING,
     DeploymentStatus.BOOTSTRAPPING,
@@ -29,6 +30,13 @@ class Lease(SQLModel):
     capacity: int
     heartbeat_at: int
     expires_at: int
+
+
+class Registration(SQLModel):
+    id: uuid.UUID
+    name: str
+    labels: list[str]
+    registered_at: int
 
 
 def _digest(code: str) -> str:
@@ -139,8 +147,15 @@ class Agent(SecretOwner, table=True):
             self.state = State.ENABLED
             self.save()
         else:
-            pending = {"name": self.name, "labels": self.labels, "state": self.state}
+            now = int(time.time())
+            pending = {
+                "name": self.name,
+                "labels": self.labels,
+                "state": self.state,
+                "registered_at": now,
+            }
             self._set("registration", pending, CLAIM_SECONDS)
+            self._client().zadd(REGISTRATIONS, {str(self.id): now})
         Cached._set(self, f"claim:{_digest(code)}", self.id, CLAIM_SECONDS)
         return code
 
@@ -149,9 +164,50 @@ class Agent(SecretOwner, table=True):
         pending: dict[str, Any] | None = Cached()._get(f"registration:{self.id}")
         if pending is None or not Cached()._delete(f"registration:{self.id}"):
             return None
+        self._client().zrem(REGISTRATIONS, str(self.id))
         self.name, self.labels = pending["name"], pending["labels"]
         self.state = State.ENABLED
         self.save()
+        return self
+
+    def registrations(self) -> list[Registration]:
+        """Agents waiting for an operator, oldest first; lapsed ones leave the index."""
+        client = self._client()
+        client.zremrangebyscore(REGISTRATIONS, "-inf", int(time.time()) - CLAIM_SECONDS)
+        waiting = []
+        for raw in cast(list[bytes], client.zrange(REGISTRATIONS, 0, -1)):
+            pending: dict[str, Any] | None = Cached()._get(f"registration:{raw.decode()}")
+            if pending is None:
+                client.zrem(REGISTRATIONS, raw)
+                continue
+            waiting.append(
+                Registration(
+                    id=uuid.UUID(raw.decode()),
+                    name=pending["name"],
+                    labels=pending["labels"],
+                    registered_at=pending["registered_at"],
+                )
+            )
+        return waiting
+
+    def switch(
+        self, state: State, filer_url: str | None = None, limit_bytes: int | None = None
+    ) -> Self:
+        """Enable or disable this agent; disabling ends its lease and fails what it runs."""
+        self.state = state
+        self.save()
+        if state is State.DISABLED:
+            self._delete("lease")
+            for deployment in self.deployments:
+                if deployment.status in RUNNING:
+                    deployment.transition(
+                        "abort",
+                        deployment.status,
+                        "agent disabled",
+                        actor=Actor.API,
+                        filer_url=filer_url,
+                        limit_bytes=limit_bytes,
+                    )
         return self
 
     def claimed(self, code: str) -> Self | None:

@@ -156,8 +156,11 @@ class SecretOwner(Base):
             self._delete("secret")
             return True
         if credential.generation < record.generation:
-            # A superseded generation in use means two parties hold it; only an operator
-            # re-enables the owner.
-            self.state = State.DISABLED
-            self.save()
+            self.superseded()
         return False
+
+    def superseded(self) -> None:
+        """A superseded generation still signs: two parties hold it, so only an operator
+        re-enables the owner."""
+        self.state = State.DISABLED
+        self.save()

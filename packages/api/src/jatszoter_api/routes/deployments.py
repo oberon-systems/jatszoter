@@ -1,11 +1,11 @@
 import uuid
-from typing import cast
+from typing import Annotated, cast
 
 import httpx
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, ConfigDict
 
-from jatszoter_api.auth import require_operator
+from jatszoter_api.auth import Party, require_deployment_party, require_operator
 from jatszoter_api.errors import ConflictError, InvalidReferenceError, NotFoundError
 from jatszoter_api.file import File
 from jatszoter_api.lifecycle import TERMINAL, DeploymentStatus
@@ -19,7 +19,7 @@ from jatszoter_api.models import (
     State,
     User,
 )
-from jatszoter_api.routes.agents import StrictModel
+from jatszoter_api.routes.agents import StrictModel, stored_bundle
 from jatszoter_api.routes.deps import SessionDep, SettingsDep
 from jatszoter_api.routes.links import LinkOut, link_out
 
@@ -40,6 +40,7 @@ class DeploymentOut(BaseModel):
     id: uuid.UUID
     scenario_id: uuid.UUID
     image_id: uuid.UUID
+    trainee_id: uuid.UUID
     agent_id: uuid.UUID | None
     vm_id: uuid.UUID | None
     status: DeploymentStatus
@@ -70,6 +71,27 @@ class TraineeLink(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
     token: str
+
+
+class TaskOut(BaseModel):
+    status: DeploymentStatus
+    title: str
+    description: str
+    role: Role
+    session_ends_at: int | None
+
+
+class DeploymentStorage(BaseModel):
+    deployment_id: uuid.UUID
+    console_bytes: int
+    recording_bytes: int
+    recordings: int
+
+
+class StorageOut(BaseModel):
+    deployments: list[DeploymentStorage]
+    scenario_bytes: int
+    total_bytes: int
 
 
 class DeploymentCreated(DeploymentOut):
@@ -106,6 +128,9 @@ def _holds_trainee(session: SessionDep, deployment: Deployment) -> bool:
 
 
 router = APIRouter(prefix="/deployments", dependencies=[Depends(require_operator)])
+# No router dependency: the task is read by a signed operator or through a link.
+party_router = APIRouter(prefix="/deployments")
+storage_router = APIRouter(prefix="/storage", dependencies=[Depends(require_operator)])
 
 
 @router.post("", status_code=201)
@@ -134,6 +159,7 @@ def create(body: DeploymentIn, session: SessionDep, settings: SettingsDep) -> De
         session=session,
         scenario_id=scenario.id,
         image_id=image.id,
+        trainee_id=trainee.id,
         agent_id=body.agent_id,
         cpus=resources.get("cpus", settings.default_cpus),
         memory_mib=resources.get("memory_mib", settings.default_memory_mib),
@@ -224,3 +250,51 @@ def console(session: SessionDep, settings: SettingsDep, deployment_id: uuid.UUID
         if error.response.status_code != 404:
             raise
     return Response(log.data, media_type="application/octet-stream")
+
+
+@router.post("/{deployment_id}/purge")
+def purge(session: SessionDep, settings: SettingsDep, deployment_id: uuid.UUID) -> DeploymentOut:
+    deployment = _deployment(session, deployment_id)
+    deployment.purge(None if settings.seaweed_url is None else str(settings.seaweed_url))
+    return DeploymentOut.model_validate(deployment)
+
+
+@party_router.get("/{deployment_id}/task")
+def task(
+    session: SessionDep,
+    settings: SettingsDep,
+    party: Annotated[Party, Depends(require_deployment_party)],
+    deployment_id: uuid.UUID,
+) -> TaskOut:
+    deployment = _deployment(session, deployment_id)
+    bundle = stored_bundle(deployment, settings)
+    text = bundle.files[bundle.document["description"]].decode(errors="replace")
+    return TaskOut(
+        status=deployment.status,
+        title=deployment.scenario.document["title"],
+        description=text,
+        role=party.user.role,
+        session_ends_at=deployment.session_ends_at,
+    )
+
+
+@storage_router.get("")
+def storage(session: SessionDep, settings: SettingsDep) -> StorageOut:
+    filer_url = None if settings.seaweed_url is None else str(settings.seaweed_url)
+    held = []
+    deployments = sorted(Deployment._load(session), key=lambda row: row.created_at, reverse=True)
+    for deployment in deployments:
+        console, recordings = deployment.stored(filer_url)
+        held.append(
+            DeploymentStorage(
+                deployment_id=deployment.id,
+                console_bytes=console,
+                recording_bytes=recordings,
+                recordings=len(deployment.recordings),
+            )
+        )
+    scenarios = sum(
+        File(row.bundle_path, filer_url=filer_url).size() for row in Scenario._load(session)
+    )
+    total = scenarios + sum(row.console_bytes + row.recording_bytes for row in held)
+    return StorageOut(deployments=held, scenario_bytes=scenarios, total_bytes=total)

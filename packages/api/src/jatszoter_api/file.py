@@ -99,4 +99,6 @@ class File:
         self.data = self._client.get(self.url).raise_for_status().content
 
     def delete(self) -> None:
-        self._client.delete(self.url).raise_for_status()
+        response = self._client.delete(self.url)
+        if response.status_code != 404:
+            response.raise_for_status()

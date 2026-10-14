@@ -29,6 +29,7 @@ SCENARIO = uuid.uuid4()
 FIELDS: dict[str, Any] = {
     "scenario_id": SCENARIO,
     "image_id": uuid.uuid4(),
+    "trainee_id": uuid.uuid4(),
     "cpus": 1,
     "memory_mib": 512,
     "disk_gib": 4,

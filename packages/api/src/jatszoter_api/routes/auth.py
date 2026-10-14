@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from jatszoter_api.auth import require_user
 from jatszoter_api.errors import ForbiddenError
-from jatszoter_api.models import User
+from jatszoter_api.models import Role, User
 from jatszoter_api.models.secret import CREDENTIAL_SECONDS
 from jatszoter_api.routes.agents import CredentialOut, StrictModel, credential_out
 from jatszoter_api.routes.deps import SessionDep, SettingsDep
@@ -25,6 +25,12 @@ class LoginIn(StrictModel):
 class LoginOut(BaseModel):
     user_id: uuid.UUID
     credential: CredentialOut
+
+
+class MeOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    role: Role
 
 
 router = APIRouter(prefix="/auth")
@@ -59,3 +65,8 @@ def refresh(user: UserDep, settings: SettingsDep) -> CredentialOut:
 def logout(user: UserDep) -> None:
     """End every credential the signed user holds."""
     user.logout()
+
+
+@router.get("/me")
+def me(user: UserDep) -> MeOut:
+    return MeOut(id=user.id, name=user.name, role=user.role)

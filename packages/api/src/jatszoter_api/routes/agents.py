@@ -9,12 +9,12 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 from sqlmodel import Session
 
 from jatszoter_api import bundles
-from jatszoter_api.auth import require_agent, unauthorized
+from jatszoter_api.auth import require_agent, require_operator, unauthorized
 from jatszoter_api.errors import ConflictError, DomainError, NotFoundError
 from jatszoter_api.file import File
 from jatszoter_api.lifecycle import Actor, DeploymentStatus
-from jatszoter_api.models import Agent, Check, CheckStatus, Credential, Deployment
-from jatszoter_api.models.agent import Lease
+from jatszoter_api.models import Agent, Check, CheckStatus, Credential, Deployment, State
+from jatszoter_api.models.agent import Lease, Registration
 from jatszoter_api.models.secret import CREDENTIAL_SECONDS
 from jatszoter_api.routes.deps import MarkDep, SessionDep, SettingsDep
 from jatszoter_api.settings import Settings
@@ -164,6 +164,38 @@ class ResultOut(BaseModel):
     status: CheckStatus
 
 
+class AgentOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    labels: list[str]
+    state: State
+    heartbeat_at: int | None
+    capacity: int | None
+    lease_expires_at: int | None
+
+
+def agent_out(agent: Agent) -> AgentOut:
+    lease = agent.lease
+    return AgentOut(
+        id=agent.id,
+        name=agent.name,
+        labels=agent.labels,
+        state=agent.state,
+        heartbeat_at=None if lease is None else lease.heartbeat_at,
+        capacity=None if lease is None else lease.capacity,
+        lease_expires_at=None if lease is None else lease.expires_at,
+    )
+
+
+class AgentsOut(BaseModel):
+    registrations: list[Registration]
+    agents: list[AgentOut]
+
+
+class StateIn(StrictModel):
+    state: State
+
+
 router = APIRouter(prefix="/agents")
 
 
@@ -190,7 +222,7 @@ def _pending(
     return deployment, check
 
 
-def _bundle(deployment: Deployment, settings: Settings) -> bundles.Bundle:
+def stored_bundle(deployment: Deployment, settings: Settings) -> bundles.Bundle:
     """The stored bundle of the deployment's scenario, read and compared with its digest."""
     scenario = deployment.scenario
     filer_url = None if settings.seaweed_url is None else str(settings.seaweed_url)
@@ -272,7 +304,7 @@ def seed(
     if deployment.status is not DeploymentStatus.STARTING:
         raise ConflictError(f"deployment {deployment_id} is {deployment.status}, not STARTING")
     rendered = deployment.seed(
-        _bundle(deployment, settings).files,
+        stored_bundle(deployment, settings).files,
         settings.default_trainee_user,
         settings.default_trainee_sudo,
     )
@@ -288,7 +320,7 @@ def script(
     check_id: uuid.UUID,
 ) -> ScriptOut:
     deployment, _ = _pending(session, agent, deployment_id, check_id)
-    bundle = _bundle(deployment, settings)
+    bundle = stored_bundle(deployment, settings)
     # `from None`: the decoding error quotes the script's bytes, which are never logged.
     try:
         text = bundle.files[bundle.document["check"]].decode()
@@ -313,3 +345,30 @@ def result(
         raise ConflictError(f"check {check_id} is {check.status}")
     mark(check)
     return ResultOut(id=check.id, status=check.status)
+
+
+@router.get("", dependencies=[Depends(require_operator)])
+def index(session: SessionDep) -> AgentsOut:
+    agents = sorted(Agent._load(session), key=lambda row: row.name)
+    return AgentsOut(
+        registrations=Agent(session=session).registrations(),
+        agents=[agent_out(agent) for agent in agents],
+    )
+
+
+@router.post("/{agent_id}/state", dependencies=[Depends(require_operator)])
+def switch(
+    body: StateIn, session: SessionDep, settings: SettingsDep, agent_id: uuid.UUID
+) -> AgentOut:
+    """Enable or disable a stored agent; `enabled` on a pending registration approves it."""
+    try:
+        agent = Agent(session=session).load(id=agent_id)
+    except IndexError:
+        approved = None
+        if body.state is State.ENABLED:
+            approved = Agent(session=session, id=agent_id).approve()
+        if approved is None:
+            raise NotFoundError(f"agent {agent_id} is not known") from None
+        return agent_out(approved)
+    filer_url = None if settings.seaweed_url is None else str(settings.seaweed_url)
+    return agent_out(agent.switch(body.state, filer_url, settings.recording_limit_bytes))

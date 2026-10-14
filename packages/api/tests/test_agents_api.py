@@ -257,6 +257,7 @@ def deploy(session: Session, scenario: Scenario, agent_id: str | None = None) ->
         session=session,
         scenario_id=scenario.id,
         image_id=scenario.image.id,
+        trainee_id=uuid.uuid4(),
         **SIZING,
         **pinned,
     )

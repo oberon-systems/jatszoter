@@ -3,12 +3,17 @@ import hmac
 import secrets
 import time
 from enum import StrEnum
-from typing import Any
+from typing import Any, Self
 
 from pydantic import PrivateAttr
 from sqlmodel import Field, Session
 
-from jatszoter_api.errors import InvalidPasswordError, NotAuthorizedError, ThrottledError
+from jatszoter_api.errors import (
+    ConflictError,
+    InvalidPasswordError,
+    NotAuthorizedError,
+    ThrottledError,
+)
 from jatszoter_api.models._base import State
 from jatszoter_api.models._cache import Cached
 from jatszoter_api.models.link import Link
@@ -100,6 +105,27 @@ class User(SecretOwner, table=True):
     def check_password(self, plain: str) -> bool:
         """Whether `plain` is the password; a user without one still costs a scrypt."""
         return _matches(plain, self.password or _DECOY) and self.password is not None
+
+    def superseded(self) -> None:
+        """Nothing: a user's key never leaves `web`, whose tabs race the refresh."""
+
+    def switch(self, state: State) -> Self:
+        """Enable or disable this user; the last enabled operator is never disabled."""
+        if state is State.DISABLED and self.role is Role.OPERATOR and self.state is State.ENABLED:
+            enabled = User._load(self._session, role=Role.OPERATOR, state=State.ENABLED)
+            if len(enabled) <= 1:
+                raise ConflictError("cannot disable the last enabled operator")
+        self.state = state
+        self.save()
+        return self
+
+    def reset_password(self, password: str) -> None:
+        """Set a one-time password, which the next login must change."""
+        if len(password) < MIN_PASSWORD_LENGTH:
+            raise InvalidPasswordError(f"a password needs {MIN_PASSWORD_LENGTH} characters")
+        self.password = _hashed(password)
+        self.password_changed = 0
+        self.save()
 
     def change_password(self, old: str, new: str) -> None:
         """Replace the password and mark it changed, refusing a short or unchanged one."""

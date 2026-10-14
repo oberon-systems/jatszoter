@@ -49,6 +49,7 @@ def deploy(session: Session, scenario: Scenario, status: S) -> Deployment:
         session=session,
         scenario_id=scenario.id,
         image_id=scenario.image.id,
+        trainee_id=uuid.uuid4(),
         status=status,
         cpus=1,
         memory_mib=512,

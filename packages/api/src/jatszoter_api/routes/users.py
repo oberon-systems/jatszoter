@@ -1,12 +1,13 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from jatszoter_api.auth import require_operator
+from jatszoter_api.errors import NotFoundError
 from jatszoter_api.models import Role, State, User
-from jatszoter_api.routes.agents import StrictModel
+from jatszoter_api.routes.agents import StateIn, StrictModel
 from jatszoter_api.routes.deps import SessionDep
 
 
@@ -14,6 +15,10 @@ class UserIn(StrictModel):
     name: Annotated[str, Field(min_length=1, max_length=64)]
     role: Role
     comment: Annotated[str, Field(max_length=1024)] | None = None
+
+
+class PasswordIn(StrictModel):
+    password: Annotated[str, Field(min_length=1, max_length=1024)]
 
 
 class UserOut(BaseModel):
@@ -28,6 +33,13 @@ class UserOut(BaseModel):
 
 
 router = APIRouter(prefix="/users", dependencies=[Depends(require_operator)])
+
+
+def _user(session: SessionDep, user_id: uuid.UUID) -> User:
+    try:
+        return User(session=session).load(id=user_id)
+    except IndexError:
+        raise NotFoundError(f"user {user_id} is not known") from None
 
 
 @router.post("", status_code=201)
@@ -48,3 +60,17 @@ def index(session: SessionDep, role: Role | None = None) -> list[UserOut]:
     key = {} if role is None else {"role": role}
     users = sorted(User._load(session, **key), key=lambda row: row.created_at, reverse=True)
     return [UserOut.model_validate(user) for user in users]
+
+
+@router.post("/{user_id}/state")
+def switch(body: StateIn, request: Request, session: SessionDep, user_id: uuid.UUID) -> UserOut:
+    user = _user(session, user_id).switch(body.state)
+    if user.state is State.DISABLED:
+        for link in user.links:
+            request.app.state.console_hub.revoke(link.id)
+    return UserOut.model_validate(user)
+
+
+@router.post("/{user_id}/password", status_code=204)
+def reset_password(body: PasswordIn, session: SessionDep, user_id: uuid.UUID) -> None:
+    _user(session, user_id).reset_password(body.password)

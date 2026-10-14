@@ -69,23 +69,30 @@ API.
 
 ## Operator API
 
-Operators and the web UI call the API under `/api/v1`. The routes the web UI
-still needs are listed in [08](08-web-ui.md#api-gaps).
+Operators and the web UI call the API under `/api/v1`. What each screen of
+the web UI calls is listed in [08](08-web-ui.md#screens).
 
 ```text
 POST /api/v1/auth/login                    open
 POST /api/v1/auth/credential               signed (user)
 POST /api/v1/auth/logout                   signed (user)
+GET  /api/v1/auth/me                       signed (user)
+GET  /api/v1/agents                        signed (operator)
+POST /api/v1/agents/{agent_id}/state       signed (operator)
 POST /api/v1/images                        signed (operator)
 GET  /api/v1/images                        signed (operator)
 POST /api/v1/scenarios                     signed (operator)
 GET  /api/v1/scenarios                     signed (operator)
 POST /api/v1/users                         signed (operator)
 GET  /api/v1/users                         signed (operator)
+POST /api/v1/users/{id}/state              signed (operator)
+POST /api/v1/users/{id}/password           signed (operator)
 POST /api/v1/deployments                   signed (operator)
 GET  /api/v1/deployments                   signed (operator)
 GET  /api/v1/deployments/{id}              signed (operator)
 POST /api/v1/deployments/{id}/stop         signed (operator)
+POST /api/v1/deployments/{id}/purge        signed (operator)
+GET  /api/v1/deployments/{id}/task         signed (operator), link
 GET  /api/v1/deployments/{id}/console      signed (operator)
 POST /api/v1/deployments/{id}/links        signed (operator)
 GET  /api/v1/deployments/{id}/links        signed (operator)
@@ -95,6 +102,8 @@ POST /api/v1/deployments/{id}/checks       signed (operator), operator or traine
 GET  /api/v1/deployments/{id}/checks       signed (operator), link
 GET  /api/v1/deployments/{id}/checks/{id}  signed (operator), link
 WS   /api/v1/deployments/{id}/attach       signed (operator), link
+GET  /api/v1/checks                        signed (operator)
+GET  /api/v1/storage                       signed (operator)
 POST /api/v1/links/{id}/revoke             signed (operator)
 GET  /api/v1/recordings/{id}.cast          signed (operator)
 GET  /s/{token}                            open, the token is the secret

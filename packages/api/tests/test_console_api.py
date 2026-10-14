@@ -203,6 +203,7 @@ def deploy(session: Session, scenario: Scenario, shipper: Shipper) -> Callable[.
             session=session,
             scenario_id=scenario.id,
             image_id=scenario.image.id,
+            trainee_id=uuid.uuid4(),
             agent_id=shipper.agent.id if agent_id is None else agent_id,
             vm_id=uuid.uuid4(),
             status=status,

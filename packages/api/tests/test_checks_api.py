@@ -52,6 +52,7 @@ def deploy(session: Session) -> Callable[..., Deployment]:
             session=session,
             scenario_id=scenario.id,
             image_id=scenario.image.id,
+            trainee_id=uuid.uuid4(),
             vm_id=uuid.uuid4(),
             status=status,
             cpus=1,

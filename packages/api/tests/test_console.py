@@ -118,6 +118,7 @@ def test_a_deployment_marks_ready_and_drops_the_tail_when_it_ends(session: Sessi
         agent_id=AGENT,
         scenario_id=uuid.uuid4(),
         image_id=uuid.uuid4(),
+        trainee_id=uuid.uuid4(),
         cpus=1,
         memory_mib=512,
         disk_gib=4,

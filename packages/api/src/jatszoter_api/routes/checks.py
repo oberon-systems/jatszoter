@@ -4,7 +4,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict
 
-from jatszoter_api.auth import Party, require_deployment_party
+from jatszoter_api.auth import Party, require_deployment_party, require_operator
 from jatszoter_api.errors import ForbiddenError, NotFoundError
 from jatszoter_api.models import Check, CheckStatus, Deployment, Role
 from jatszoter_api.routes.deps import MarkDep, SessionDep
@@ -27,6 +27,10 @@ class CheckDetail(CheckOut):
     detail: str | None
 
 
+class CheckOfDeployment(CheckDetail):
+    deployment_id: uuid.UUID
+
+
 def check_out(check: Check, party: Party) -> dict[str, Any]:
     """A check as its reader may see it: `detail` is there for an operator alone."""
     shape = CheckDetail if party.user.role is Role.OPERATOR else CheckOut
@@ -42,6 +46,13 @@ def _deployment(session: SessionDep, deployment_id: uuid.UUID) -> Deployment:
 
 # No router dependency: each route takes the party, a signed operator or a link.
 router = APIRouter(prefix="/deployments")
+all_router = APIRouter(prefix="/checks", dependencies=[Depends(require_operator)])
+
+
+@all_router.get("")
+def index_all(session: SessionDep) -> list[CheckOfDeployment]:
+    stored = sorted(Check._load(session), key=lambda row: row.created_at, reverse=True)
+    return [CheckOfDeployment.model_validate(check) for check in stored]
 
 
 @router.post("/{deployment_id}/checks", status_code=201)

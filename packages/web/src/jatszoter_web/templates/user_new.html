@@ -1,0 +1,47 @@
+{% from "flash.html" import flash %}
+{% from "ui.html" import field_error, invalid with context %}
+<dialog class="dialog" aria-labelledby="dialog-title">
+    <h2 class="heading" id="dialog-title">New user</h2>
+    <p class="dialog-text">The user is enabled at once and can log in after an operator sets a one-time password.</p>
+    {% for item in flashes %}{{ flash(item) }}{% endfor %}
+    <form class="dialog-form"
+          method="post"
+          action="{{ url_for('create_user').path }}"
+          hx-post="{{ url_for('create_user').path }}"
+          hx-target="closest dialog"
+          hx-swap="outerHTML">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="field">
+            <span class="label">Name</span>
+            <input class="input{{ invalid(errors, 'name') }}"
+                   type="text"
+                   name="name"
+                   value="{{ values.name or '' }}"
+                   required
+                   autofocus>
+            {% if errors.name %}{{ field_error(errors, "name") }}{% else %}<span class="hint">Unique, used to log in</span>{% endif %}
+        </label>
+        <label class="field">
+            <span class="label">Role</span>
+            <select class="select{{ invalid(errors, 'role') }}" name="role">
+                {% for item in roles %}
+                    <option value="{{ item }}"
+                            {% if item == (values.role or 'trainee') %} selected{% endif %}>{{ item }}</option>
+                {% endfor %}
+            </select>
+            {% if errors.role %}{{ field_error(errors, "role") }}{% else %}<span class="hint">operator, trainee or viewer; a link acts with this role</span>{% endif %}
+        </label>
+        <label class="field">
+            <span class="label">Comment</span>
+            <input class="input{{ invalid(errors, 'comment') }}"
+                   type="text"
+                   name="comment"
+                   value="{{ values.comment or '' }}">
+            {{ field_error(errors, "comment") }}
+        </label>
+        <div class="dialog-actions">
+            <button class="button button-secondary" type="button" data-close>Cancel</button>
+            <button class="button button-primary" type="submit">Create user</button>
+        </div>
+    </form>
+</dialog>

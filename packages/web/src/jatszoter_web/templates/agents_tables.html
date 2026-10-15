@@ -1,0 +1,99 @@
+{% from "ui.html" import badge, empty_row with context %}
+{% from "flash.html" import flash %}
+<div id="agents-tables"
+     class="sections"
+     hx-get="{{ url_for('agents').path }}"
+     hx-trigger="every 5s"
+     hx-swap="outerHTML">
+    {% if registrations %}
+        <section class="section">
+            <h2 class="heading">Pending registrations</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th class="w-200">Name</th>
+                        <th class="w-320">Labels</th>
+                        <th class="w-150">State</th>
+                        <th class="w-200">Registered</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in registrations %}
+                        <tr>
+                            <td>{{ row.name }}</td>
+                            <td class="mono-small">{{ row.labels | join(" ") }}</td>
+                            <td>{{ badge('pending', 'warning') }}</td>
+                            <td class="mono-small">{{ row.registered_at | when(True) }}</td>
+                            <td>
+                                <form class="actions"
+                                      method="post"
+                                      action="{{ url_for('switch_agent', agent_id=row.id).path }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <input type="hidden" name="state" value="enabled">
+                                    <button class="button button-secondary button-small" type="submit">Approve</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+    {% endif %}
+    <section class="section">
+        <h2 class="heading">Agents</h2>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th class="w-200">Name</th>
+                    <th class="w-320">Labels</th>
+                    <th class="w-150">State</th>
+                    <th class="w-200">Last heartbeat</th>
+                    <th class="w-110">Capacity</th>
+                    <th class="w-200">Lease deadline</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in agents %}
+                    <tr>
+                        <td>{{ row.name }}</td>
+                        <td class="mono-small">{{ row.labels | join(" ") }}</td>
+                        <td>{{ badge(row.state) }}</td>
+                        <td class="mono-small">{{ row.heartbeat_at | when(True) }}</td>
+                        <td class="mono-small">{{ '-' if row.capacity is none else row.capacity }}</td>
+                        <td class="mono-small">{{ row.lease_expires_at | when(True) }}</td>
+                        <td>
+                            {% if row.state == "enabled" %}
+                                <div class="actions">
+                                    <button class="button button-danger-outline button-small"
+                                            type="button"
+                                            hx-get="{{ url_for('agent_dialog', agent_id=row.id).path }}"
+                                            hx-target="#dialogs">Disable</button>
+                                </div>
+                            {% else %}
+                                <form class="actions"
+                                      method="post"
+                                      action="{{ url_for('switch_agent', agent_id=row.id).path }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <input type="hidden" name="state" value="enabled">
+                                    <button class="button button-secondary button-small" type="submit">Enable</button>
+                                </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% else %}
+                    {% if failure %}
+                        {{ empty_row(7, 'The list could not be loaded', 'It is tried again on the next refresh, in 5 seconds.') }}
+                    {% else %}
+                        {{ empty_row(7, 'No agents yet', 'An agent registers itself when it starts; its registration waits here for approval.') }}
+                    {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+        {% if agents %}<span class="caption">{{ agents | length | counted("agent") }}</span>{% endif %}
+    </section>
+    {% if failure and swapped %}
+        <div id="flashes" class="flashes" hx-swap-oob="true">{{ flash(failure) }}</div>
+    {% endif %}
+</div>

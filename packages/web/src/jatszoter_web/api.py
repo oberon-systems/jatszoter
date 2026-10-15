@@ -82,12 +82,18 @@ class Api:
         path: str,
         payload: Any = None,
         params: dict[str, str] | None = None,
+        files: dict[str, tuple[str, bytes]] | None = None,
     ) -> httpx.Response:
-        body = b"" if payload is None else json.dumps(payload).encode()
-        request = self.http.build_request(method, path, content=body, params=params)
+        """A call signed for `operator`, with a JSON `payload` or a multipart body of `files`."""
+        if files is not None:
+            request = self.http.build_request(method, path, files=files, params=params)
+            body = request.read()
+        else:
+            body = b"" if payload is None else json.dumps(payload).encode()
+            request = self.http.build_request(method, path, content=body, params=params)
+            if payload is not None:
+                request.headers["content-type"] = "application/json"
         request.headers.update(signed_headers(operator, method, request.url.path, body))
-        if payload is not None:
-            request.headers["content-type"] = "application/json"
         return await self.send(request)
 
     async def aclose(self) -> None:

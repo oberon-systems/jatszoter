@@ -1,0 +1,53 @@
+{% from "ui.html" import badge, scenario as scenario_cell, empty_row with context %}
+<div id="results-table" class="listing">
+    <table class="table">
+        <thead>
+            <tr>
+                <th class="w-240">Scenario</th>
+                <th class="w-130">Trainee</th>
+                <th class="w-170">Deployment</th>
+                <th class="w-130">Last check</th>
+                <th class="w-380">Message</th>
+                <th class="w-90">Checks</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+                {% set person = users.get(row.deployment.trainee_id) %}
+                <tr>
+                    <td>{{ scenario_cell(scenarios.get(row.deployment.scenario_id)) }}</td>
+                    <td>{{ person.name if person else '-' }}</td>
+                    <td>{{ badge(row.deployment.status) }}</td>
+                    <td>{{ badge(row.last.status) }}</td>
+                    <td>{{ row.last.message or '' }}</td>
+                    <td class="mono-small">{{ row.checks }}</td>
+                    <td>
+                        <div class="actions">
+                            {# djlint:off J018 #}
+                            <a class="button button-secondary button-small"
+                               href="/deployments/{{ row.deployment.id }}">Open</a>
+                            {# djlint:on #}
+                        </div>
+                    </td>
+                </tr>
+            {% else %}
+                {% if failure %}
+                    {{ empty_row(7, 'Results could not be loaded', 'Reload the page to try again.') }}
+                {% elif scenario or trainee %}
+                    {% set person = users.get(trainee) %}
+                    {% set who = person.name if person else "Nobody" %}
+                    {% if scenario %}
+                        {% set text = who ~ " has no checked deployment of " ~ scenario ~ "." if trainee else "No deployment of " ~ scenario ~ " has a check." %}
+                    {% else %}
+                        {% set text = who ~ " has no checked deployment." %}
+                    {% endif %}
+                    {{ empty_row(7, "No results match the filters", text, "Clear filters", url_for('results').path) }}
+                {% else %}
+                    {{ empty_row(7, 'No results yet', 'A row appears once a deployment has a check.') }}
+                {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+    {% if rows %}<span class="caption">{{ rows | length | counted("deployment") }}</span>{% endif %}
+</div>

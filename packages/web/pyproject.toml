@@ -22,4 +22,4 @@ dependencies = [
 server = ["uvicorn[standard]"]
 
 [tool.setuptools.package-data]
-jatszoter_web = ["py.typed", "templates/*.html", "static/*.css", "static/vendor/*/*"]
+jatszoter_web = ["py.typed", "templates/*.html", "static/*.css", "static/*.js", "static/vendor/*/*"]

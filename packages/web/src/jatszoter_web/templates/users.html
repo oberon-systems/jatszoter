@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Users - Stand{% endblock %}
+{% block header %}
+    <div class="page-header">
+        <div class="titles">
+            <h1 class="title">Users</h1>
+            <span class="subtitle">Operators, trainees and viewers</span>
+        </div>
+        <span class="spacer"></span>
+        <button class="button button-primary"
+                type="button"
+                hx-get="{{ url_for('user_dialog').path }}"
+                hx-target="#dialogs">New user</button>
+    </div>
+{% endblock %}
+{% block content %}
+    <section class="section">
+        {% if not failure %}
+            <form class="filters"
+                  action="{{ url_for('users').path }}"
+                  hx-get="{{ url_for('users').path }}"
+                  hx-trigger="change"
+                  hx-target="#users-table"
+                  hx-swap="outerHTML"
+                  hx-push-url="true">
+                <label class="filter">
+                    <span class="label">Role</span>
+                    <select class="select" name="role">
+                        <option value="">All roles</option>
+                        {% for item in roles %}
+                            <option value="{{ item }}"{% if item == role %} selected{% endif %}>{{ item }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+            </form>
+        {% endif %}
+        {% include "users_table.html" %}
+    </section>
+{% endblock %}

@@ -56,13 +56,14 @@ prefix like every other setting.
 | `/deployments`                                     | GET      | operator | deployments list              |
 | `/deployments/new`                                 | GET POST | operator | create a deployment           |
 | `/deployments/{id}`                                | GET      | operator | deployment detail             |
-| `/deployments/{id}/{action}`                       | POST     | operator | stop, control, links, check   |
+| `/deployments/{id}/{action}`                       | GET POST | operator | stop, control, links, check   |
 | `/deployments/{id}/attach`                         | WS       | operator | the signed terminal           |
 | `/deployments/{id}/console.log`                    | GET      | operator | the full console log          |
 | `/deployments/{id}/recordings/{recording_id}`      | GET      | operator | replay page                   |
 | `/deployments/{id}/recordings/{recording_id}.cast` | GET      | operator | the asciicast file            |
 | `/links/{id}/revoke`                               | POST     | operator | revoke a link                 |
 | `/scenarios`, `/images`                            | GET POST | operator | list and register             |
+| `/scenarios/new`, `/images/new`, `/users/new`      | GET      | operator | the register and create forms |
 | `/agents`, `/agents/{id}/state`                    | GET POST | operator | list, approve, enable         |
 | `/users`, `/users/{id}/{action}`                   | GET POST | operator | list, create, state, password |
 | `/logs`, `/logs/{deployment_id}`                   | GET      | operator | console logs                  |
@@ -78,6 +79,10 @@ prefix like every other setting.
 `relay` paths are passed to the API as described in [Relay](#relay); any
 other path under `/api/v1` answers 404 from `web` and never reaches the
 API.
+
+A `GET` on an operator route that also takes `POST` answers the dialog that
+posts it: the confirmation of a dangerous action, or a form. HTMX opens it
+over the page.
 
 ## Screens
 
@@ -304,6 +309,10 @@ never reaches JavaScript.
   since another tab may have refreshed the cookie meanwhile, and a page
   like a lapsed credential. A 403 shows a page that says the action is not
   allowed.
+- Flash: the message a redirect leaves for the next page rides in the
+  `jatszoter_flash` cookie, sealed like the session cookie with its own name
+  as associated data and with the same attributes. The next full page shows
+  it once and clears it; it carries text only, never a token or a link.
 - Logout: `POST /logout` calls `POST /api/v1/auth/logout`, clears the
   cookie whatever the API answered, and redirects to `/login`.
 - A second login, in another browser, supersedes the first; the first gets

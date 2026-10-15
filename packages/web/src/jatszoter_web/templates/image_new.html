@@ -1,0 +1,46 @@
+{% from "flash.html" import flash %}
+{% from "ui.html" import field_error, invalid with context %}
+<dialog class="dialog" aria-labelledby="dialog-title">
+    <h2 class="heading" id="dialog-title">Register an image</h2>
+    <p class="dialog-text">A base disk the scenarios name in scenario.yaml. It must ship cloud-init and qemu-guest-agent.</p>
+    {% for item in flashes %}{{ flash(item) }}{% endfor %}
+    <form class="dialog-form"
+          method="post"
+          action="{{ url_for('register_image').path }}"
+          hx-post="{{ url_for('register_image').path }}"
+          hx-target="closest dialog"
+          hx-swap="outerHTML">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="field">
+            <span class="label">Name</span>
+            <input class="input{{ invalid(errors, 'name') }}"
+                   type="text"
+                   name="name"
+                   value="{{ values.name or '' }}"
+                   required
+                   autofocus>
+            {% if errors.name %}{{ field_error(errors, "name") }}{% else %}<span class="hint">As scenario.yaml names it; registered once</span>{% endif %}
+        </label>
+        <label class="field">
+            <span class="label">URL</span>
+            <input class="input{{ invalid(errors, 'url') }}"
+                   type="url"
+                   name="url"
+                   value="{{ values.url or '' }}"
+                   required>
+            {{ field_error(errors, "url") }}
+        </label>
+        <label class="field">
+            <span class="label">Digest</span>
+            <textarea class="input mono-small{{ invalid(errors, 'digest') }}"
+                      name="digest"
+                      rows="2"
+                      required>{{ values.digest or '' }}</textarea>
+            {% if errors.digest %}{{ field_error(errors, "digest") }}{% else %}<span class="hint">sha256, 64 lowercase hex characters</span>{% endif %}
+        </label>
+        <div class="dialog-actions">
+            <button class="button button-secondary" type="button" data-close>Cancel</button>
+            <button class="button button-primary" type="submit">Register</button>
+        </div>
+    </form>
+</dialog>

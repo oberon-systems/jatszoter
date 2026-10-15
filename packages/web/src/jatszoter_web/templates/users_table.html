@@ -1,0 +1,54 @@
+{% from "ui.html" import badge, empty_row with context %}
+<div id="users-table" class="listing">
+    <table class="table">
+        <thead>
+            <tr>
+                <th class="w-180">Name</th>
+                <th class="w-150">Role</th>
+                <th class="w-360">Comment</th>
+                <th class="w-150">State</th>
+                <th class="w-200">Created</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+                <tr>
+                    <td>{{ row.name }}</td>
+                    <td>{{ row.role }}</td>
+                    <td>{{ row.comment or '' }}</td>
+                    <td>{{ badge(row.state) }}</td>
+                    <td class="mono-small">{{ row.created_at | when }}</td>
+                    <td>
+                        <div class="actions">
+                            <button class="button button-secondary button-small"
+                                    type="button"
+                                    hx-get="{{ url_for('password_dialog', user_id=row.id).path }}"
+                                    hx-target="#dialogs">Set password</button>
+                            {% if row.state == "enabled" %}
+                                <button class="button button-danger-outline button-small"
+                                        type="button"
+                                        hx-get="{{ url_for('user_state_dialog', user_id=row.id).path }}"
+                                        hx-target="#dialogs">Disable</button>
+                            {% else %}
+                                <form method="post"
+                                      action="{{ url_for('switch_user', user_id=row.id).path }}">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <input type="hidden" name="state" value="enabled">
+                                    <button class="button button-secondary button-small" type="submit">Enable</button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+            {% else %}
+                {% if failure %}
+                    {{ empty_row(6, 'The list could not be loaded', 'Reload the page to try again.') }}
+                {% elif role %}
+                    {{ empty_row(6, "No users match the filter", "Nobody has the " ~ role ~ " role yet.", "Clear filter", url_for('users').path) }}
+                {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+    {% if rows %}<span class="caption">{{ rows | length | counted("user") }}</span>{% endif %}
+</div>

@@ -1,0 +1,4 @@
+{% from "ui.html" import confirmation with context %}
+{{ confirmation("Disable " ~ name ~ "?",
+    name ~ " can no longer log in, and every terminal open through their links closes at once.",
+    url_for('switch_user', user_id=id).path, "Disable user", next, {"state": "disabled"}) }}

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "ui.html" import badge, scenario, empty_row with context %}
+{% block title %}Logs - Stand{% endblock %}
+{% block header %}
+    <div class="page-header">
+        <div class="titles">
+            <h1 class="title">Logs</h1>
+            <span class="subtitle">The console log of every deployment</span>
+        </div>
+    </div>
+{% endblock %}
+{% block content %}
+    <section class="section">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th class="w-150">Status</th>
+                    <th class="w-300">Scenario</th>
+                    <th class="w-150">Trainee</th>
+                    <th class="w-190">Created</th>
+                    <th class="w-190">Ended</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                    {% set trainee = users.get(row.trainee_id) %}
+                    <tr>
+                        <td>{{ badge(row.status) }}</td>
+                        <td>{{ scenario(scenarios.get(row.scenario_id)) }}</td>
+                        <td>{{ trainee.name if trainee else '-' }}</td>
+                        <td class="mono-small">{{ row.created_at | when }}</td>
+                        <td class="mono-small">{{ row.ended_at | when }}</td>
+                        <td>
+                            {% if held[row.id] == "log" %}
+                                <div class="actions">
+                                    <a class="button button-secondary button-small"
+                                       href="{{ url_for('console_log', deployment_id=row.id).path }}"
+                                       download>Download</a>
+                                </div>
+                            {% elif held[row.id] == "purged" %}
+                                <span class="caption">purged</span>
+                            {% else %}
+                                <span class="caption">no log yet</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% else %}
+                    {% if failure %}
+                        {{ empty_row(6, 'The list could not be loaded', 'Reload the page to try again.') }}
+                    {% else %}
+                        {{ empty_row(6, 'No deployments yet', 'A console log appears here once a deployment boots its VM.') }}
+                    {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+        {% if rows %}<span class="caption">{{ rows | length | counted("deployment") }}</span>{% endif %}
+    </section>
+{% endblock %}

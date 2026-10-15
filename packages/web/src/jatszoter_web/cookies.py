@@ -11,6 +11,7 @@ from jatszoter_web.settings import b64url_decode, b64url_encode
 SESSION_COOKIE = "jatszoter_session"
 CSRF_COOKIE = "jatszoter_csrf"
 LINK_COOKIE = "jatszoter_link"
+FLASH_COOKIE = "jatszoter_flash"
 NONCE_BYTES = 12
 
 

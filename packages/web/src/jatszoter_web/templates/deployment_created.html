@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Deployment created - Stand{% endblock %}
+{% block header %}
+    <div class="page-header">
+        <div class="titles">
+            <h1 class="title">Deployment created</h1>
+            <span class="subtitle">{{ label }}</span>
+        </div>
+    </div>
+{% endblock %}
+{% block content %}
+    <section class="link-card">
+        <h2 class="heading">Trainee link</h2>
+        <p class="card-text">
+            Hand this link to {{ trainee }}. It is shown once: the page does not keep it and cannot show it again. A lost link is revoked on the deployment and issued anew.
+        </p>
+        <div class="link-row">
+            <label class="field grow">
+                <span class="label">Trainee link</span>
+                <input class="input mono-small"
+                       id="trainee-link"
+                       type="text"
+                       value="{{ link }}"
+                       readonly>
+            </label>
+            <button class="button button-secondary"
+                    type="button"
+                    data-copy="trainee-link">Copy</button>
+        </div>
+        <div class="form-actions">
+            {# djlint:off J018 #}
+            <a class="button button-primary" href="/deployments/{{ deployment.id }}">Open deployment</a>
+            {# djlint:on #}
+            <a class="button button-secondary"
+               href="{{ url_for('deployments').path }}">Back to deployments</a>
+        </div>
+    </section>
+{% endblock %}

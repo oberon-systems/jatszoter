@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Agents - Stand{% endblock %}
+{% block header %}
+    <div class="page-header">
+        <div class="titles">
+            <h1 class="title">Agents</h1>
+            <span class="subtitle">Hosts that run the VMs, refreshed every 5 seconds</span>
+        </div>
+    </div>
+{% endblock %}
+{% block content %}
+    {% include "agents_tables.html" %}
+{% endblock %}

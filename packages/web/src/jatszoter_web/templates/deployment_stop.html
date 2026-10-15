@@ -1,0 +1,4 @@
+{% from "ui.html" import confirmation with context %}
+{{ confirmation("Stop this deployment?",
+    "The VM of " ~ label ~ " is destroyed and every link of the deployment is revoked. This cannot be undone.",
+    url_for('stop', deployment_id=id).path, "Stop deployment", next) }}

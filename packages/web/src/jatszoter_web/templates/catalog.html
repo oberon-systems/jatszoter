@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% from "ui.html" import empty_row with context %}
+{% block title %}Scenarios and images - Stand{% endblock %}
+{% block header %}
+    <div class="page-header">
+        <div class="titles">
+            <h1 class="title">Scenarios and images</h1>
+            <span class="subtitle">A registered version is immutable; a change is a new version</span>
+        </div>
+        <span class="spacer"></span>
+        {% if tab == "scenarios" %}
+            <button class="button button-primary"
+                    type="button"
+                    hx-get="{{ url_for('scenario_dialog').path }}"
+                    hx-target="#dialogs">Register scenario</button>
+        {% else %}
+            <button class="button button-primary"
+                    type="button"
+                    hx-get="{{ url_for('image_dialog').path }}"
+                    hx-target="#dialogs">Register image</button>
+        {% endif %}
+    </div>
+    <nav class="tabs">
+        <a class="tab{% if tab == 'scenarios' %} current{% endif %}"
+           href="{{ url_for('scenarios').path }}"
+           {% if tab == 'scenarios' %} aria-current="page"{% endif %}>Scenarios</a>
+        <a class="tab{% if tab == 'images' %} current{% endif %}"
+           href="{{ url_for('images').path }}"
+           {% if tab == 'images' %} aria-current="page"{% endif %}>Images</a>
+    </nav>
+{% endblock %}
+{% block content %}
+    <section class="section">
+        {% if tab == "scenarios" %}
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th class="w-240">Slug</th>
+                        <th class="w-120">Version</th>
+                        <th class="w-480">Title</th>
+                        <th>Image</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                        <tr>
+                            <td>{{ row.slug }}</td>
+                            <td class="mono-small">{{ row.version }}</td>
+                            <td>{{ row.title }}</td>
+                            <td class="mono-small">{{ row.image }}</td>
+                        </tr>
+                    {% else %}
+                        {% if failure %}
+                            {{ empty_row(4, 'The list could not be loaded', 'Reload the page to try again.') }}
+                        {% else %}
+                            <tr>
+                                <td class="empty" colspan="4">
+                                    <div class="empty-state">
+                                        <span class="body-strong">No scenarios yet</span>
+                                        <span class="secondary">Register a scenario bundle; its image has to be registered first.</span>
+                                        <button class="button button-primary"
+                                                type="button"
+                                                hx-get="{{ url_for('scenario_dialog').path }}"
+                                                hx-target="#dialogs">Register scenario</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% if rows %}<span class="caption">{{ rows | length | counted("scenario version") }}</span>{% endif %}
+        {% else %}
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th class="w-200">Name</th>
+                        <th class="w-520">URL</th>
+                        <th>Digest</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                        <tr>
+                            <td>{{ row.name }}</td>
+                            <td>{{ row.url }}</td>
+                            <td class="mono-small">{{ row.digest }}</td>
+                        </tr>
+                    {% else %}
+                        {% if failure %}
+                            {{ empty_row(3, 'The list could not be loaded', 'Reload the page to try again.') }}
+                        {% else %}
+                            <tr>
+                                <td class="empty" colspan="3">
+                                    <div class="empty-state">
+                                        <span class="body-strong">No images yet</span>
+                                        <span class="secondary">Register a base disk before the scenarios that name it.</span>
+                                        <button class="button button-primary"
+                                                type="button"
+                                                hx-get="{{ url_for('image_dialog').path }}"
+                                                hx-target="#dialogs">Register image</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% if rows %}<span class="caption">{{ rows | length | counted("image") }}</span>{% endif %}
+        {% endif %}
+    </section>
+{% endblock %}

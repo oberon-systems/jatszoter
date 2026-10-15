@@ -1,0 +1,4 @@
+{% from "ui.html" import confirmation with context %}
+{{ confirmation("Purge " ~ label ~ "?",
+    "Its console log and " ~ recordings ~ " are deleted, files and rows. The deployment and its checks stay. This cannot be undone.",
+    url_for('purge', deployment_id=id).path, "Purge", url_for('storage').path) }}

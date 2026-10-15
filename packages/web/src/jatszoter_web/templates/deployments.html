@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Deployments - Stand{% endblock %}
+{% block header %}
+    <div class="page-header">
+        <div class="titles">
+            <h1 class="title">Deployments</h1>
+            <span class="subtitle">Newest first, refreshed every 5 seconds</span>
+        </div>
+        <span class="spacer"></span>
+        <a class="button button-primary"
+           href="{{ url_for('new_deployment').path }}">New deployment</a>
+    </div>
+{% endblock %}
+{% block content %}
+    <section class="section">
+        <form class="filters"
+              action="{{ url_for('deployments').path }}"
+              hx-get="{{ url_for('deployments').path }}"
+              hx-trigger="change"
+              hx-target="#deployments-table"
+              hx-swap="outerHTML"
+              hx-push-url="true">
+            <label class="filter">
+                <span class="label">Status</span>
+                <select class="select" name="status">
+                    <option value="">All statuses</option>
+                    {% for item in statuses %}
+                        <option value="{{ item }}"{% if item == status %} selected{% endif %}>{{ item }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+        </form>
+        {% include "deployments_table.html" %}
+    </section>
+{% endblock %}

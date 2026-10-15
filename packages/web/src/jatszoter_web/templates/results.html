@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Results - Stand{% endblock %}
+{% block header %}
+    <div class="page-header">
+        <div class="titles">
+            <h1 class="title">Results</h1>
+            <span class="subtitle">One row per deployment that has a check</span>
+        </div>
+    </div>
+{% endblock %}
+{% block content %}
+    <section class="section">
+        {% if not failure %}
+            <form class="filters"
+                  action="{{ url_for('results').path }}"
+                  hx-get="{{ url_for('results').path }}"
+                  hx-trigger="change"
+                  hx-target="#results-table"
+                  hx-swap="outerHTML"
+                  hx-push-url="true">
+                <label class="filter">
+                    <span class="label">Scenario</span>
+                    <select class="select" name="scenario">
+                        <option value="">All scenarios</option>
+                        {% for slug in slugs %}
+                            <option value="{{ slug }}"{% if slug == scenario %} selected{% endif %}>{{ slug }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label class="filter">
+                    <span class="label">Trainee</span>
+                    <select class="select" name="trainee">
+                        <option value="">All trainees</option>
+                        {% for row in trainees %}
+                            <option value="{{ row.id }}"
+                                    {% if row.id == trainee %} selected{% endif %}>{{ row.name }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+            </form>
+        {% endif %}
+        {% include "results_table.html" %}
+    </section>
+{% endblock %}

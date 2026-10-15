@@ -1,0 +1,4 @@
+{% from "ui.html" import confirmation with context %}
+{{ confirmation("Disable " ~ name ~ "?",
+    "Its lease lapses at once and its running deployments fail. It takes no deployments until it is enabled again.",
+    url_for('switch_agent', agent_id=id).path, "Disable agent", next, {"state": "disabled"}) }}

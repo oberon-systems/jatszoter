@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% from "ui.html" import field_error, invalid with context %}
+{% block title %}New deployment - Stand{% endblock %}
+{% block header %}
+    <div class="page-header">
+        <div class="titles">
+            <h1 class="title">New deployment</h1>
+            <span class="subtitle">Starts a VM for one trainee from a registered scenario</span>
+        </div>
+    </div>
+{% endblock %}
+{% block content %}
+    {% set loaded = scenarios is defined %}
+    <form class="form-card"
+          method="post"
+          action="{{ url_for('create_deployment').path }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="field">
+            <span class="label">Scenario</span>
+            <select class="select{{ invalid(errors, 'scenario_id') }}"
+                    name="scenario_id"
+                    required{% if not scenarios %}
+                    disabled{% endif %}>
+                {% for row in scenarios or [] %}
+                    <option value="{{ row.id }}"
+                            {% if row.id == chosen.scenario_id %} selected{% endif %}>{{ row.slug }}  v{{ row.version }}</option>
+                {% else %}
+                    {% if loaded %}<option value="">No scenario</option>{% endif %}
+                {% endfor %}
+            </select>
+            {% if loaded and not scenarios %}<span class="hint">No scenario is registered yet: register one under Scenarios</span>{% endif %}
+            {{ field_error(errors, "scenario_id") }}
+        </label>
+        <label class="field">
+            <span class="label">Trainee</span>
+            <select class="select{{ invalid(errors, 'trainee_id') }}"
+                    name="trainee_id"
+                    required{% if not trainees %}
+                    disabled{% endif %}>
+                {% for row in trainees or [] %}
+                    <option value="{{ row.id }}"
+                            {% if row.id == chosen.trainee_id %} selected{% endif %}>{{ row.name }}</option>
+                {% else %}
+                    {% if loaded %}<option value="">No trainee</option>{% endif %}
+                {% endfor %}
+            </select>
+            {% if loaded and not trainees %}
+                <span class="hint">No trainee exists yet: create one under Users</span>
+            {% elif not errors or not errors.trainee_id %}
+                <span class="hint">Only users with the trainee role are listed</span>
+            {% endif %}
+            {{ field_error(errors, "trainee_id") }}
+        </label>
+        <label class="field">
+            <span class="label">Agent (optional)</span>
+            <select class="select{{ invalid(errors, 'agent_id') }}"
+                    name="agent_id"
+                    {% if not loaded %} disabled{% endif %}>
+                <option value="">Any enabled agent</option>
+                {% for row in agents or [] %}
+                    <option value="{{ row.id }}"
+                            {% if row.id == chosen.agent_id %} selected{% endif %}>{{ row.name }}</option>
+                {% endfor %}
+            </select>
+            {% if errors and errors.agent_id %}
+                {{ field_error(errors, "agent_id") }}
+            {% else %}
+                <span class="hint">Pins the deployment to one enabled agent</span>
+            {% endif %}
+        </label>
+        <div class="form-actions">
+            <button class="button button-primary"
+                    type="submit"
+                    {% if not scenarios or not trainees %} disabled{% endif %}>Create deployment</button>
+            <a class="button button-secondary"
+               href="{{ url_for('deployments').path }}">Cancel</a>
+        </div>
+    </form>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% macro badge(word, tone=None) %}
+    <span class="badge badge-{{ tone or tones[word] }}">{{ word }}</span>
+{% endmacro %}
+{% macro scenario(row) %}
+    {% if row %}
+        <span class="scenario"><span>{{ row.slug }}</span><span class="mono-small secondary">v{{ row.version }}</span></span>
+    {% else %}
+        -
+    {% endif %}
+{% endmacro %}
+{% macro empty_row(columns, title, text, action=None, href=None, primary=False) %}
+    <tr>
+        <td class="empty" colspan="{{ columns }}">
+            <div class="empty-state">
+                <span class="body-strong">{{ title }}</span>
+                <span class="secondary">{{ text }}</span>
+                {% if action %}
+                    <a class="button {{ 'button-primary' if primary else 'button-secondary' }}"
+                       href="{{ href }}">{{ action }}</a>
+                {% endif %}
+            </div>
+        </td>
+    </tr>
+{% endmacro %}
+{% macro field_error(errors, name) %}
+    {% if errors and errors.get(name) %}<span class="field-error">{{ errors[name] }}</span>{% endif %}
+{% endmacro %}
+{% macro invalid(errors, name) %}{% if errors and errors.get(name) %} invalid{% endif %}{% endmacro %}
+{% macro confirmation(title, text, action, button, next, fields={}) %}
+    <dialog class="dialog" aria-labelledby="dialog-title">
+        <h2 class="heading" id="dialog-title">{{ title }}</h2>
+        <p class="dialog-text">{{ text }}</p>
+        <form class="dialog-actions" method="post" action="{{ action }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="next" value="{{ next }}">
+            {% for name, value in fields.items() %}
+                <input type="hidden" name="{{ name }}" value="{{ value }}">
+            {% endfor %}
+            <button class="button button-secondary" type="button" data-close autofocus>Cancel</button>
+            <button class="button button-danger" type="submit">{{ button }}</button>
+        </form>
+    </dialog>
+{% endmacro %}

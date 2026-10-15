@@ -64,6 +64,7 @@ class Session:
         path: str,
         payload: Any = None,
         params: dict[str, str] | None = None,
+        files: dict[str, tuple[str, bytes]] | None = None,
     ) -> httpx.Response:
         """A signed call; 401, 403 and 5xx are raised, any other answer is the caller's to show."""
         now = int(time.time())
@@ -71,7 +72,8 @@ class Session:
             raise SignedOut()
         if self.operator.expires_at - now <= REFRESH_SECONDS:
             await self.refresh()
-        return self.checked(await self.api.signed(self.operator, method, path, payload, params))
+        answer = await self.api.signed(self.operator, method, path, payload, params, files)
+        return self.checked(answer)
 
     async def refresh(self) -> None:
         response = self.checked(

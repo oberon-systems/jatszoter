@@ -1,0 +1,44 @@
+{% from "flash.html" import flash %}
+{% from "ui.html" import field_error, invalid with context %}
+<dialog class="dialog" aria-labelledby="dialog-title">
+    <h2 class="heading" id="dialog-title">Register a scenario</h2>
+    <p class="dialog-text">Upload a tar.gz of the scenario directory, or give a URL the API fetches it from.</p>
+    {% for item in flashes %}{{ flash(item) }}{% endfor %}
+    <form class="dialog-form"
+          method="post"
+          action="{{ url_for('register_scenario').path }}"
+          enctype="multipart/form-data"
+          hx-post="{{ url_for('register_scenario').path }}"
+          hx-encoding="multipart/form-data"
+          hx-target="closest dialog"
+          hx-swap="outerHTML">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="field">
+            <span class="label">Bundle file</span>
+            <input class="file-input{{ invalid(errors, 'bundle') }}"
+                   type="file"
+                   name="bundle"
+                   accept=".tar.gz,.tgz,application/gzip"
+                   autofocus>
+            {{ field_error(errors, "bundle") }}
+        </label>
+        <span class="caption">or</span>
+        <label class="field">
+            <span class="label">Bundle URL</span>
+            <input class="input{{ invalid(errors, 'url') }}"
+                   type="url"
+                   name="url"
+                   value="{{ values.url or '' }}"
+                   placeholder="https://example.com/bundles/web-basics-v4.tar.gz">
+            {% if errors.url %}
+                {{ field_error(errors, "url") }}
+            {% else %}
+                <span class="hint">https only, at most 10 MiB, fetched within 30 seconds</span>
+            {% endif %}
+        </label>
+        <div class="dialog-actions">
+            <button class="button button-secondary" type="button" data-close>Cancel</button>
+            <button class="button button-primary" type="submit">Register</button>
+        </div>
+    </form>
+</dialog>

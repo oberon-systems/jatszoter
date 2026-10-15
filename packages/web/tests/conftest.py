@@ -3,6 +3,7 @@ import hmac
 import time
 import uuid
 from collections.abc import Callable
+from typing import Any
 
 import httpx
 import pytest
@@ -98,3 +99,100 @@ def signed_by() -> Callable[[httpx.Request, str], bool]:
         return hmac.compare_digest(expected, request.headers.get("x-signature", ""))
 
     return check
+
+
+@pytest.fixture
+def answer(routes: Routes) -> Callable[..., None]:
+    """Have the fake API answer `method path` with `body` as JSON."""
+
+    def put(method: str, path: str, body: Any = None, status: int = 200) -> None:
+        routes[(method, path)] = lambda _: httpx.Response(status, json=body)
+
+    return put
+
+
+@pytest.fixture
+def stand(answer: Callable[..., None]) -> dict[str, Any]:
+    """One of each row the screens show, around a READY deployment, as the API lists them."""
+    at = 1760000000
+    rows: dict[str, Any] = {
+        "scenario": {
+            "id": "00000000-0000-4000-8000-0000000000a1",
+            "slug": "web-basics",
+            "version": 3,
+            "title": "Web basics",
+            "image": "alpha-base",
+        },
+        "image": {
+            "id": "00000000-0000-4000-8000-0000000000a2",
+            "name": "alpha-base",
+            "url": "https://example.com/alpha-base.qcow2",
+            "digest": "sha256:" + "0" * 64,
+        },
+        "trainee": {
+            "id": "00000000-0000-4000-8000-0000000000b1",
+            "name": "beta",
+            "role": "trainee",
+            "state": "enabled",
+            "comment": "group one",
+            "created_at": at,
+        },
+        "agent": {
+            "id": "00000000-0000-4000-8000-0000000000c1",
+            "name": "delta",
+            "labels": ["kvm"],
+            "state": "enabled",
+            "heartbeat_at": at,
+            "capacity": 2,
+            "lease_expires_at": at + 30,
+        },
+        "registration": {
+            "id": "00000000-0000-4000-8000-0000000000c2",
+            "name": "gamma",
+            "labels": ["kvm"],
+            "registered_at": at,
+        },
+        "deployment": {
+            "id": "00000000-0000-4000-8000-0000000000d1",
+            "scenario_id": "00000000-0000-4000-8000-0000000000a1",
+            "trainee_id": "00000000-0000-4000-8000-0000000000b1",
+            "agent_id": "00000000-0000-4000-8000-0000000000c1",
+            "status": "READY",
+            "vm_id": "vm-alpha",
+            "created_at": at,
+            "ended_at": None,
+        },
+    }
+    deployment_id = rows["deployment"]["id"]
+    answer("GET", "/api/v1/scenarios", [rows["scenario"]])
+    answer("GET", "/api/v1/images", [rows["image"]])
+    answer("GET", "/api/v1/users", [rows["trainee"]])
+    answer(
+        "GET",
+        "/api/v1/agents",
+        {"registrations": [rows["registration"]], "agents": [rows["agent"]]},
+    )
+    answer("GET", "/api/v1/deployments", [rows["deployment"]])
+    answer("GET", f"/api/v1/deployments/{deployment_id}", rows["deployment"])
+    answer(
+        "GET",
+        "/api/v1/storage",
+        {
+            "deployments": [
+                {
+                    "deployment_id": deployment_id,
+                    "console_bytes": 2048,
+                    "recording_bytes": 0,
+                    "recordings": 0,
+                }
+            ],
+            "scenario_bytes": 0,
+            "total_bytes": 2048,
+        },
+    )
+    answer(
+        "GET",
+        "/api/v1/checks",
+        [{"deployment_id": deployment_id, "status": "passed", "message": "all good"}],
+    )
+    return rows

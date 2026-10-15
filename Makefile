@@ -11,7 +11,7 @@ SHELL := /bin/bash
 export PRE_COMMIT_HOME := $(CURDIR)/.pre-commit
 
 .DEFAULT_GOAL := shell
-.PHONY: install shell test test-api test-web test-agent smoke lint run-api run-web
+.PHONY: install shell test test-api test-web test-agent smoke lint lint-all run-api run-web
 
 
 # common targets
@@ -31,13 +31,16 @@ test test-api test-web test-agent smoke:
 
 
 # linters
-# --all-files sees only what git tracks; this adds untracked files not ignored
-# and drops tracked ones deleted from the tree, which hooks cannot open.
+# lint checks what differs from HEAD plus untracked files; lint-all checks the tree.
+# Deleted files are dropped, hooks cannot open them.
 lint:
+	@{ git diff -z --name-only --diff-filter=d HEAD; git ls-files -z --others --exclude-standard; } | \
+	xargs -0 -r $(VENV)/bin/pre-commit run --files
+
+lint-all:
 	@git ls-files -z --cached --others --exclude-standard | \
 	while IFS= read -r -d '' f; do [ -e "$$f" ] && printf '%s\0' "$$f"; done | \
 	xargs -0 $(VENV)/bin/pre-commit run --files
-
 
 # runs
 run-api:

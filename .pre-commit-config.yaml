@@ -100,6 +100,12 @@ repos:
     rev: v8.30.0
     hooks:
       - id: gitleaks
+      # The stock hook reads only the index, so `make lint` never shows it a new file.
+      - id: gitleaks
+        alias: gitleaks-files
+        name: Detect hardcoded secrets in the files given
+        entry: bash -c 'for f; do gitleaks dir --redact --no-banner "$f" || exit 1; done' --
+        pass_filenames: true
 
   - repo: https://github.com/python-jsonschema/check-jsonschema
     rev: 0.38.2

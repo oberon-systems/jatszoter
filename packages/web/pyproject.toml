@@ -8,7 +8,13 @@ version = "0.0.0"
 description = "Operator and trainee UI for jatszoter"
 requires-python = ">=3.12"
 dependencies = [
+  "cryptography",
   "fastapi",
+  "httpx",
+  "jinja2",
+  "pydantic-settings",
+  "python-multipart",
+  "websockets",
 ]
 
 [project.optional-dependencies]
@@ -16,4 +22,4 @@ dependencies = [
 server = ["uvicorn[standard]"]
 
 [tool.setuptools.package-data]
-jatszoter_web = ["py.typed"]
+jatszoter_web = ["py.typed", "templates/*.html", "static/*.css", "static/vendor/*/*"]

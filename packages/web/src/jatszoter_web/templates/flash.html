@@ -1,0 +1,10 @@
+{% macro flash(item) %}
+    <div class="flash flash-{{ item.kind }}"
+         role="{{ 'status' if item.kind == 'success' else 'alert' }}">
+        <span class="flash-icon" aria-hidden="true"></span>
+        <div class="flash-text">
+            <span class="flash-title">{{ item.title }}</span>
+            <span>{{ item.text }}</span>
+        </div>
+    </div>
+{% endmacro %}

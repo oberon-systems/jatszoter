@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% from "flash.html" import flash %}
+{% block title %}Log in - Stand{% endblock %}
+{% block flashes %}{% endblock %}
+{% block content %}
+    <div class="center">
+        <form class="card" method="post" action="{{ url_for('login').path }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+            {% if pending %}
+                <h1 class="heading">Set a new password</h1>
+                <p class="card-text">The password was set by an operator. Choose your own before the first login.</p>
+                {% for item in flashes %}{{ flash(item) }}{% endfor %}
+                <input type="hidden" name="pending" value="{{ pending }}">
+                <label class="field">
+                    <span class="label">New password</span>
+                    <input class="input"
+                           type="password"
+                           name="new_password"
+                           autocomplete="new-password"
+                           required>
+                </label>
+                <label class="field">
+                    <span class="label">Repeat new password</span>
+                    <input class="input{% if mismatch %} invalid{% endif %}"
+                           type="password"
+                           name="repeat_password"
+                           autocomplete="new-password"
+                           required>
+                    {% if mismatch %}<span class="field-error">{{ mismatch }}</span>{% endif %}
+                </label>
+                <button class="button button-primary button-block" type="submit">Set password and log in</button>
+            {% else %}
+                <h1 class="heading">Log in</h1>
+                {% for item in flashes %}{{ flash(item) }}{% endfor %}
+                <label class="field">
+                    <span class="label">Name</span>
+                    <input class="input"
+                           type="text"
+                           name="name"
+                           value="{{ name or '' }}"
+                           autocomplete="username"
+                           required>
+                </label>
+                <label class="field">
+                    <span class="label">Password</span>
+                    <input class="input"
+                           type="password"
+                           name="password"
+                           autocomplete="current-password"
+                           required>
+                </label>
+                <button class="button button-primary button-block" type="submit">Log in</button>
+            {% endif %}
+        </form>
+    </div>
+{% endblock %}

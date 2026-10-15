@@ -60,10 +60,12 @@ repos:
       - id: mypy
         additional_dependencies:
           - alembic==1.20.0
+          - cryptography==50.0.2
           - fakeredis==2.38.0
           - fastapi==0.141.1
           - httpx==0.28.1
           - httpx-ws==0.9.0
+          - Jinja2==3.1.6
           - jsonschema==4.26.0
           - pydantic==2.13.5
           - pydantic-settings==2.15.0
@@ -73,6 +75,7 @@ repos:
           - types-jsonschema==4.26.0.20260518
           - types-PyYAML==6.0.12.20260906
           - valkey==6.1.1
+          - websockets==17.2
 
   - repo: https://github.com/djlint/djLint
     rev: v1.46.1
@@ -132,6 +135,9 @@ repos:
     rev: 3.0.0
     hooks:
       - id: forbid-binary
+        # Vendored web fonts, each beside its licence. A type, not a path: the
+        # path exclude trips check-useless-excludes while the fonts are untracked.
+        exclude_types: [woff2]
       - id: require-ascii
       - id: shellcheck
         args: [-e, SC2086]

@@ -1,0 +1,420 @@
+/* Tokens of the "base" set on the Design system page of dev/web/templates/base. */
+:root {
+  --color-accent-default: #1f5fbf;
+  --color-accent-hover: #184c99;
+  --color-border-default: #d5d9e0;
+  --color-border-strong: #8c959f;
+  --color-danger-bg: #fde2df;
+  --color-danger-default: #b42318;
+  --color-danger-fg: #9b1c13;
+  --color-danger-hover: #912018;
+  --color-focus-ring: #1f5fbf;
+  --color-info-bg: #ddebff;
+  --color-info-fg: #164a94;
+  --color-neutral-bg: #eaecef;
+  --color-neutral-fg: #3d444d;
+  --color-overlay-scrim: #1b1f24;
+  --color-shell-active: #2f363f;
+  --color-shell-bar: #1b1f24;
+  --color-shell-muted: #aeb6c0;
+  --color-success-bg: #dcf5e3;
+  --color-success-fg: #11632a;
+  --color-surface-card: #fff;
+  --color-surface-page: #f6f7f9;
+  --color-surface-sunken: #eef0f3;
+  --color-terminal-bg: #0d1117;
+  --color-terminal-fg: #e6edf3;
+  --color-text-disabled: #8c959f;
+  --color-text-inverse: #fff;
+  --color-text-primary: #1b1f24;
+  --color-text-secondary: #57606a;
+  --color-warning-bg: #fff1c2;
+  --color-warning-fg: #7a5200;
+  --font-mono: "Source Code Pro", ui-monospace, monospace;
+  --font-sans: "Source Sans Pro", system-ui, sans-serif;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-pill: 999px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+}
+
+@font-face {
+  font-family: "Source Sans Pro";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("vendor/source-sans-pro-5.3.0/source-sans-pro-latin-400-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Source Sans Pro";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("vendor/source-sans-pro-5.3.0/source-sans-pro-latin-600-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Source Code Pro";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("vendor/source-code-pro-5.3.1/source-code-pro-latin-400-normal.woff2") format("woff2");
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--color-surface-page);
+  color: var(--color-text-primary);
+  font: 400 14px/20px var(--font-sans);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Layout shell */
+.top-bar {
+  align-items: center;
+  background: var(--color-shell-bar);
+  display: flex;
+  gap: var(--space-6);
+  height: 56px;
+  padding: 0 var(--space-6);
+}
+
+.wordmark {
+  color: var(--color-text-inverse);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.navigation {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.nav-item {
+  border-radius: var(--radius-md);
+  color: var(--color-shell-muted);
+  padding: 6px var(--space-3);
+  text-decoration: none;
+}
+
+.nav-item:hover {
+  color: var(--color-text-inverse);
+}
+
+.nav-item.current {
+  background: var(--color-shell-active);
+  color: var(--color-text-inverse);
+  font-weight: 600;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.operator {
+  align-items: center;
+  display: flex;
+  gap: var(--space-3);
+}
+
+.operator-name {
+  color: var(--color-shell-muted);
+}
+
+.operator form {
+  margin: 0;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-6) var(--space-8);
+}
+
+.page-header {
+  align-items: center;
+  display: flex;
+  gap: var(--space-4);
+}
+
+.titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 32px;
+  margin: 0;
+}
+
+.subtitle,
+.caption,
+.hint {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.heading {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 24px;
+  margin: 0;
+}
+
+.mono {
+  font: 400 13px/20px var(--font-mono);
+}
+
+/* Flash messages */
+.flash {
+  align-items: flex-start;
+  border: 1px solid;
+  border-radius: var(--radius-md);
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+
+.flash-icon {
+  align-items: center;
+  border-radius: var(--radius-pill);
+  color: var(--color-text-inverse);
+  display: inline-flex;
+  flex: none;
+  font-size: 13px;
+  font-weight: 600;
+  height: 20px;
+  justify-content: center;
+  width: 20px;
+}
+
+.flash-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.flash-title {
+  font-weight: 600;
+}
+
+.flash-success {
+  background: var(--color-success-bg);
+  border-color: var(--color-success-fg);
+}
+
+.flash-success .flash-icon {
+  background: var(--color-success-fg);
+}
+
+.flash-success .flash-icon::before {
+  content: "\2713";
+}
+
+.flash-success .flash-title {
+  color: var(--color-success-fg);
+}
+
+.flash-refusal {
+  background: var(--color-warning-bg);
+  border-color: var(--color-warning-fg);
+}
+
+.flash-refusal .flash-icon {
+  background: var(--color-warning-fg);
+}
+
+.flash-refusal .flash-icon::before {
+  content: "!";
+}
+
+.flash-refusal .flash-title {
+  color: var(--color-warning-fg);
+}
+
+.flash-error {
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger-fg);
+}
+
+.flash-error .flash-icon {
+  background: var(--color-danger-fg);
+}
+
+.flash-error .flash-icon::before {
+  content: "\00d7";
+}
+
+.flash-error .flash-title {
+  color: var(--color-danger-fg);
+}
+
+/* Forms */
+.center {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: 96px;
+}
+
+.card {
+  background: var(--color-surface-card);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin: 0;
+  padding: var(--space-8);
+  width: 400px;
+}
+
+.card-text {
+  color: var(--color-neutral-fg);
+  margin: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.input {
+  background: var(--color-surface-card);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font: inherit;
+  padding: 7px 11px;
+}
+
+.input:focus {
+  border: 2px solid var(--color-focus-ring);
+  outline: none;
+  padding: 6px 10px;
+}
+
+.input:disabled {
+  background: var(--color-surface-sunken);
+  color: var(--color-text-disabled);
+}
+
+.input.invalid {
+  border: 2px solid var(--color-danger-default);
+  padding: 6px 10px;
+}
+
+.input::placeholder {
+  color: var(--color-text-disabled);
+}
+
+.field-error {
+  color: var(--color-danger-default);
+  display: flex;
+  font-size: 12px;
+  gap: 6px;
+  line-height: 16px;
+}
+
+.field-error::before {
+  content: "!";
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Buttons */
+.button {
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font: 600 14px/17px var(--font-sans);
+  padding: 7px 13px;
+  text-align: center;
+  text-decoration: none;
+}
+
+.button-primary {
+  background: var(--color-accent-default);
+  color: var(--color-text-inverse);
+}
+
+.button-primary:hover {
+  background: var(--color-accent-hover);
+}
+
+.button-secondary {
+  background: var(--color-surface-card);
+  border-color: var(--color-border-default);
+  color: var(--color-text-primary);
+}
+
+.button-danger {
+  background: var(--color-danger-default);
+  color: var(--color-text-inverse);
+}
+
+.button-danger:hover {
+  background: var(--color-danger-hover);
+}
+
+.button-danger-outline {
+  background: var(--color-surface-card);
+  border-color: var(--color-danger-default);
+  color: var(--color-danger-default);
+}
+
+.button:disabled {
+  background: var(--color-surface-sunken);
+  border-color: var(--color-border-default);
+  color: var(--color-text-disabled);
+  cursor: default;
+}
+
+.button-small {
+  padding: 3px 9px;
+}
+
+.button-shell {
+  background: transparent;
+  border-color: var(--color-text-secondary);
+  color: var(--color-text-inverse);
+}
+
+.button-block {
+  width: 100%;
+}

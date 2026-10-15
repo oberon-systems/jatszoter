@@ -3,9 +3,11 @@
 alembic==1.20.0
 check-jsonschema==0.38.2
 commitizen==4.18.0
+cryptography==50.0.2
 fakeredis==2.38.0
 fastapi==0.141.1
 httpx==0.28.1
+Jinja2==3.1.6
 jsonschema==4.26.0
 penpot-local-stack==0.1.5
 pre_commit==4.6.2

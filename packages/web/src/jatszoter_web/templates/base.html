@@ -1,0 +1,45 @@
+{% from "flash.html" import flash %}
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        {% if csrf_token %}<meta name="csrf-token" content="{{ csrf_token }}">{% endif %}
+        <meta name="htmx-config"
+              content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false}'>
+        <title>{% block title %}Stand{% endblock %}</title>
+        <link rel="stylesheet" href="{{ url_for('static', path='app.css').path }}">
+        <script src="{{ url_for('static', path='vendor/htmx-2.0.11/htmx.min.js').path }}"></script>
+    </head>
+    <body {% if operator %}hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'{% endif %}>
+        <header class="top-bar">
+            <span class="wordmark">Stand</span>
+            {% if operator %}
+                <nav class="navigation">
+                    {% for href, label in navigation %}
+                        {% if href == current %}
+                            <a class="nav-item current" href="{{ href }}" aria-current="page">{{ label }}</a>
+                        {% else %}
+                            <a class="nav-item" href="{{ href }}">{{ label }}</a>
+                        {% endif %}
+                    {% endfor %}
+                </nav>
+                <span class="spacer"></span>
+                <div class="operator">
+                    <span class="operator-name">{{ operator.name }}</span>
+                    <form method="post" action="{{ url_for('logout').path }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button class="button button-shell" type="submit">Log out</button>
+                    </form>
+                </div>
+            {% endif %}
+        </header>
+        <main class="main">
+            {% block header %}{% endblock %}
+            {% block flashes %}
+                {% for item in flashes %}{{ flash(item) }}{% endfor %}
+            {% endblock %}
+            {% block content %}{% endblock %}
+        </main>
+    </body>
+</html>

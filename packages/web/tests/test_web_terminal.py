@@ -1,6 +1,8 @@
 import asyncio
 import socket
 import threading
+import time
+import uuid
 from collections.abc import Iterator
 
 import pytest
@@ -10,11 +12,14 @@ from websockets.asyncio.server import Server, ServerConnection, serve
 from websockets.datastructures import Headers
 from websockets.http11 import Request, Response
 
+from jatszoter_web.api import signature
 from jatszoter_web.app import create_app
-from jatszoter_web.cookies import CSRF_COOKIE, LINK_COOKIE, SESSION_COOKIE
+from jatszoter_web.cookies import CSRF_COOKIE, LINK_COOKIE, SESSION_COOKIE, Operator, seal_operator
 from jatszoter_web.settings import Settings
 
 ATTACH = "/api/v1/deployments/00000000-0000-4000-8000-0000000000d1/attach"
+OPERATOR_ATTACH = "/deployments/00000000-0000-4000-8000-0000000000d1/attach"
+KEY = "signing-key-alpha"
 HOST = "web.example.com"
 ORIGIN = f"https://{HOST}"
 COOKIES = f"{LINK_COOKIE}=link-session-alpha; {SESSION_COOKIE}=k1.AAAA; {CSRF_COOKIE}=c"
@@ -25,6 +30,7 @@ class Upstream:
 
     def __init__(self) -> None:
         self.headers: list[Headers] = []
+        self.paths: list[str] = []
         self.loop = asyncio.new_event_loop()
         self.server: Server | None = None
         self.ready = threading.Event()
@@ -48,6 +54,7 @@ class Upstream:
 
     def process(self, connection: ServerConnection, request: Request) -> Response | None:
         self.headers.append(request.headers)
+        self.paths.append(request.path)
         if "case=refuse" in request.path:
             return connection.respond(403, "refused\n")
         return None
@@ -147,3 +154,66 @@ def test_an_api_that_cannot_be_reached_closes_the_browser_with_1011() -> None:
         terminal.receive_bytes()
 
     assert closed.value.code == 1011
+
+
+def session_cookie(expires_in: int = 3600) -> str:
+    expires_at = int(time.time()) + expires_in
+    who = Operator(
+        user_id=uuid.UUID("00000000-0000-4000-8000-000000000001"),
+        name="alpha",
+        credential=f"m1:1:{expires_at}",
+        expires_at=expires_at,
+        key=KEY,
+        csrf="csrf-token-alpha",
+    )
+    return f"{SESSION_COOKIE}={seal_operator(who, {'k1': bytes(range(32))}, 'k1')}"
+
+
+def test_the_operator_terminal_is_the_signed_api_socket(upstream: Upstream) -> None:
+    client = client_for(upstream.port)
+    cookie = f"{session_cookie()}; {LINK_COOKIE}=link-session-alpha"
+
+    with client.websocket_connect(
+        OPERATOR_ATTACH, headers={"host": HOST, "origin": ORIGIN, "cookie": cookie}
+    ) as terminal:
+        assert terminal.receive_text() == '{"offset": 0}'
+        terminal.send_bytes(b"ls\r")
+        assert terminal.receive_bytes() == b"ls\r"
+        terminal.send_text('{"cols": 80, "rows": 24}')
+        assert terminal.receive_text() == '{"cols": 80, "rows": 24}'
+        with pytest.raises(WebSocketDisconnect) as closed:
+            terminal.receive_bytes()
+
+    assert closed.value.code == 4403
+    sent = upstream.headers[0]
+    assert upstream.paths[0] == ATTACH
+    timestamp = int(sent["x-timestamp"])
+    assert sent["x-signature"] == signature(KEY, "GET", ATTACH, b"", timestamp)
+    assert sent["x-owner"] == "00000000-0000-4000-8000-000000000001"
+    assert "cookie" not in sent and "origin" not in sent
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["no session", "lapsed", "foreign origin", "no origin"],
+)
+def test_the_operator_terminal_is_refused_before_the_api(upstream: Upstream, case: str) -> None:
+    client = client_for(upstream.port)
+    headers = {"host": HOST, "origin": ORIGIN, "cookie": session_cookie()}
+    if case == "no session":
+        del headers["cookie"]
+    elif case == "lapsed":
+        headers["cookie"] = session_cookie(expires_in=-1)
+    elif case == "foreign origin":
+        headers["origin"] = "https://beta.example.com"
+    else:
+        del headers["origin"]
+
+    with (
+        client.websocket_connect(OPERATOR_ATTACH, headers=headers) as terminal,
+        pytest.raises(WebSocketDisconnect) as closed,
+    ):
+        terminal.receive_bytes()
+
+    assert closed.value.code == 1008
+    assert not upstream.headers

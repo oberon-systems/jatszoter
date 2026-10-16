@@ -20,8 +20,14 @@ SECURITY_HEADERS = {
     "x-content-type-options": "nosniff",
 }
 
+# asciinema-player builds its terminal from WebAssembly; the replay page alone allows it.
+WASM_POLICY = SECURITY_HEADERS["content-security-policy"].replace(
+    "script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'"
+)
+
 LINK_PATH = re.compile(r"/s/[^/?#\s]+")
 COOKIES_STATE = "set_cookies"
+POLICY_STATE = "content_security_policy"
 
 access_log = logging.getLogger("jatszoter_web.access")
 
@@ -34,6 +40,11 @@ def queue_cookie(connection: HTTPConnection, name: str, value: str | None) -> No
     """Have the answer set the cookie `name` to `value`, or clear it when `value` is None."""
     state = connection.scope.setdefault("state", {})
     state.setdefault(COOKIES_STATE, {})[name] = value
+
+
+def allow_wasm(connection: HTTPConnection) -> None:
+    """Have the answer carry the policy that lets a page compile WebAssembly."""
+    connection.scope.setdefault("state", {})[POLICY_STATE] = WASM_POLICY
 
 
 class DropUvicornAccess(logging.Filter):
@@ -61,9 +72,12 @@ class Guard:
             if message["type"] == "http.response.start":
                 status = message["status"]
                 headers = MutableHeaders(scope=message)
+                state = scope.get("state", {})
                 for name, value in SECURITY_HEADERS.items():
                     headers[name] = value
-                cookies = scope.get("state", {}).get(COOKIES_STATE, {})
+                if POLICY_STATE in state:
+                    headers["content-security-policy"] = state[POLICY_STATE]
+                cookies = state.get(COOKIES_STATE, {})
                 for name, cookie in cookies.items():
                     headers.append("set-cookie", set_cookie_header(name, cookie))
             await send(message)

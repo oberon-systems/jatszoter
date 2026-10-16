@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% from "ui.html" import empty_row %}
+{% block title %}Replay - Stand{% endblock %}
+{% block styles %}
+    {% if player %}
+        <link rel="stylesheet"
+              href="{{ url_for('static', path='vendor/asciinema-player-3.17.0/asciinema-player.css').path }}">
+    {% endif %}
+{% endblock %}
+{% block scripts %}
+    {% if player %}
+        <script src="{{ url_for('static', path='vendor/asciinema-player-3.17.0/asciinema-player.min.js').path }}"
+                defer></script>
+        <script src="{{ url_for('static', path='replay.js').path }}" defer></script>
+    {% endif %}
+{% endblock %}
+{% block header %}
+    <div class="page-header">
+        <div class="titles">
+            <h1 class="title">Replay: {{ label }}</h1>
+            {% if recording %}
+                <span class="subtitle">
+                    Recorded {{ recording.created_at | when(True) }},
+                    {% if live %}
+                        still recording
+                    {% else %}
+                        {{ recording.duration_seconds | duration }}, {{ recording.size_bytes | size }}
+                    {% endif %}
+                </span>
+            {% endif %}
+        </div>
+        <span class="spacer"></span>
+        <div class="actions">
+            <a class="button button-secondary"
+               href="{{ url_for('deployment', deployment_id=deployment.id).path }}">Back to deployment</a>
+        </div>
+    </div>
+{% endblock %}
+{% block content %}
+    {% if player or failure %}
+        <div class="workspace">
+            <section class="terminal replay">
+                <div class="control-bar">
+                    <span class="holder"><span class="secondary">Trainee link:</span> <span class="body-strong">{{ holder }}</span></span>
+                </div>
+                <div class="xterm-area xterm-area-replay">
+                    {% if player %}
+                        <div class="screen"
+                             data-player
+                             data-cast="{{ url_for('cast', deployment_id=deployment.id, recording_id=recording.id).path }}">
+                        </div>
+                        <p class="terminal-note" data-failed hidden>The recording could not be loaded.</p>
+                    {% else %}
+                        <p class="terminal-note">The recording could not be loaded.</p>
+                    {% endif %}
+                </div>
+            </section>
+            <section class="markers">
+                <h2 class="heading">Markers</h2>
+                <span class="caption">A click seeks the player to that time</span>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th class="w-100">Time</th>
+                            <th>Marker</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for at, text in markers %}
+                            <tr class="marker" data-seek="{{ at }}" tabindex="0">
+                                <td class="mono-small">{{ at | duration }}</td>
+                                <td class="left">{{ text }}</td>
+                            </tr>
+                        {% else %}
+                            {{ empty_row(2, 'No markers', 'Nothing changed control and no check settled while this was recorded.') }}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </section>
+        </div>
+    {% endif %}
+{% endblock %}

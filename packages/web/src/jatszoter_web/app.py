@@ -13,6 +13,7 @@ from jatszoter_web import (
     deployments,
     detail,
     logs,
+    replay,
     results,
     storage,
     trainee,
@@ -59,7 +60,8 @@ def create_app(
         return {"status": "ok"}
 
     app.include_router(auth_router)
-    for screen in (deployments, detail, catalog, agents, users, logs, storage, results, trainee):
+    screens = (deployments, detail, replay, catalog, agents, users, logs, storage, results, trainee)
+    for screen in screens:
         app.include_router(screen.router)
     app.include_router(relay_router)
     app.mount("/static", StaticFiles(directory=STATIC), name="static")

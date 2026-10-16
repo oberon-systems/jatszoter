@@ -242,7 +242,9 @@ unless a screen says otherwise. `Missing API` names the routes of
 - Shows: the recording in a vendored asciinema-player, and the `m` events
   of the file as jump points: their time and label, nothing else from the
   file. A click seeks the player to that time.
-- A recording not in the deployment's list answers 404.
+- A recording not in the deployment's list, or one whose file is gone,
+  answers 404. A recording whose trainee link is still live says so in
+  place of its duration and size, and plays as far as it is written.
 - Missing API: none.
 
 ## API gaps
@@ -400,6 +402,10 @@ X-Frame-Options: DENY
 X-Content-Type-Options: nosniff
 ```
 
+- The replay page alone adds `'wasm-unsafe-eval'` to `script-src`:
+  asciinema-player 3 compiles its terminal from WebAssembly, which the
+  policy above refuses. It allows WebAssembly and still no `eval` of
+  JavaScript.
 - No page loads a script, a style, a font or an image from another host;
   every third-party file is vendored under the package's static directory.
 - No inline script or style and no `hx-on` attribute: HTMX is configured

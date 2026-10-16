@@ -73,6 +73,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -536,6 +540,10 @@ body {
   height: auto;
 }
 
+.w-70 {
+  width: 70px;
+}
+
 .w-90 {
   width: 90px;
 }
@@ -623,6 +631,11 @@ body {
 
 .table td:last-child {
   text-align: right;
+}
+
+.table td.left {
+  overflow-wrap: anywhere;
+  text-align: left;
 }
 
 .empty-state {
@@ -773,4 +786,150 @@ body {
   gap: var(--space-3);
   justify-content: flex-end;
   margin: 0;
+}
+
+/* Deployment detail and trainee page */
+.section-header {
+  align-items: center;
+  display: flex;
+  gap: var(--space-4);
+}
+
+.status {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--space-3);
+}
+
+.workspace {
+  align-items: flex-start;
+  display: flex;
+  gap: var(--space-6);
+}
+
+.task {
+  background: var(--color-surface-card);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 20px;
+  width: 380px;
+}
+
+.task-text {
+  font: inherit;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.work,
+.trainee {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+/* Terminal frame */
+.terminal {
+  background: var(--color-surface-card);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.control-bar,
+.check-bar {
+  align-items: center;
+  display: flex;
+  gap: var(--space-4);
+  min-height: 37px;
+  padding: var(--space-2) var(--space-4);
+}
+
+.control-bar {
+  background: var(--color-surface-sunken);
+}
+
+.check-bar {
+  border-top: 1px solid var(--color-border-default);
+  gap: var(--space-3);
+}
+
+.holder,
+.last-check {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.connection {
+  align-items: center;
+  color: var(--color-text-secondary);
+  display: inline-flex;
+  font-size: 12px;
+  gap: 6px;
+  line-height: 16px;
+}
+
+.connection::before {
+  background: var(--color-text-disabled);
+  border-radius: var(--radius-pill);
+  content: "";
+  height: 8px;
+  width: 8px;
+}
+
+.connection.connected::before {
+  background: var(--color-success-fg);
+}
+
+.connection.reconnecting::before {
+  background: var(--color-warning-fg);
+}
+
+.xterm-area {
+  background: var(--color-terminal-bg);
+  color: var(--color-terminal-fg);
+  height: 320px;
+  padding: var(--space-2) var(--space-3);
+  position: relative;
+}
+
+.xterm-area-log {
+  height: 600px;
+}
+
+.screen {
+  height: 100%;
+  width: 100%;
+}
+
+.terminal-note {
+  align-items: center;
+  display: flex;
+  font: 400 13px/20px var(--font-mono);
+  height: 100%;
+  justify-content: center;
+  margin: 0;
+  text-align: center;
+}
+
+.terminal-notice {
+  background: var(--color-shell-active);
+  border-radius: var(--radius-md);
+  bottom: var(--space-3);
+  font: 400 13px/20px var(--font-mono);
+  left: var(--space-3);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  position: absolute;
+  right: var(--space-3);
+  text-align: center;
 }

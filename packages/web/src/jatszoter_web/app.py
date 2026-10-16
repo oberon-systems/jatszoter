@@ -7,7 +7,17 @@ import httpx
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from jatszoter_web import agents, catalog, deployments, logs, results, storage, users
+from jatszoter_web import (
+    agents,
+    catalog,
+    deployments,
+    detail,
+    logs,
+    results,
+    storage,
+    trainee,
+    users,
+)
 from jatszoter_web.api import Api
 from jatszoter_web.auth import router as auth_router
 from jatszoter_web.middleware import DropUvicornAccess, Guard
@@ -49,7 +59,7 @@ def create_app(
         return {"status": "ok"}
 
     app.include_router(auth_router)
-    for screen in (deployments, catalog, agents, users, logs, storage, results):
+    for screen in (deployments, detail, catalog, agents, users, logs, storage, results, trainee):
         app.include_router(screen.router)
     app.include_router(relay_router)
     app.mount("/static", StaticFiles(directory=STATIC), name="static")

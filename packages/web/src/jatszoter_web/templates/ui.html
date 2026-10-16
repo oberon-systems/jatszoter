@@ -41,3 +41,23 @@
         </form>
     </dialog>
 {% endmacro %}
+{% macro terminal_styles() %}
+    <link rel="stylesheet"
+          href="{{ url_for('static', path='vendor/xterm-6.0.0/xterm.css').path }}">
+    <link rel="stylesheet"
+          href="{{ url_for('static', path='terminal.css').path }}">
+{% endmacro %}
+{% macro terminal_scripts() %}
+    <script src="{{ url_for('static', path='vendor/xterm-6.0.0/xterm.js').path }}"
+            defer></script>
+    <script src="{{ url_for('static', path='terminal.js').path }}" defer></script>
+{% endmacro %}
+{% macro control_bar() %}
+    <div class="control-bar">
+        <span class="holder"><span class="secondary">Control:</span> <span class="body-strong"
+       data-holder>nobody</span></span>
+        <span class="connection" data-connection>closed</span>
+        <span class="spacer"></span>
+        {% if caller %}{{ caller() }}{% endif %}
+    </div>
+{% endmacro %}

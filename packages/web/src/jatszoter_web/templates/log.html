@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "ui.html" import terminal_styles, terminal_scripts with context %}
+{% block title %}Console log - Stand{% endblock %}
+{% block styles %}{{ terminal_styles() }}{% endblock %}
+{% block scripts %}{{ terminal_scripts() }}{% endblock %}
+{% block header %}
+    <div class="page-header">
+        <div class="titles">
+            <h1 class="title">Console log</h1>
+            <span class="subtitle">{{ label }}</span>
+        </div>
+        <span class="spacer"></span>
+        <div class="actions">
+            <a class="button button-secondary" href="{{ url_for('logs').path }}">Back to logs</a>
+            {% if size %}
+                <a class="button button-secondary"
+                   href="{{ url_for('console_log', deployment_id=deployment.id).path }}"
+                   download>Download</a>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}
+{% block content %}
+    <section class="terminal"
+             data-terminal
+             {% if size %}data-log="{{ url_for('console_log', deployment_id=deployment.id).path }}"{% endif %}>
+        <div class="control-bar">
+            <span class="holder"><span class="secondary">Size:</span> <span class="body-strong">{{ size | size }}</span></span>
+        </div>
+        <div class="xterm-area xterm-area-log">
+            {% if size %}
+                <div class="screen" data-screen></div>
+            {% else %}
+                <p class="terminal-note">No console output yet: the log starts when the VM boots.</p>
+            {% endif %}
+        </div>
+    </section>
+{% endblock %}

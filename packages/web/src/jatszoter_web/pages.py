@@ -80,6 +80,16 @@ def when(timestamp: int | float | None, seconds: bool = False) -> str:
     )
 
 
+def clock(timestamp: int | float) -> str:
+    """The UTC time of day, as the last check of a check bar shows it."""
+    return time.strftime("%H:%M:%S", time.gmtime(timestamp))
+
+
+def duration(seconds: int | float) -> str:
+    whole = int(seconds)
+    return f"{whole // 3600:02d}:{whole // 60 % 60:02d}:{whole % 60:02d}"
+
+
 def size(count: int | None) -> str:
     if count is None:
         return "-"
@@ -96,7 +106,7 @@ def counted(count: int, noun: str) -> str:
     return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
 
 
-templates.env.filters.update(when=when, size=size, counted=counted)
+templates.env.filters.update(when=when, clock=clock, duration=duration, size=size, counted=counted)
 templates.env.globals.update(tones=TONES)
 
 

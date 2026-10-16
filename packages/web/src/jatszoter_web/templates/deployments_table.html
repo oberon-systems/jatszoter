@@ -30,10 +30,8 @@
                     <td class="mono-small">{{ row.ended_at | when }}</td>
                     <td>
                         <div class="actions">
-                            {# djlint:off J018 #}
                             <a class="button button-secondary button-small"
-                               href="/deployments/{{ row.id }}">Open</a>
-                            {# djlint:on #}
+                               href="{{ url_for('deployment', deployment_id=row.id).path }}">Open</a>
                             {% if row.status in stoppable %}
                                 <button class="button button-danger-outline button-small"
                                         type="button"

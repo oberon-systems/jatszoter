@@ -100,17 +100,16 @@ def upstream_uri(settings: Settings, host: str, path: str, query: str) -> str:
 
 async def bridge(
     websocket: WebSocket,
+    path: str,
     headers: dict[str, str],
     origin: str | None,
 ) -> None:
-    """Open the API's socket, then pass frames both ways, one at a time, close codes included."""
+    """Open the API's socket at `path`, then pass frames both ways, one at a time, codes and all."""
     settings: Settings = websocket.app.state.settings
     target = settings.api_url
     secure = target.scheme == "https"
     try:
-        uri = upstream_uri(
-            settings, websocket.headers.get("host", ""), websocket.url.path, websocket.url.query
-        )
+        uri = upstream_uri(settings, websocket.headers.get("host", ""), path, websocket.url.query)
         upstream = await connect(
             uri,
             host=target.host,
@@ -180,4 +179,5 @@ async def pump(websocket: WebSocket, upstream: ClientConnection) -> None:
 @router.websocket("/api/v1/deployments/{deployment_id:uuid}/attach")
 async def link_socket(websocket: WebSocket) -> None:
     cookie = link_cookie(websocket.cookies)
-    await bridge(websocket, {"cookie": cookie} if cookie else {}, websocket.headers.get("origin"))
+    headers = {"cookie": cookie} if cookie else {}
+    await bridge(websocket, websocket.url.path, headers, websocket.headers.get("origin"))

@@ -1,0 +1,36 @@
+{% from "ui.html" import badge, scenario with context %}
+<div id="deployment-summary"
+     class="summary"
+     {% if oob %} hx-swap-oob="true"{% endif %}>
+    <div class="fact">
+        <span class="label">Status</span>
+        <span class="status">
+            {{ badge(deployment.status) }}
+            {% if deployment.reason %}<span class="secondary">{{ deployment.reason }}</span>{% endif %}
+        </span>
+    </div>
+    <div class="fact">
+        <span class="label">Scenario</span>
+        {{ scenario(scenarios.get(deployment.scenario_id)) }}
+    </div>
+    <div class="fact">
+        <span class="label">Trainee</span>
+        <span>{{ trainee.name if trainee else '-' }}</span>
+    </div>
+    <div class="fact">
+        <span class="label">Agent</span>
+        <span>{{ agent.name if agent else '-' }}</span>
+    </div>
+    <div class="fact">
+        <span class="label">Resources</span>
+        <span>{{ deployment.cpus | counted("CPU") }}, {{ deployment.memory_mib }} MiB, {{ deployment.disk_gib }} GiB</span>
+    </div>
+    <div class="fact">
+        <span class="label">Timeouts</span>
+        <span>bootstrap {{ deployment.bootstrap_seconds }} s, check {{ deployment.check_seconds }} s, session {{ deployment.session_minutes }} min</span>
+    </div>
+    <div class="fact">
+        <span class="label">Session ends</span>
+        <span class="mono-small">{{ session_ends | when }}</span>
+    </div>
+</div>

@@ -5,7 +5,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
 from jatszoter_web.api import ApiDown
-from jatszoter_web.pages import error, redirect, render
+from jatszoter_web.deployments import labelled
+from jatszoter_web.pages import Refusal, error, redirect, render
 from jatszoter_web.screens import TERMINAL, by_id, read, refused
 from jatszoter_web.session import OperatorDep
 
@@ -39,6 +40,23 @@ async def logs(request: Request, session: OperatorDep) -> Response:
         context.update(rows=[], failure=True, flashes=[error(down.message)])
         code = down.status
     return render(request, "logs.html", context, code)
+
+
+@router.get("/logs/{deployment_id:uuid}")
+async def log(request: Request, session: OperatorDep, deployment_id: uuid.UUID) -> Response:
+    try:
+        row = await read(session, f"/api/v1/deployments/{deployment_id}")
+    except Refusal as refused_read:
+        return redirect(request, "/logs", refused_read.flash)
+    storage = await read(session, "/api/v1/storage")
+    held = (item for item in storage["deployments"] if item["deployment_id"] == row["id"])
+    context = {
+        "current": "/logs",
+        "deployment": row,
+        "label": await labelled(session, row),
+        "size": next((item["console_bytes"] for item in held), 0),
+    }
+    return render(request, "log.html", context)
 
 
 @router.get("/deployments/{deployment_id:uuid}/console.log")

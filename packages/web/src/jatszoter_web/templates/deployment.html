@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% from "ui.html" import control_bar, terminal_styles, terminal_scripts with context %}
+{% block title %}{{ label }} - Stand{% endblock %}
+{% block styles %}{{ terminal_styles() }}{% endblock %}
+{% block scripts %}{{ terminal_scripts() }}{% endblock %}
+{% block header %}
+    <div class="page-header">
+        <div class="titles">
+            <h1 class="title">{{ label }}</h1>
+            {% if ended %}
+                <span class="subtitle">Ended {{ deployment.ended_at | when }}</span>
+            {% else %}
+                <span class="subtitle">Status, links and checks refresh every 5 seconds</span>
+            {% endif %}
+        </div>
+        <span class="spacer"></span>
+        <div class="actions">
+            <a class="button button-secondary"
+               href="{{ url_for('console_log', deployment_id=deployment.id).path }}"
+               download>Console log</a>
+            {% if stoppable %}
+                <button class="button button-danger-outline"
+                        type="button"
+                        hx-get="{{ url_for('stop_dialog', deployment_id=deployment.id).path }}"
+                        hx-target="#dialogs">Stop deployment</button>
+            {% endif %}
+        </div>
+    </div>
+{% endblock %}
+{% block content %}
+    {% include "deployment_summary.html" %}
+    {% if ready %}
+        <section class="terminal"
+                 data-terminal
+                 data-socket="{{ url_for('operator_socket', deployment_id=deployment.id).path }}"
+                 data-role="operator"
+                 data-holder-operator="you (operator)"
+                 data-holder-trainee="{{ trainee_holder }}">
+            {% call control_bar() %}
+                <button class="button button-secondary"
+                        type="button"
+                        data-control
+                        hidden
+                        hx-post="{{ url_for('control', deployment_id=deployment.id).path }}"
+                        hx-vals='{"holder": "operator"}'>Take control</button>
+            {% endcall %}
+            <div class="xterm-area">
+                <div class="screen" data-screen></div>
+            </div>
+            {% include "deployment_check.html" %}
+        </section>
+    {% else %}
+        <section class="terminal">
+            {{ control_bar() }}
+            <div class="xterm-area">
+                {% if deployment.status == "FAILED" %}
+                    <p class="terminal-note">The deployment failed before the terminal opened.</p>
+                {% elif ended or deployment.status == "STOPPING" %}
+                    <p class="terminal-note">
+                        The deployment has ended and the terminal is closed. The console log and the recordings stay until they are purged.
+                    </p>
+                {% else %}
+                    <p class="terminal-note">The VM is being prepared. The terminal opens when the deployment is READY.</p>
+                {% endif %}
+            </div>
+            {% if not ended %}
+                {% include "deployment_check.html" %}
+            {% endif %}
+        </section>
+    {% endif %}
+    {% include "deployment_live.html" %}
+{% endblock %}

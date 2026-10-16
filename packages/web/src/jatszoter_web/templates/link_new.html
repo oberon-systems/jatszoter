@@ -1,0 +1,32 @@
+{% from "flash.html" import flash %}
+{% from "ui.html" import field_error, invalid with context %}
+<dialog class="dialog" aria-labelledby="dialog-title">
+    <h2 class="heading" id="dialog-title">Issue a link</h2>
+    <p class="dialog-text">The link opens this terminal with the role of its user. It is shown once.</p>
+    {% for item in flashes %}{{ flash(item) }}{% endfor %}
+    <form class="dialog-form"
+          method="post"
+          action="{{ url_for('issue_link', deployment_id=id).path }}"
+          hx-post="{{ url_for('issue_link', deployment_id=id).path }}"
+          hx-target="closest dialog"
+          hx-swap="outerHTML">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="field">
+            <span class="label">User</span>
+            <select class="select{{ invalid(errors, 'user_id') }}"
+                    name="user_id"
+                    required
+                    autofocus>
+                {% for user in users %}
+                    <option value="{{ user.id }}"
+                            {% if user.id == values.user_id %} selected{% endif %}>{{ user.name }} ({{ user.role }})</option>
+                {% endfor %}
+            </select>
+            {% if errors.user_id %}{{ field_error(errors, "user_id") }}{% else %}<span class="hint">Enabled users only; a trainee holds one live link per deployment</span>{% endif %}
+        </label>
+        <div class="dialog-actions">
+            <button class="button button-secondary" type="button" data-close>Cancel</button>
+            <button class="button button-primary" type="submit">Issue link</button>
+        </div>
+    </form>
+</dialog>

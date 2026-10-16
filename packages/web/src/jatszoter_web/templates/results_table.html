@@ -24,10 +24,8 @@
                     <td class="mono-small">{{ row.checks }}</td>
                     <td>
                         <div class="actions">
-                            {# djlint:off J018 #}
                             <a class="button button-secondary button-small"
-                               href="/deployments/{{ row.deployment.id }}">Open</a>
-                            {# djlint:on #}
+                               href="{{ url_for('deployment', deployment_id=row.deployment.id).path }}">Open</a>
                         </div>
                     </td>
                 </tr>

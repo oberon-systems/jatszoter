@@ -1,0 +1,4 @@
+{% from "ui.html" import confirmation with context %}
+{{ confirmation("Revoke this link?",
+    "The link of " ~ name ~ " stops working at once, and a terminal it holds open is closed. This cannot be undone.",
+    url_for('revoke_link', link_id=id).path, "Revoke link", next) }}

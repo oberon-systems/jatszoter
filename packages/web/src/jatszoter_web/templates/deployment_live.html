@@ -1,0 +1,137 @@
+{% from "ui.html" import badge, empty_row with context %}
+<div id="deployment-live"
+     class="sections"
+     hx-get="{{ url_for('deployment', deployment_id=deployment.id).path }}?seen={{ deployment.status }}"
+     hx-trigger="every 5s"
+     hx-swap="outerHTML">
+    <section class="section">
+        <div class="section-header">
+            <h2 class="heading">Links</h2>
+            <span class="spacer"></span>
+            {% if not ended %}
+                <button class="button button-secondary"
+                        type="button"
+                        hx-get="{{ url_for('link_dialog', deployment_id=deployment.id).path }}"
+                        hx-target="#dialogs">Issue link</button>
+            {% endif %}
+        </div>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th class="w-160">User</th>
+                    <th class="w-140">Role</th>
+                    <th class="w-190">Opened</th>
+                    <th class="w-260">State</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for link in links %}
+                    <tr>
+                        <td>{{ names.get(link.user_id, "-") }}</td>
+                        <td>{{ link.role }}</td>
+                        <td>
+                            {% if link.opened_at %}
+                                <span class="mono-small">{{ link.opened_at | when(True) }}</span>
+                            {% else %}
+                                not opened
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if link.revoked_at %}
+                                revoked <span class="mono-small">{{ link.revoked_at | when(True) }}</span>
+                            {% else %}
+                                live
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if not link.revoked_at %}
+                                <button class="button button-danger-outline button-small"
+                                        type="button"
+                                        hx-get="{{ url_for('revoke_dialog', link_id=link.id).path }}?deployment_id={{ deployment.id }}"
+                                        hx-target="#dialogs">Revoke</button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+    <section class="section">
+        <h2 class="heading">Checks</h2>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th class="w-120">Status</th>
+                    <th class="w-170">Requested</th>
+                    <th class="w-150">By</th>
+                    <th class="w-70">Exit</th>
+                    <th class="w-300">Message</th>
+                    <th class="left">Detail</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for check in checks %}
+                    <tr>
+                        <td>{{ badge(check.status) }}</td>
+                        <td class="mono-small">{{ check.created_at | when(True) }}</td>
+                        <td>-</td>
+                        <td class="mono-small">{{ "-" if check.exit_code is none else check.exit_code }}</td>
+                        <td>{{ check.message or ("waiting for the agent" if check.status == "pending" else "-") }}</td>
+                        <td class="left mono-small">{{ check.detail or "-" }}</td>
+                    </tr>
+                {% else %}
+                    {% if ended %}
+                        {{ empty_row(6, 'No checks yet', 'No check was requested before the deployment ended.') }}
+                    {% else %}
+                        {{ empty_row(6, 'No checks yet', 'A check runs the scenario check script on the VM; it can be requested once the deployment is READY.') }}
+                    {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+    <section class="section">
+        <h2 class="heading">Recordings</h2>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th class="w-200">Trainee link</th>
+                    <th class="w-190">Started</th>
+                    <th class="w-140">Size</th>
+                    <th class="w-140">Duration</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for recording in recordings %}
+                    {% set link = links_by_id.get(recording.link_id) %}
+                    {% set closed = link and link.revoked_at %}
+                    <tr>
+                        <td>{{ names.get(link.user_id, "-") if link else "-" }}</td>
+                        <td class="mono-small">{{ recording.created_at | when(True) }}</td>
+                        <td class="mono-small">{{ recording.size_bytes | size if closed else "-" }}</td>
+                        <td class="mono-small">{{ recording.duration_seconds | duration if closed else "-" }}</td>
+                        <td>
+                            {% if closed %}
+                                {# djlint:off J018 #}
+                                <a class="button button-secondary button-small"
+                                   href="/deployments/{{ deployment.id }}/recordings/{{ recording.id }}">Replay</a>
+                                {# djlint:on #}
+                            {% else %}
+                                <span class="caption">recording, replay after the link closes</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% else %}
+                    {{ empty_row(5, 'No recordings yet', 'A recording starts when the trainee first opens the link.') }}
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+    {% if oob %}
+        {% include "deployment_summary.html" %}
+        {% if not ended %}
+            {% include "deployment_check.html" %}
+        {% endif %}
+    {% endif %}
+</div>

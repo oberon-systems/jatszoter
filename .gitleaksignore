@@ -1,0 +1,2 @@
+# Minified xterm.js chains of exports like `t.FourKeyMap=`; the file is one line.
+packages/web/src/jatszoter_web/static/vendor/xterm-6.0.0/xterm.js:generic-api-key:1

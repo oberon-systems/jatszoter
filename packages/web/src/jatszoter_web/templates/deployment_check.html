@@ -1,0 +1,19 @@
+{% from "ui.html" import badge with context %}
+<div id="check-bar"
+     class="check-bar"
+     {% if oob %} hx-swap-oob="true"{% endif %}>
+    <button class="button button-primary"
+            type="button"
+            hx-post="{{ url_for('request_check', deployment_id=deployment.id).path }}"
+            hx-target="#check-bar"
+            hx-swap="outerHTML"
+            {% if not ready or (last and last.status == "pending") %}disabled{% endif %}>Request check</button>
+    <span class="secondary">Last check:</span>
+    {% if last %}
+        {{ badge(last.status) }}
+        <span>{{ last.message or ("waiting for the agent" if last.status == "pending" else "-") }}</span>
+        <span class="mono-small secondary">{{ last.created_at | clock }}</span>
+    {% else %}
+        <span class="secondary">none yet</span>
+    {% endif %}
+</div>

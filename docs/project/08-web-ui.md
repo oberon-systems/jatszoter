@@ -61,7 +61,7 @@ prefix like every other setting.
 | `/deployments/{id}/console.log`                    | GET      | operator | the full console log          |
 | `/deployments/{id}/recordings/{recording_id}`      | GET      | operator | replay page                   |
 | `/deployments/{id}/recordings/{recording_id}.cast` | GET      | operator | the asciicast file            |
-| `/links/{id}/revoke`                               | POST     | operator | revoke a link                 |
+| `/links/{id}/revoke`                               | GET POST | operator | revoke a link                 |
 | `/scenarios`, `/images`                            | GET POST | operator | list and register             |
 | `/scenarios/new`, `/images/new`, `/users/new`      | GET      | operator | the register and create forms |
 | `/agents`, `/agents/{id}/state`                    | GET POST | operator | list, approve, enable         |
@@ -404,6 +404,10 @@ X-Content-Type-Options: nosniff
   every third-party file is vendored under the package's static directory.
 - No inline script or style and no `hx-on` attribute: HTMX is configured
   through `<meta name="htmx-config">` with `includeIndicatorStyles` off.
+- The `<style>` elements the xterm.js DOM renderer injects are refused by
+  the policy, so `static/terminal.css` carries them for the one theme the
+  terminal uses. A 24-bit colour, which xterm.js writes as a `style`
+  attribute, falls back to the default colour.
 - Every page that shows data from the API is `Cache-Control: no-store`.
 - `web` is served over HTTPS, which the Secure cookies need; plain HTTP is
   for loopback alone.

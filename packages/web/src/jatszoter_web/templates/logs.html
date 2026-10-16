@@ -35,6 +35,8 @@
                             {% if held[row.id] == "log" %}
                                 <div class="actions">
                                     <a class="button button-secondary button-small"
+                                       href="{{ url_for('log', deployment_id=row.id).path }}">View log</a>
+                                    <a class="button button-secondary button-small"
                                        href="{{ url_for('console_log', deployment_id=row.id).path }}"
                                        download>Download</a>
                                 </div>

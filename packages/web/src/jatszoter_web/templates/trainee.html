@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "ui.html" import control_bar, empty_row, terminal_styles, terminal_scripts with context %}
+{% block title %}Stand{% endblock %}
+{% block styles %}{{ terminal_styles() }}{% endblock %}
+{% block scripts %}
+    {{ terminal_scripts() }}
+    <script src="{{ url_for('static', path='trainee.js').path }}" defer></script>
+{% endblock %}
+{% block flashes %}{% endblock %}
+{% block content %}
+    <div class="center" data-ended hidden>
+        <div class="card">
+            <p class="card-text">this link is not valid or has ended</p>
+        </div>
+    </div>
+    <div class="trainee" data-trainee data-deployment="{{ id }}" hidden>
+        <div class="page-header">
+            <div class="titles">
+                <h1 class="title" data-title></h1>
+            </div>
+            <span class="spacer"></span>
+            <span class="status"><span data-status></span><span class="caption" data-time-left></span></span>
+        </div>
+        <div class="workspace">
+            <section class="task">
+                <h2 class="heading">Task</h2>
+                <pre class="task-text" data-task-text></pre>
+            </section>
+            <div class="work">
+                <div id="flashes" class="flashes"></div>
+                <section class="terminal"
+                         data-terminal
+                         data-deferred
+                         data-socket="/api/v1/deployments/{{ id }}/attach">
+                    {% call control_bar() %}
+                        <button class="button button-secondary" type="button" data-control hidden>Take control</button>
+                    {% endcall %}
+                    <div class="xterm-area">
+                        <p class="terminal-note"
+                           data-preparing>The VM is being prepared. This page checks again every 5 seconds.</p>
+                        <div class="screen" data-screen hidden></div>
+                        <p class="terminal-notice" data-notice hidden>
+                            The operator holds control: your keys are not sent until it is given back.
+                        </p>
+                    </div>
+                    <div class="check-bar" data-check-bar hidden>
+                        <button class="button button-primary" type="button" data-request disabled>Request check</button>
+                        <span class="secondary">Last check:</span>
+                        <span class="last-check" data-last><span class="secondary">none yet</span></span>
+                    </div>
+                </section>
+                <section class="section">
+                    <h2 class="heading">Checks</h2>
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th class="w-120">Status</th>
+                                <th class="w-190">Requested</th>
+                                <th class="left">Message</th>
+                            </tr>
+                        </thead>
+                        <tbody data-checks>
+                            {{ empty_row(3, 'No checks yet', 'Request a check once the task is done; the result shows here.') }}
+                        </tbody>
+                    </table>
+                </section>
+            </div>
+        </div>
+    </div>
+{% endblock %}

@@ -17,7 +17,7 @@ ME = ("GET", "/api/v1/auth/me")
 LOGOUT = ("POST", "/api/v1/auth/logout")
 USER_ID = "00000000-0000-4000-8000-000000000002"
 KEY = "issued-key-alpha"
-PASSWORD = "correct horse battery"
+PASSWORD = "Correct horse battery"
 
 
 def issued(_: httpx.Request) -> httpx.Response:
@@ -148,23 +148,23 @@ def test_a_first_login_sets_a_new_password(
         "csrf_token": browser_csrf,
         "pending": pending,
         "next": "/users",
-        "new_password": "staple of the paddock",
+        "new_password": "Staple of the paddock",
     }
 
-    differ = client.post("/login", data={**change, "repeat_password": "staple of the stable"})
+    differ = client.post("/login", data={**change, "repeat_password": "Staple of the stable"})
 
     assert differ.status_code == 422
     assert "the two passwords differ" in differ.text
     assert len(calls) == 1
 
-    changed = client.post("/login", data={**change, "repeat_password": "staple of the paddock"})
+    changed = client.post("/login", data={**change, "repeat_password": "Staple of the paddock"})
 
     assert changed.status_code == 303
     assert changed.headers["location"] == "/users"
     assert json.loads(calls[1].content) == {
         "name": "alpha",
         "password": PASSWORD,
-        "new_password": "staple of the paddock",
+        "new_password": "Staple of the paddock",
     }
     assert SESSION_COOKIE in changed.cookies
 
@@ -185,14 +185,49 @@ def test_a_refused_new_password_shows_the_api_message(
         data={
             "csrf_token": browser_csrf,
             "pending": pending,
-            "new_password": "short",
-            "repeat_password": "short",
+            "new_password": "Staple of the paddock",
+            "repeat_password": "Staple of the paddock",
         },
     )
 
     assert response.status_code == 422
     assert "the new password is too short (422)" in response.text
     assert hidden(response.text, "pending") == pending
+
+
+@pytest.mark.parametrize(
+    ("new_password", "repeat", "shown"),
+    [
+        ("short", "short", "at least 12 characters and three of"),
+        ("onlylowercaseletters", "onlylowercaseletters", "at least 12 characters and three of"),
+        (PASSWORD, PASSWORD, "must differ from the current password"),
+        ("Staple of the paddock", "Staple of the stable", "the two passwords differ"),
+    ],
+)
+def test_a_new_password_that_breaks_the_rule_never_reaches_the_api(
+    client: TestClient,
+    routes: Routes,
+    calls: list[httpx.Request],
+    browser_csrf: str,
+    new_password: str,
+    repeat: str,
+    shown: str,
+) -> None:
+    routes[LOGIN] = lambda _: httpx.Response(403, json={"detail": "password change required"})
+    asked = client.post("/login", data=form(browser_csrf))
+    change = {
+        "csrf_token": browser_csrf,
+        "pending": hidden(asked.text, "pending"),
+        "new_password": new_password,
+        "repeat_password": repeat,
+    }
+
+    response = client.post("/login", data=change)
+
+    assert 'class="field-hint">at least 12 characters' in asked.text
+    assert response.status_code == 422
+    assert f'<span class="field-error">{shown}' in response.text
+    assert len(calls) == 1
 
 
 def test_a_forged_pending_login_starts_over(
@@ -203,8 +238,8 @@ def test_a_forged_pending_login_starts_over(
         data={
             "csrf_token": browser_csrf,
             "pending": "k1.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-            "new_password": "staple of the paddock",
-            "repeat_password": "staple of the paddock",
+            "new_password": "Staple of the paddock",
+            "repeat_password": "Staple of the paddock",
         },
     )
 

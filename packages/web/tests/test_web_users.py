@@ -12,7 +12,7 @@ Answer = Callable[..., None]
 SignIn = Callable[..., Operator]
 
 HTMX = {"hx-request": "true"}
-PASSWORD = "correct-horse-alpha"
+PASSWORD = "Correct-horse-alpha"
 
 
 def posted(calls: list[httpx.Request]) -> list[httpx.Request]:
@@ -154,14 +154,29 @@ def test_passwords_that_differ_never_reach_the_api(
     assert posted(calls) == []
 
 
+def test_a_weak_password_never_reaches_the_api(
+    client: TestClient, sign_in: SignIn, stand: dict[str, Any], calls: list[httpx.Request]
+) -> None:
+    who = sign_in()
+    weak = "Lettersonlyhere"
+    form = {"csrf_token": who.csrf, "password": weak, "repeat_password": weak}
+
+    dialog = client.post(f"/users/{stand['trainee']['id']}/password", data=form, headers=HTMX)
+
+    assert dialog.status_code == 422
+    assert '<span class="field-error">at least 12 characters and three of' in dialog.text
+    assert 'class="field-hint"' not in dialog.text
+    assert posted(calls) == []
+
+
 def test_a_refused_password_shows_the_refusal_next_to_its_field(
     client: TestClient, sign_in: SignIn, stand: dict[str, Any], answer: Answer
 ) -> None:
     who = sign_in()
     user_id = stand["trainee"]["id"]
-    detail = "a password needs at least 12 characters"
+    detail = "at least 16 characters"
     answer("POST", f"/api/v1/users/{user_id}/password", {"detail": detail}, 422)
-    form = {"csrf_token": who.csrf, "password": "short", "repeat_password": "short"}
+    form = {"csrf_token": who.csrf, "password": PASSWORD, "repeat_password": PASSWORD}
 
     dialog = client.post(f"/users/{user_id}/password", data=form, headers=HTMX)
 

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
 from jatszoter_web.api import ApiDown
+from jatszoter_web.auth import password_errors
 from jatszoter_web.pages import Flash, error, fragment, redirect, render
 from jatszoter_web.screens import ROLES, came_from, field, read, refused, swapped
 from jatszoter_web.session import OperatorDep, PostedOperatorDep, Session, local
@@ -12,10 +13,9 @@ from jatszoter_web.session import OperatorDep, PostedOperatorDep, Session, local
 router = APIRouter()
 
 TABLE = "users-table"
-DIFFER = "the two passwords differ"
 # A name that is taken is the one conflict a new user meets.
 NEW_CONCERNS = {"": "name"}
-PASSWORD_CONCERNS = {"a password": "password"}
+PASSWORD_CONCERNS = {"at least": "password"}
 
 
 @router.get("/users")
@@ -82,14 +82,12 @@ async def set_password(
     request: Request, session: PostedOperatorDep, user_id: uuid.UUID
 ) -> Response:
     form = await request.form()
-    password = form.get("password")
-    password = password if isinstance(password, str) else ""
+    password = field(form, "password")
     name = await named(session, user_id)
     context: dict[str, Any] = {"id": user_id, "name": name}
-    if password != form.get("repeat_password"):
-        return dialog(
-            request, "user_password.html", {**context, "errors": {"repeat_password": DIFFER}}, 422
-        )
+    errors = password_errors(password, field(form, "repeat_password"), "password")
+    if errors:
+        return dialog(request, "user_password.html", {**context, "errors": errors}, 422)
     try:
         response = await session.call(
             "POST", f"/api/v1/users/{user_id}/password", {"password": password}

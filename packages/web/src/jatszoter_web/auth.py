@@ -20,7 +20,7 @@ from jatszoter_web.cookies import (
 )
 from jatszoter_web.csrf import browser_token, check_browser
 from jatszoter_web.middleware import queue_cookie
-from jatszoter_web.pages import LANDING, Flash, error, refusal, render
+from jatszoter_web.pages import LANDING, Flash, error, refusal, render, templates
 from jatszoter_web.session import OperatorDep, PostedOperatorDep, local
 
 PENDING = "jatszoter_login"
@@ -36,9 +36,16 @@ NOT_OPERATOR = Flash(
     "Trainees open the link they were given.",
 )
 DIFFER = "the two passwords differ"
+PASSWORD_LENGTH = 12
+WEAK = f"at least {PASSWORD_LENGTH} characters and three of: lowercase, uppercase, digits, symbols"
+UNCHANGED = "must differ from the current password"
 EXPIRED = "The login form has expired. Nothing was sent; enter your name and password again"
 
 router = APIRouter()
+
+templates.env.globals.update(
+    password_length=PASSWORD_LENGTH, password_rule=WEAK, passwords_differ=DIFFER
+)
 
 
 class Pending(BaseModel):
@@ -52,6 +59,27 @@ class Pending(BaseModel):
 def field(form: FormData, name: str) -> str:
     value = form.get(name)
     return value if isinstance(value, str) else ""
+
+
+def weak(password: str) -> bool:
+    """Whether `password` breaks the API's rule: 12 characters and three of four classes."""
+    classes = (str.islower, str.isupper, str.isdigit, lambda char: not char.isalnum())
+    mixed = sum(any(map(test, password)) for test in classes)
+    return len(password) < PASSWORD_LENGTH or mixed < 3
+
+
+def password_errors(
+    password: str, repeat: str, name: str, current: str | None = None
+) -> dict[str, str]:
+    """The field errors of a new password and its repeat, found before the API is asked."""
+    errors: dict[str, str] = {}
+    if weak(password):
+        errors[name] = WEAK
+    elif password == current:
+        errors[name] = UNCHANGED
+    if repeat != password:
+        errors["repeat_password"] = DIFFER
+    return errors
 
 
 def page(request: Request, context: dict[str, Any], status: int = 200) -> Response:
@@ -85,8 +113,10 @@ async def login(request: Request) -> Response:
             return page(request, context)
         context.update(name=pending.name, pending=field(form, "pending"))
         new_password = field(form, "new_password")
-        if new_password != field(form, "repeat_password"):
-            return page(request, {**context, "mismatch": DIFFER}, 422)
+        repeat = field(form, "repeat_password")
+        errors = password_errors(new_password, repeat, "new_password", pending.password)
+        if errors:
+            return page(request, {**context, "errors": errors}, 422)
         payload = {"name": pending.name, "password": pending.password}
         payload["new_password"] = new_password
     else:

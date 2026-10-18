@@ -25,6 +25,13 @@
 {% macro field_error(errors, name) %}
     {% if errors and errors.get(name) %}<span class="field-error">{{ errors[name] }}</span>{% endif %}
 {% endmacro %}
+{% macro password_hint(errors, name) %}
+    {% if errors and errors.get(name) %}
+        {{ field_error(errors, name) }}
+    {% else %}
+        <span class="field-hint">{{ password_rule }}</span>
+    {% endif %}
+{% endmacro %}
 {% macro invalid(errors, name) %}{% if errors and errors.get(name) %} invalid{% endif %}{% endmacro %}
 {% macro confirmation(title, text, action, button, next, fields={}) %}
     <dialog class="dialog" aria-labelledby="dialog-title">

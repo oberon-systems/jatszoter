@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "flash.html" import flash %}
+{% from "ui.html" import field_error, invalid, password_hint with context %}
 {% block title %}Log in - Jatszoter{% endblock %}
 {% block flashes %}{% endblock %}
 {% block content %}
@@ -14,20 +15,25 @@
                 <input type="hidden" name="pending" value="{{ pending }}">
                 <label class="field">
                     <span class="label">New password</span>
-                    <input class="input"
+                    <input class="input{{ invalid(errors, 'new_password') }}"
                            type="password"
                            name="new_password"
                            autocomplete="new-password"
+                           minlength="{{ password_length }}"
+                           data-password="{{ password_rule }}"
                            required>
+                    {{ password_hint(errors, "new_password") }}
                 </label>
                 <label class="field">
                     <span class="label">Repeat new password</span>
-                    <input class="input{% if mismatch %} invalid{% endif %}"
+                    <input class="input{{ invalid(errors, 'repeat_password') }}"
                            type="password"
                            name="repeat_password"
                            autocomplete="new-password"
+                           data-repeat="new_password"
+                           data-differ="{{ passwords_differ }}"
                            required>
-                    {% if mismatch %}<span class="field-error">{{ mismatch }}</span>{% endif %}
+                    {{ field_error(errors, "repeat_password") }}
                 </label>
                 <button class="button button-primary button-block" type="submit">Set password and log in</button>
             {% else %}

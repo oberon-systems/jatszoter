@@ -59,7 +59,7 @@ def test_a_duplicate_name_conflicts(operator: Any, session: Session) -> None:
     "body",
     [
         {"name": "beta", "role": "root"},
-        {"name": "beta", "role": "trainee", "password": "correct horse battery"},
+        {"name": "beta", "role": "trainee", "password": "Correct horse battery"},
         {"name": "beta", "role": "trainee", "state": "disabled"},
         {"name": "", "role": "trainee"},
         {"name": "b" * 65, "role": "trainee"},
@@ -76,7 +76,7 @@ def test_a_malformed_user_is_unprocessable(
 def test_a_user_without_a_password_cannot_log_in(operator: Any, api: TestClient) -> None:
     assert operator.request("POST", USERS, json={"name": "beta", "role": "operator"}).is_success
 
-    for password in ("beta", "admin", "correct horse battery"):
+    for password in ("beta", "admin", "Correct horse battery"):
         response = api.post("/api/v1/auth/login", json={"name": "beta", "password": password})
         assert response.status_code == 401
 
@@ -148,7 +148,7 @@ def test_an_unknown_user_is_not_found(operator: Any) -> None:
 
     state = {"state": "disabled"}
     assert operator.request("POST", f"{unknown}/state", json=state).status_code == 404
-    password = {"password": "one time password"}
+    password = {"password": "One time password"}
     assert operator.request("POST", f"{unknown}/password", json=password).status_code == 404
 
 
@@ -158,17 +158,26 @@ def test_a_one_time_password_must_be_changed_at_the_next_login(
     user = stored(session)
 
     response = operator.request(
-        "POST", f"{USERS}/{user.id}/password", json={"password": "one time password"}
+        "POST", f"{USERS}/{user.id}/password", json={"password": "One time password"}
     )
 
     assert response.status_code == 204
-    refused = login(api, "beta", "one time password")
+    refused = login(api, "beta", "One time password")
     assert refused.status_code == 403
     assert refused.json()["detail"] == "password change required"
-    assert login(api, "beta", "one time password", new_password="staple of the paddock").is_success
+    assert login(api, "beta", "One time password", new_password="Staple of the paddock").is_success
 
 
-@pytest.mark.parametrize("body", [{"password": "short"}, {"password": ""}, {}, {"pw": "x" * 12}])
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"password": "short"},
+        {"password": "onlylowercaseletters"},
+        {"password": ""},
+        {},
+        {"pw": "x" * 12},
+    ],
+)
 def test_a_weak_or_malformed_one_time_password_is_refused(
     operator: Any, api: TestClient, session: Session, body: dict[str, str]
 ) -> None:
@@ -189,6 +198,6 @@ def test_only_an_operator_changes_a_users_state_or_password(
     one = f"{USERS}/{user.id}"
 
     assert viewer.request("POST", f"{one}/state", json={"state": "disabled"}).status_code == 403
-    password = {"password": "one time password"}
+    password = {"password": "One time password"}
     assert viewer.request("POST", f"{one}/password", json=password).status_code == 403
     assert api.post(f"{one}/state", json={"state": "disabled"}).status_code == 401

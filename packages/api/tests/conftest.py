@@ -24,7 +24,7 @@ from jatszoter_api.settings import Settings
 MIGRATIONS = Path(jatszoter_api.__file__).parent / "migrations"
 MASTER_KEYS = {"old": secrets.token_hex(32), "current": secrets.token_hex(32)}
 SAMPLE = Path(__file__).resolve().parents[3] / "scenarios" / "nginx-502"
-PASSWORD = "correct horse battery"
+PASSWORD = "Correct horse battery"
 
 Member = tuple[tarfile.TarInfo, bytes]
 Pack = Callable[..., bytes]

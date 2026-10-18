@@ -15,11 +15,11 @@ from jatszoter_api.app import create_app
 from jatszoter_api.auth import require_operator
 from jatszoter_api.models import Role, State, User
 from jatszoter_api.models.secret import SIGNATURE_WINDOW_SECONDS
-from jatszoter_api.models.user import LOGIN_FAILURES
+from jatszoter_api.models.user import LOGIN_FAILURES, UNCHANGED, WEAK
 from jatszoter_api.settings import Settings
 
-PASSWORD = "correct horse battery"
-NEW_PASSWORD = "staple of the paddock"
+PASSWORD = "Correct horse battery"
+NEW_PASSWORD = "Staple of the paddock"
 PROBE = "/api/v1/probe"
 
 
@@ -246,14 +246,31 @@ def test_a_request_for_another_owner_is_refused(
     assert operator.call("GET", PROBE).status_code == 401
 
 
-@pytest.mark.parametrize("new_password", ["short", PASSWORD])
+@pytest.mark.parametrize(
+    ("new_password", "detail"),
+    [
+        ("Sh0rt!", WEAK),
+        ("onlylowercaseletters", WEAK),
+        ("Lettersonlyhere", WEAK),
+        (PASSWORD, UNCHANGED),
+    ],
+)
 def test_a_weak_new_password_is_refused(
-    client: TestClient, session: Session, new_password: str
+    client: TestClient, session: Session, new_password: str, detail: str
 ) -> None:
     add_user(session, changed=False)
 
-    assert login(client, "alpha", PASSWORD, new_password=new_password).status_code == 422
+    response = login(client, "alpha", PASSWORD, new_password=new_password)
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == detail
     assert login(client, "alpha", PASSWORD).status_code == 403
+
+
+def test_three_classes_of_four_make_a_new_password(client: TestClient, session: Session) -> None:
+    add_user(session, changed=False)
+
+    assert login(client, "alpha", PASSWORD, new_password="lower case 12345").is_success
 
 
 def test_a_malformed_login_is_refused(client: TestClient) -> None:

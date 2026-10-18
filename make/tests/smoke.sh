@@ -444,7 +444,7 @@ recordings() {
 }
 
 new_password() {
-    "$VENV/bin/python" -c "import secrets; print(secrets.token_urlsafe(24), end='')"
+    "$VENV/bin/python" -c "import secrets; print('Aa1-' + secrets.token_urlsafe(24), end='')"
 }
 
 cached_sha256() {

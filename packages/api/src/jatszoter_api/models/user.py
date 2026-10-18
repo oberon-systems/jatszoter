@@ -21,6 +21,11 @@ from jatszoter_api.models.secret import SecretOwner
 
 SCRYPT_N, SCRYPT_R, SCRYPT_P = 2**14, 8, 1
 MIN_PASSWORD_LENGTH = 12
+WEAK = (
+    f"at least {MIN_PASSWORD_LENGTH} characters and three of: "
+    "lowercase, uppercase, digits, symbols"
+)
+UNCHANGED = "must differ from the current password"
 LOGIN_FAILURES = 10
 LOGIN_WINDOW_SECONDS = 15 * 60
 ADMIN = "admin"
@@ -32,6 +37,13 @@ class Role(StrEnum):
     OPERATOR = "operator"
     VIEWER = "viewer"
     TRAINEE = "trainee"
+
+
+def weak(password: str) -> bool:
+    """Whether `password` is short or mixes fewer than three of the four character classes."""
+    classes = (str.islower, str.isupper, str.isdigit, lambda char: not char.isalnum())
+    mixed = sum(any(map(test, password)) for test in classes)
+    return len(password) < MIN_PASSWORD_LENGTH or mixed < 3
 
 
 def _scrypt(plain: str, salt: bytes, n: int, r: int, p: int) -> bytes:
@@ -121,18 +133,18 @@ class User(SecretOwner, table=True):
 
     def reset_password(self, password: str) -> None:
         """Set a one-time password, which the next login must change."""
-        if len(password) < MIN_PASSWORD_LENGTH:
-            raise InvalidPasswordError(f"a password needs {MIN_PASSWORD_LENGTH} characters")
+        if weak(password):
+            raise InvalidPasswordError(WEAK)
         self.password = _hashed(password)
         self.password_changed = 0
         self.save()
 
     def change_password(self, old: str, new: str) -> None:
-        """Replace the password and mark it changed, refusing a short or unchanged one."""
-        if len(new) < MIN_PASSWORD_LENGTH or new == old:
-            raise InvalidPasswordError(
-                f"a new password needs {MIN_PASSWORD_LENGTH} characters and must differ"
-            )
+        """Replace the password and mark it changed, refusing a weak or unchanged one."""
+        if weak(new):
+            raise InvalidPasswordError(WEAK)
+        if new == old:
+            raise InvalidPasswordError(UNCHANGED)
         self.password = _hashed(new)
         self.password_changed = int(time.time())
         self.save()

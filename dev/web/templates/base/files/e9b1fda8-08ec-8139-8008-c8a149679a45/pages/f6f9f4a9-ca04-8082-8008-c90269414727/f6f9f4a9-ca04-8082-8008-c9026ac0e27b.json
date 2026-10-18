@@ -2,36 +2,36 @@
   "id": "f6f9f4a9-ca04-8082-8008-c9026ac0e27b",
   "name": "wordmark",
   "type": "text",
-  "x": 24,
+  "x": 56,
   "y": 17,
-  "width": 46,
+  "width": 73,
   "height": 22,
   "rotation": 0,
   "selrect": {
-    "x": 24,
+    "x": 56,
     "y": 17,
-    "width": 46,
+    "width": 73,
     "height": 22,
-    "x1": 24,
+    "x1": 56,
     "y1": 17,
-    "x2": 70,
+    "x2": 129,
     "y2": 39
   },
   "points": [
     {
-      "x": 24,
+      "x": 56,
       "y": 17
     },
     {
-      "x": 70,
+      "x": 129,
       "y": 17
     },
     {
-      "x": 70,
+      "x": 129,
       "y": 39
     },
     {
-      "x": 24,
+      "x": 56,
       "y": 39
     }
   ],
@@ -51,8 +51,8 @@
     "e": 0.0,
     "f": 0.0
   },
-  "parentId": "f6f9f4a9-ca04-8082-8008-c9026ab9043e",
-  "frameId": "f6f9f4a9-ca04-8082-8008-c9026ab9043e",
+  "parentId": "afa3ccb9-7945-80b8-8008-cf32034f525d",
+  "frameId": "afa3ccb9-7945-80b8-8008-cf32034f525d",
   "flipX": null,
   "flipY": null,
   "layoutItemAbsolute": false,
@@ -88,7 +88,7 @@
                   }
                 ],
                 "fontFamily": "sourcesanspro",
-                "text": "Stand"
+                "text": "Jatszoter"
               }
             ],
             "typographyRefId": null,
@@ -124,29 +124,29 @@
   "hidden": false,
   "positionData": [
     {
+      "x": 56,
       "y": 39.39999997615814,
+      "width": 72.375,
+      "height": 24,
+      "x1": 0,
+      "y1": -1.600000023841858,
+      "x2": 72.375,
+      "y2": 22.399999976158142,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "18px",
       "fontWeight": "600",
-      "y1": -1.600000023841858,
-      "width": 45.67499923706055,
       "textDecoration": "none",
       "letterSpacing": "normal",
-      "x": 24,
-      "x1": 0,
-      "y2": 22.399999976158142,
       "fills": [
         {
           "fillColor": "#ffffff",
           "fillOpacity": 1
         }
       ],
-      "x2": 45.67499923706055,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
-      "height": 24,
-      "text": "Stand"
+      "text": "Jatszoter"
     }
   ],
   "strokes": [],

@@ -51,8 +51,8 @@
     "e": 0.0,
     "f": 0.0
   },
-  "parentId": "1bf598fb-df5e-80a9-8008-c8a224abff85",
-  "frameId": "1bf598fb-df5e-80a9-8008-c8a224abff85",
+  "parentId": "afa3ccb9-7945-80b8-8008-cf3224399264",
+  "frameId": "afa3ccb9-7945-80b8-8008-cf3224399264",
   "flipX": null,
   "flipY": null,
   "growType": "auto-width",
@@ -64,15 +64,11 @@
         "children": [
           {
             "lineHeight": "1.2",
-            "path": "type",
             "fontStyle": "normal",
-            "fontHeight": "1.3333333333333333",
             "children": [
               {
                 "lineHeight": "1.2",
-                "path": "type",
                 "fontStyle": "normal",
-                "fontHeight": "1.3333333333333333",
                 "typographyRefId": "1bf598fb-df5e-80a9-8008-c8a1c08eecf9",
                 "textTransform": "none",
                 "textAlign": "left",
@@ -81,7 +77,6 @@
                 "fontWeight": "600",
                 "typographyRefFile": "e9b1fda8-08ec-8139-8008-c8a149679a45",
                 "textDirection": "ltr",
-                "modifiedAt": "2026-10-13T13:32:08.644Z",
                 "fontVariantId": "600",
                 "textDecoration": "none",
                 "letterSpacing": "0",
@@ -92,7 +87,7 @@
                   }
                 ],
                 "fontFamily": "sourcesanspro",
-                "text": "Stand"
+                "text": "Jatszoter"
               }
             ],
             "typographyRefId": "1bf598fb-df5e-80a9-8008-c8a1c08eecf9",
@@ -104,7 +99,6 @@
             "typographyRefFile": "e9b1fda8-08ec-8139-8008-c8a149679a45",
             "textDirection": "ltr",
             "type": "paragraph",
-            "modifiedAt": "2026-10-13T13:32:08.644Z",
             "fontVariantId": "600",
             "textDecoration": "none",
             "letterSpacing": "0",

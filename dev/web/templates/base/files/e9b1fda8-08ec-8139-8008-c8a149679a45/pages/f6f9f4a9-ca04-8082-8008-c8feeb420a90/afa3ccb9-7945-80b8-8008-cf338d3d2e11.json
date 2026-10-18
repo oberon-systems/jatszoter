@@ -1,0 +1,147 @@
+{
+  "id": "afa3ccb9-7945-80b8-8008-cf338d3d2e11",
+  "name": "the two passwords differ",
+  "type": "text",
+  "x": 5135,
+  "y": 2529,
+  "width": 421,
+  "height": 16,
+  "rotation": 0,
+  "selrect": {
+    "x": 5135,
+    "y": 2529,
+    "width": 421,
+    "height": 16,
+    "x1": 5135,
+    "y1": 2529,
+    "x2": 5556,
+    "y2": 2545
+  },
+  "points": [
+    {
+      "x": 5135,
+      "y": 2529
+    },
+    {
+      "x": 5556,
+      "y": 2529
+    },
+    {
+      "x": 5556,
+      "y": 2545
+    },
+    {
+      "x": 5135,
+      "y": 2545
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "afa3ccb9-7945-80b8-8008-cf338d0b5017",
+  "frameId": "afa3ccb9-7945-80b8-8008-cf338d0b5017",
+  "flipX": null,
+  "flipY": null,
+  "growType": "auto-height",
+  "content": {
+    "type": "root",
+    "children": [
+      {
+        "type": "paragraph-set",
+        "children": [
+          {
+            "lineHeight": "1.33",
+            "fontStyle": "normal",
+            "children": [
+              {
+                "lineHeight": "1.33",
+                "fontStyle": "normal",
+                "typographyRefId": null,
+                "textTransform": "none",
+                "textAlign": "left",
+                "fontId": "sourcesanspro",
+                "fontSize": "12",
+                "fontWeight": "400",
+                "typographyRefFile": null,
+                "textDirection": "ltr",
+                "fontVariantId": "regular",
+                "textDecoration": "none",
+                "letterSpacing": "0",
+                "fills": [
+                  {
+                    "fillColor": "#b42318",
+                    "fillOpacity": 1
+                  }
+                ],
+                "fontFamily": "sourcesanspro",
+                "text": "the two passwords differ"
+              }
+            ],
+            "typographyRefId": null,
+            "textTransform": "none",
+            "textAlign": "left",
+            "fontId": "sourcesanspro",
+            "fontSize": "12",
+            "fontWeight": "400",
+            "typographyRefFile": null,
+            "textDirection": "ltr",
+            "type": "paragraph",
+            "fontVariantId": "regular",
+            "textDecoration": "none",
+            "letterSpacing": "0",
+            "fills": [
+              {
+                "fillColor": "#b42318",
+                "fillOpacity": 1
+              }
+            ],
+            "fontFamily": "sourcesanspro"
+          }
+        ]
+      }
+    ]
+  },
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "positionData": [
+    {
+      "x": 5135,
+      "y": 2544.199999809265,
+      "width": 123,
+      "height": 15.199999809265137,
+      "x1": 0,
+      "y1": 0,
+      "x2": 123,
+      "y2": 15.199999809265137,
+      "fontStyle": "normal",
+      "textTransform": "none",
+      "fontSize": "12px",
+      "fontWeight": "400",
+      "textDecoration": "none",
+      "letterSpacing": "normal",
+      "fills": [
+        {
+          "fillColor": "#b42318",
+          "fillOpacity": 1
+        }
+      ],
+      "direction": "ltr",
+      "fontFamily": "sourcesanspro",
+      "text": "the two passwords differ"
+    }
+  ],
+  "pageId": "f6f9f4a9-ca04-8082-8008-c8feeb420a90"
+}

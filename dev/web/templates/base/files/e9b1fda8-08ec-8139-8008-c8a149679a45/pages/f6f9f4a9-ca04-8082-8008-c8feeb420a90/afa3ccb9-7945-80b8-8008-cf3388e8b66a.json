@@ -1,0 +1,161 @@
+{
+  "id": "afa3ccb9-7945-80b8-8008-cf3388e8b66a",
+  "name": "wordmark",
+  "type": "text",
+  "x": 4676,
+  "y": 2017,
+  "width": 73,
+  "height": 22,
+  "rotation": 0,
+  "selrect": {
+    "x": 4676,
+    "y": 2017,
+    "width": 73,
+    "height": 22,
+    "x1": 4676,
+    "y1": 2017,
+    "x2": 4749,
+    "y2": 2039
+  },
+  "points": [
+    {
+      "x": 4676,
+      "y": 2017
+    },
+    {
+      "x": 4749,
+      "y": 2017
+    },
+    {
+      "x": 4749,
+      "y": 2039
+    },
+    {
+      "x": 4676,
+      "y": 2039
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "afa3ccb9-7945-80b8-8008-cf3388e8b658",
+  "frameId": "afa3ccb9-7945-80b8-8008-cf3388e8b658",
+  "flipX": null,
+  "flipY": null,
+  "layoutItemAbsolute": false,
+  "growType": "auto-width",
+  "content": {
+    "type": "root",
+    "children": [
+      {
+        "type": "paragraph-set",
+        "children": [
+          {
+            "lineHeight": "1.2",
+            "fontStyle": "normal",
+            "children": [
+              {
+                "lineHeight": "1.2",
+                "fontStyle": "normal",
+                "typographyRefId": null,
+                "textTransform": "none",
+                "textAlign": "left",
+                "fontId": "sourcesanspro",
+                "fontSize": "18",
+                "fontWeight": "600",
+                "typographyRefFile": null,
+                "textDirection": "ltr",
+                "fontVariantId": "600",
+                "textDecoration": "none",
+                "letterSpacing": "0",
+                "fills": [
+                  {
+                    "fillColor": "#ffffff",
+                    "fillOpacity": 1
+                  }
+                ],
+                "fontFamily": "sourcesanspro",
+                "text": "Jatszoter"
+              }
+            ],
+            "typographyRefId": null,
+            "textTransform": "none",
+            "textAlign": "left",
+            "fontId": "sourcesanspro",
+            "fontSize": "18",
+            "fontWeight": "600",
+            "typographyRefFile": null,
+            "textDirection": "ltr",
+            "type": "paragraph",
+            "fontVariantId": "600",
+            "textDecoration": "none",
+            "letterSpacing": "0",
+            "fills": [
+              {
+                "fillColor": "#ffffff",
+                "fillOpacity": 1
+              }
+            ],
+            "fontFamily": "sourcesanspro"
+          }
+        ]
+      }
+    ]
+  },
+  "blendMode": "normal",
+  "layoutItemHSizing": "fix",
+  "pageId": "f6f9f4a9-ca04-8082-8008-c8feeb420a90",
+  "layoutItemVSizing": "fix",
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "hidden": false,
+  "positionData": [
+    {
+      "x": 4676,
+      "y": 2039.3999999761581,
+      "width": 72.375,
+      "height": 24,
+      "x1": 0,
+      "y1": -1.600000023841858,
+      "x2": 72.375,
+      "y2": 22.399999976158142,
+      "fontStyle": "normal",
+      "textTransform": "none",
+      "fontSize": "18px",
+      "fontWeight": "600",
+      "textDecoration": "none",
+      "letterSpacing": "normal",
+      "fills": [
+        {
+          "fillColor": "#ffffff",
+          "fillOpacity": 1
+        }
+      ],
+      "direction": "ltr",
+      "fontFamily": "sourcesanspro",
+      "text": "Jatszoter"
+    }
+  ],
+  "strokes": [],
+  "shadow": [],
+  "layoutItemMargin": {
+    "m1": 0,
+    "m2": 0,
+    "m3": 0,
+    "m4": 0
+  },
+  "layoutItemZIndex": 0
+}

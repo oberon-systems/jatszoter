@@ -51,8 +51,8 @@
     "e": 0.0,
     "f": 0.0
   },
-  "parentId": "afa3ccb9-7945-80b8-8008-cf08e45658e9",
-  "frameId": "afa3ccb9-7945-80b8-8008-cf08e45658e9",
+  "parentId": "afa3ccb9-7945-80b8-8008-cf32d14f70ef",
+  "frameId": "afa3ccb9-7945-80b8-8008-cf32d14f70ef",
   "flipX": null,
   "flipY": null,
   "layoutItemAbsolute": false,
@@ -88,7 +88,7 @@
                   }
                 ],
                 "fontFamily": "sourcesanspro",
-                "text": "Stand"
+                "text": "Jatszoter"
               }
             ],
             "typographyRefId": null,

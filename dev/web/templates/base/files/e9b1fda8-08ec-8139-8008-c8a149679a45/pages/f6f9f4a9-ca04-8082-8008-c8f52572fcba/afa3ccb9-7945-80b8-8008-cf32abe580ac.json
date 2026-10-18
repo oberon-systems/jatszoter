@@ -1,0 +1,82 @@
+{
+  "id": "afa3ccb9-7945-80b8-8008-cf32abe580ac",
+  "name": "logo slot",
+  "type": "rect",
+  "x": 0,
+  "y": 0,
+  "width": 24,
+  "height": 24,
+  "rotation": 0,
+  "selrect": {
+    "x": 0,
+    "y": 0,
+    "width": 24,
+    "height": 24,
+    "x1": 0,
+    "y1": 0,
+    "x2": 24,
+    "y2": 24
+  },
+  "points": [
+    {
+      "x": 0,
+      "y": 0
+    },
+    {
+      "x": 24,
+      "y": 0
+    },
+    {
+      "x": 24,
+      "y": 24
+    },
+    {
+      "x": 0,
+      "y": 24
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "afa3ccb9-7945-80b8-8008-cf32abc725a6",
+  "frameId": "afa3ccb9-7945-80b8-8008-cf32abc725a6",
+  "flipX": null,
+  "flipY": null,
+  "r2": 6,
+  "proportionLock": false,
+  "pageId": "f6f9f4a9-ca04-8082-8008-c8f52572fcba",
+  "r3": 6,
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "r1": 6,
+  "strokes": [
+    {
+      "strokeStyle": "dashed",
+      "strokeColor": "#ffffff",
+      "strokeOpacity": 0.4,
+      "strokeAlignment": "inner",
+      "strokeWidth": 1
+    }
+  ],
+  "proportion": 1,
+  "r4": 6,
+  "fills": [
+    {
+      "fillColor": "#ffffff",
+      "fillOpacity": 0.12
+    }
+  ]
+}

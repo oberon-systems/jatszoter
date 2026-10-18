@@ -3,36 +3,36 @@
   "name": "One-time password for beta",
   "type": "text",
   "x": 504,
-  "y": 1327,
+  "y": 1316,
   "width": 216,
   "height": 22,
   "rotation": 0,
   "selrect": {
     "x": 504,
-    "y": 1327,
+    "y": 1316,
     "width": 216,
     "height": 22,
     "x1": 504,
-    "y1": 1327,
+    "y1": 1316,
     "x2": 720,
-    "y2": 1349
+    "y2": 1338
   },
   "points": [
     {
       "x": 504,
-      "y": 1327
+      "y": 1316
     },
     {
       "x": 720,
-      "y": 1327
+      "y": 1316
     },
     {
       "x": 720,
-      "y": 1349
+      "y": 1338
     },
     {
       "x": 504,
-      "y": 1349
+      "y": 1338
     }
   ],
   "transform": {
@@ -124,28 +124,28 @@
   "hidden": false,
   "positionData": [
     {
-      "y": 1349.3999999761581,
+      "x": 504,
+      "y": 1338.3999999761581,
+      "width": 215.2375030517578,
+      "height": 24,
+      "x1": 0,
+      "y1": -1.600000023841858,
+      "x2": 215.2375030517578,
+      "y2": 22.399999976158142,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "18px",
       "fontWeight": "600",
-      "y1": -1.600000023841858,
-      "width": 215.2375030517578,
       "textDecoration": "none",
       "letterSpacing": "normal",
-      "x": 504,
-      "x1": 0,
-      "y2": 22.399999976158142,
       "fills": [
         {
           "fillColor": "#1b1f24",
           "fillOpacity": 1
         }
       ],
-      "x2": 215.2375030517578,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
-      "height": 24,
       "text": "One-time password for beta"
     }
   ],

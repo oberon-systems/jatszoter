@@ -3,36 +3,36 @@
   "name": "Repeat new password",
   "type": "text",
   "x": 2092,
-  "y": 1367,
+  "y": 1405,
   "width": 123,
   "height": 16,
   "rotation": 0,
   "selrect": {
     "x": 2092,
-    "y": 1367,
+    "y": 1405,
     "width": 123,
     "height": 16,
     "x1": 2092,
-    "y1": 1367,
+    "y1": 1405,
     "x2": 2215,
-    "y2": 1383
+    "y2": 1421
   },
   "points": [
     {
       "x": 2092,
-      "y": 1367
+      "y": 1405
     },
     {
       "x": 2215,
-      "y": 1367
+      "y": 1405
     },
     {
       "x": 2215,
-      "y": 1383
+      "y": 1421
     },
     {
       "x": 2092,
-      "y": 1383
+      "y": 1421
     }
   ],
   "transform": {
@@ -124,28 +124,28 @@
   "hidden": false,
   "positionData": [
     {
-      "y": 1383.0000003576279,
+      "x": 2092,
+      "y": 1421.0000003576279,
+      "width": 122.4000015258789,
+      "height": 17.600000381469727,
+      "x1": 0,
+      "y1": -1.600000023841858,
+      "x2": 122.4000015258789,
+      "y2": 16.00000035762787,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "13px",
       "fontWeight": "600",
-      "y1": -1.600000023841858,
-      "width": 122.4000015258789,
       "textDecoration": "none",
       "letterSpacing": "normal",
-      "x": 2092,
-      "x1": 0,
-      "y2": 16.00000035762787,
       "fills": [
         {
           "fillColor": "#1b1f24",
           "fillOpacity": 1
         }
       ],
-      "x2": 122.4000015258789,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
-      "height": 17.600000381469727,
       "text": "Repeat new password"
     }
   ],

@@ -1,0 +1,108 @@
+{
+  "id": "afa3ccb9-7945-80b8-8008-cf3388e8b5e2",
+  "name": "field Repeat password",
+  "type": "frame",
+  "x": 5124,
+  "y": 2468,
+  "width": 432,
+  "height": 79,
+  "rotation": 0,
+  "selrect": {
+    "x": 5124,
+    "y": 2468,
+    "width": 432,
+    "height": 79,
+    "x1": 5124,
+    "y1": 2468,
+    "x2": 5556,
+    "y2": 2547
+  },
+  "points": [
+    {
+      "x": 5124,
+      "y": 2468
+    },
+    {
+      "x": 5556,
+      "y": 2468
+    },
+    {
+      "x": 5556,
+      "y": 2547
+    },
+    {
+      "x": 5124,
+      "y": 2547
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "afa3ccb9-7945-80b8-8008-cf3388e8b5e0",
+  "frameId": "afa3ccb9-7945-80b8-8008-cf3388e8b5e0",
+  "flipX": null,
+  "flipY": null,
+  "hideFillOnExport": false,
+  "layoutItemAbsolute": false,
+  "layoutGapType": "multiple",
+  "layoutPadding": {
+    "p1": 0,
+    "p2": 0,
+    "p3": 0,
+    "p4": 0
+  },
+  "layoutWrapType": "nowrap",
+  "layout": "flex",
+  "hideInViewer": true,
+  "blendMode": "normal",
+  "layoutAlignItems": "start",
+  "layoutPaddingType": "simple",
+  "r2": 0,
+  "showContent": false,
+  "layoutItemHSizing": "fix",
+  "proportionLock": false,
+  "layoutGap": {
+    "rowGap": 6,
+    "columnGap": 6
+  },
+  "pageId": "f6f9f4a9-ca04-8082-8008-c8feeb420a90",
+  "layoutItemVSizing": "auto",
+  "r3": 0,
+  "layoutJustifyContent": "start",
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "r1": 0,
+  "hidden": false,
+  "layoutFlexDir": "column",
+  "layoutAlignContent": "stretch",
+  "strokes": [],
+  "proportion": 1,
+  "shadow": [],
+  "r4": 0,
+  "layoutItemMargin": {
+    "m1": 0,
+    "m2": 0,
+    "m3": 0,
+    "m4": 0
+  },
+  "fills": [],
+  "layoutItemZIndex": 0,
+  "shapes": [
+    "afa3ccb9-7945-80b8-8008-cf338d0b5017",
+    "afa3ccb9-7945-80b8-8008-cf3388e8b5ea",
+    "afa3ccb9-7945-80b8-8008-cf3388e8b5eb"
+  ]
+}

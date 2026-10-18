@@ -3,36 +3,36 @@
   "name": "Set password and log in",
   "type": "text",
   "x": 2188.5,
-  "y": 1446,
+  "y": 1484,
   "width": 143,
   "height": 17,
   "rotation": 0,
   "selrect": {
     "x": 2188.5,
-    "y": 1446,
+    "y": 1484,
     "width": 143,
     "height": 17,
     "x1": 2188.5,
-    "y1": 1446,
+    "y1": 1484,
     "x2": 2331.5,
-    "y2": 1463
+    "y2": 1501
   },
   "points": [
     {
       "x": 2188.5,
-      "y": 1446
+      "y": 1484
     },
     {
       "x": 2331.5,
-      "y": 1446
+      "y": 1484
     },
     {
       "x": 2331.5,
-      "y": 1463
+      "y": 1501
     },
     {
       "x": 2188.5,
-      "y": 1463
+      "y": 1501
     }
   ],
   "transform": {
@@ -124,28 +124,28 @@
   "hidden": false,
   "positionData": [
     {
-      "y": 1463.6000007390976,
+      "x": 2188.5,
+      "y": 1501.6000007390976,
+      "width": 142.46250915527344,
+      "height": 19.200000762939453,
+      "x1": 0,
+      "y1": -1.600000023841858,
+      "x2": 142.46250915527344,
+      "y2": 17.600000739097595,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "14px",
       "fontWeight": "600",
-      "y1": -1.600000023841858,
-      "width": 142.46250915527344,
       "textDecoration": "none",
       "letterSpacing": "normal",
-      "x": 2188.5,
-      "x1": 0,
-      "y2": 17.600000739097595,
       "fills": [
         {
           "fillColor": "#ffffff",
           "fillOpacity": 1
         }
       ],
-      "x2": 142.46250915527344,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
-      "height": 19.200000762939453,
       "text": "Set password and log in"
     }
   ],

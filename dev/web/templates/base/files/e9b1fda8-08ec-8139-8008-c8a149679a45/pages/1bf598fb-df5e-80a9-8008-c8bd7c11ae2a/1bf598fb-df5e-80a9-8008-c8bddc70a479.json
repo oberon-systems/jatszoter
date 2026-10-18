@@ -5,17 +5,17 @@
   "x": 3632,
   "y": 1296,
   "width": 336,
-  "height": 55,
+  "height": 93,
   "rotation": 0,
   "selrect": {
     "x": 3632,
     "y": 1296,
     "width": 336,
-    "height": 55,
+    "height": 93,
     "x1": 3632,
     "y1": 1296,
     "x2": 3968,
-    "y2": 1351
+    "y2": 1389
   },
   "points": [
     {
@@ -28,11 +28,11 @@
     },
     {
       "x": 3968,
-      "y": 1351
+      "y": 1389
     },
     {
       "x": 3632,
-      "y": 1351
+      "y": 1389
     }
   ],
   "transform": {
@@ -101,6 +101,7 @@
   "fills": [],
   "layoutItemZIndex": 0,
   "shapes": [
+    "afa3ccb9-7945-80b8-8008-cf3309ec9ed8",
     "1bf598fb-df5e-80a9-8008-c8bddc87894b",
     "1bf598fb-df5e-80a9-8008-c8bddc793e91"
   ]

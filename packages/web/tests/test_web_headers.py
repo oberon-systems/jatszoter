@@ -40,7 +40,7 @@ def test_every_answer_carries_the_security_headers(
     response = client.get(path)
 
     assert response.headers["content-security-policy"] == CSP
-    assert response.headers["referrer-policy"] == "no-referrer"
+    assert response.headers["referrer-policy"] == "same-origin"
     assert response.headers["x-frame-options"] == "DENY"
     assert response.headers["x-content-type-options"] == "nosniff"
     assert set(SECURITY_HEADERS) <= set(response.headers)

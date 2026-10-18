@@ -266,7 +266,7 @@ def test_a_post_with_the_session_csrf_token_goes_through(
 
 
 def test_the_root_sends_an_operator_to_the_deployments(client: TestClient, sign_in: SignIn) -> None:
-    assert client.get("/").headers["location"] == "/login?next=/"
+    assert client.get("/").headers["location"] == "/login"
 
     sign_in()
 

@@ -11,8 +11,7 @@ SHELL := /bin/bash
 export PRE_COMMIT_HOME := $(CURDIR)/.pre-commit
 
 .DEFAULT_GOAL := shell
-.PHONY: install shell test test-api test-web test-agent smoke lint lint-all run-api run-web \
-	stand-up stand-down stand-logs
+.PHONY: install shell test test-api test-web test-agent smoke lint lint-all run-api run-web
 
 
 # common targets
@@ -49,9 +48,6 @@ run-api:
 
 run-web:
 	$(VENV)/bin/uvicorn --factory jatszoter_web.app:create_app --host 127.0.0.1 --port 8000
-
-stand-up stand-down stand-logs:
-	$(MAKE) -C dev/stack $(@:stand-%=%)
 
 
 # defaults

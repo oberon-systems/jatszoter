@@ -124,28 +124,28 @@
   "hidden": false,
   "positionData": [
     {
-      "x": 5200.5,
       "y": 313.59999960660934,
-      "width": 278.4250183105469,
-      "height": 18.399999618530273,
-      "x1": 0,
-      "y1": -0.800000011920929,
-      "x2": 278.4250183105469,
-      "y2": 17.599999606609344,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "14px",
       "fontWeight": "400",
+      "y1": -0.800000011920929,
+      "width": 278.4250183105469,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 5200.5,
+      "x1": 0,
+      "y2": 17.599999606609344,
       "fills": [
         {
           "fillColor": "#57606a",
           "fillOpacity": 1
         }
       ],
+      "x2": 278.4250183105469,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
+      "height": 18.399999618530273,
       "text": "gamma has no checked deployment of disk-full."
     }
   ],

@@ -124,28 +124,28 @@
   "hidden": false,
   "positionData": [
     {
-      "x": 32,
       "y": 125.40000075101855,
-      "width": 238.5500030517578,
-      "height": 15.200000762939453,
-      "x1": 0,
-      "y1": -0.800000011920929,
-      "x2": 238.5500030517578,
-      "y2": 14.400000751018524,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "12px",
       "fontWeight": "400",
+      "y1": -0.800000011920929,
+      "width": 238.5500030517578,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 32,
+      "x1": 0,
+      "y2": 14.400000751018524,
       "fills": [
         {
           "fillColor": "#57606a",
           "fillOpacity": 1
         }
       ],
+      "x2": 238.5500030517578,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
+      "height": 15.200000762939453,
       "text": "Status, links and checks refresh every 5 seconds"
     }
   ],

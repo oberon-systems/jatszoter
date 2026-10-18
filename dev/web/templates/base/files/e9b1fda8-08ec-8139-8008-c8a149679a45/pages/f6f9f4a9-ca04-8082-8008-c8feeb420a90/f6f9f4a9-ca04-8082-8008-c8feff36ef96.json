@@ -124,28 +124,28 @@
   "hidden": false,
   "positionData": [
     {
-      "x": 3584,
       "y": 517.4000007510188,
-      "width": 255.71250915527344,
-      "height": 15.200000762939453,
-      "x1": 0,
-      "y1": -0.800000011920929,
-      "x2": 255.71250915527344,
-      "y2": 14.400000751018524,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "12px",
       "fontWeight": "400",
+      "y1": -0.800000011920929,
+      "width": 255.71250915527344,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 3584,
+      "x1": 0,
+      "y2": 14.400000751018524,
       "fills": [
         {
           "fillColor": "#57606a",
           "fillOpacity": 1
         }
       ],
+      "x2": 255.71250915527344,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
+      "height": 15.200000762939453,
       "text": "operator, trainee or viewer; a link acts with this role"
     }
   ],

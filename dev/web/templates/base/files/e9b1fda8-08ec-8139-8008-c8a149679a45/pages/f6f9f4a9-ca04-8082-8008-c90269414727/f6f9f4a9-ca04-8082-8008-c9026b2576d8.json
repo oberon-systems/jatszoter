@@ -124,28 +124,28 @@
   "hidden": false,
   "positionData": [
     {
-      "x": 1154,
       "y": 111.00000035762787,
-      "width": 96.26250457763672,
-      "height": 17.600000381469727,
-      "x1": 0,
-      "y1": -1.600000023841858,
-      "x2": 96.26250457763672,
-      "y2": 16.00000035762787,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "13px",
       "fontWeight": "600",
+      "y1": -1.600000023841858,
+      "width": 96.26250457763672,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 1154,
+      "x1": 0,
+      "y2": 16.00000035762787,
       "fills": [
         {
           "fillColor": "#164a94",
           "fillOpacity": 1
         }
       ],
+      "x2": 96.26250457763672,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
+      "height": 17.600000381469727,
       "text": "BOOTSTRAPPING"
     }
   ],

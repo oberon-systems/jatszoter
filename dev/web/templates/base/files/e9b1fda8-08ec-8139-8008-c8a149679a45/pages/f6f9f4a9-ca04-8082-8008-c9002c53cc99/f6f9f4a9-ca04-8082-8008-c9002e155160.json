@@ -124,28 +124,28 @@
   "hidden": false,
   "positionData": [
     {
-      "x": 427,
       "y": 37.100000739097595,
-      "width": 27.837499618530273,
-      "height": 19.200000762939453,
-      "x1": 0,
-      "y1": -1.600000023841858,
-      "x2": 27.837499618530273,
-      "y2": 17.600000739097595,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "14px",
       "fontWeight": "600",
+      "y1": -1.600000023841858,
+      "width": 27.837499618530273,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 427,
+      "x1": 0,
+      "y2": 17.600000739097595,
       "fills": [
         {
           "fillColor": "#ffffff",
           "fillOpacity": 1
         }
       ],
+      "x2": 27.837499618530273,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
+      "height": 19.200000762939453,
       "text": "Logs"
     }
   ],

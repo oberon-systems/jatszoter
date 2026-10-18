@@ -124,28 +124,28 @@
   "hidden": false,
   "positionData": [
     {
-      "x": 528.5,
       "y": 1952.199999988079,
-      "width": 382.20001220703125,
-      "height": 16,
-      "x1": 0,
-      "y1": -0.800000011920929,
-      "x2": 382.20001220703125,
-      "y2": 15.199999988079071,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "13px",
       "fontWeight": "400",
+      "y1": -0.800000011920929,
+      "width": 382.20001220703125,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 528.5,
+      "x1": 0,
+      "y2": 15.199999988079071,
       "fills": [
         {
           "fillColor": "#aeb6c0",
           "fillOpacity": 1
         }
       ],
+      "x2": 382.20001220703125,
       "direction": "ltr",
       "fontFamily": "\"Source Code Pro\"",
+      "height": 16,
       "text": "The deployment failed before the terminal opened."
     }
   ],

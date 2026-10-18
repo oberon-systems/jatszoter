@@ -124,28 +124,28 @@
   "hidden": false,
   "positionData": [
     {
-      "x": 1608,
       "y": 317.59999960660934,
-      "width": 60.85000228881836,
-      "height": 18.399999618530273,
-      "x1": 0,
-      "y1": -0.800000011920929,
-      "x2": 60.85000228881836,
-      "y2": 17.599999606609344,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "14px",
       "fontWeight": "400",
+      "y1": -0.800000011920929,
+      "width": 60.85000228881836,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 1608,
+      "x1": 0,
+      "y2": 17.599999606609344,
       "fills": [
         {
           "fillColor": "#8c959f",
           "fillOpacity": 1
         }
       ],
+      "x2": 60.85000228881836,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
+      "height": 18.399999618530273,
       "text": "No trainee"
     }
   ],

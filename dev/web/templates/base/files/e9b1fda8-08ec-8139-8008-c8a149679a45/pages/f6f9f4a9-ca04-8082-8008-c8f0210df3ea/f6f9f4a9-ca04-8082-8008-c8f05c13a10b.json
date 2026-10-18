@@ -124,28 +124,28 @@
   "hidden": false,
   "positionData": [
     {
-      "x": 5911,
       "y": 112.1000007390976,
-      "width": 102.5999984741211,
-      "height": 19.200000762939453,
-      "x1": 0,
-      "y1": -1.600000023841858,
-      "x2": 102.5999984741211,
-      "y2": 17.600000739097595,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "14px",
       "fontWeight": "600",
+      "y1": -1.600000023841858,
+      "width": 102.5999984741211,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 5911,
+      "x1": 0,
+      "y2": 17.600000739097595,
       "fills": [
         {
           "fillColor": "#ffffff",
           "fillOpacity": 1
         }
       ],
+      "x2": 102.5999984741211,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
+      "height": 19.200000762939453,
       "text": "New deployment"
     }
   ],

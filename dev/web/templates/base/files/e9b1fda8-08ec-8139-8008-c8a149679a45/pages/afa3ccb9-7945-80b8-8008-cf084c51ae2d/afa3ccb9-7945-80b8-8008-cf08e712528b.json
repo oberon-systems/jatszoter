@@ -1,0 +1,116 @@
+{
+  "id": "afa3ccb9-7945-80b8-8008-cf08e712528b",
+  "name": "flash error",
+  "type": "frame",
+  "x": 32,
+  "y": 1150,
+  "width": 1376,
+  "height": 60,
+  "rotation": 0,
+  "selrect": {
+    "x": 32,
+    "y": 1150,
+    "width": 1376,
+    "height": 60,
+    "x1": 32,
+    "y1": 1150,
+    "x2": 1408,
+    "y2": 1210
+  },
+  "points": [
+    {
+      "x": 32,
+      "y": 1150
+    },
+    {
+      "x": 1408,
+      "y": 1150
+    },
+    {
+      "x": 1408,
+      "y": 1210
+    },
+    {
+      "x": 32,
+      "y": 1210
+    }
+  ],
+  "transform": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "transformInverse": {
+    "a": 1.0,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 1.0,
+    "e": 0.0,
+    "f": 0.0
+  },
+  "parentId": "afa3ccb9-7945-80b8-8008-cf08e6d42d17",
+  "frameId": "afa3ccb9-7945-80b8-8008-cf08e6d42d17",
+  "flipX": null,
+  "flipY": null,
+  "hideFillOnExport": false,
+  "layoutItemAbsolute": false,
+  "layoutGapType": "multiple",
+  "layoutPadding": {
+    "p1": 12,
+    "p2": 16,
+    "p3": 12,
+    "p4": 16
+  },
+  "layoutWrapType": "nowrap",
+  "layout": "flex",
+  "hideInViewer": true,
+  "layoutAlignItems": "start",
+  "layoutPaddingType": "simple",
+  "r2": 6,
+  "showContent": false,
+  "layoutItemHSizing": "fix",
+  "proportionLock": false,
+  "layoutGap": {
+    "rowGap": 12,
+    "columnGap": 12
+  },
+  "pageId": "afa3ccb9-7945-80b8-8008-cf084c51ae2d",
+  "layoutItemVSizing": "auto",
+  "r3": 6,
+  "layoutJustifyContent": "start",
+  "constraintsV": "top",
+  "constraintsH": "left",
+  "r1": 6,
+  "layoutFlexDir": "row",
+  "layoutAlignContent": "stretch",
+  "strokes": [
+    {
+      "strokeColor": "#9b1c13",
+      "strokeOpacity": 0.35,
+      "strokeAlignment": "inner",
+      "strokeWidth": 1
+    }
+  ],
+  "proportion": 1,
+  "r4": 6,
+  "layoutItemMargin": {
+    "m2": 0,
+    "m4": 0,
+    "m1": 0,
+    "m3": 0
+  },
+  "fills": [
+    {
+      "fillColor": "#fde2df",
+      "fillOpacity": 1
+    }
+  ],
+  "layoutItemZIndex": 0,
+  "shapes": [
+    "afa3ccb9-7945-80b8-8008-cf08e731a626",
+    "afa3ccb9-7945-80b8-8008-cf08e71da49a"
+  ]
+}

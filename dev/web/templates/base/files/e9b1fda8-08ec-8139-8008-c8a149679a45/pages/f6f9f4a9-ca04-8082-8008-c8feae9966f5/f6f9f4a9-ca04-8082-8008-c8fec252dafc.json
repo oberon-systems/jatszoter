@@ -124,28 +124,28 @@
   "hidden": false,
   "positionData": [
     {
-      "x": 3920,
       "y": 503.1000007390985,
-      "width": 81.7750015258789,
-      "height": 19.200000762939453,
-      "x1": 0,
-      "y1": -1.600000023841858,
-      "x2": 81.7750015258789,
-      "y2": 17.600000739097595,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "14px",
       "fontWeight": "600",
+      "y1": -1.600000023841858,
+      "width": 81.7750015258789,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 3920,
+      "x1": 0,
+      "y2": 17.600000739097595,
       "fills": [
         {
           "fillColor": "#ffffff",
           "fillOpacity": 1
         }
       ],
+      "x2": 81.7750015258789,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
+      "height": 19.200000762939453,
       "text": "Disable agent"
     }
   ],

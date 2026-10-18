@@ -124,28 +124,28 @@
   "hidden": false,
   "positionData": [
     {
-      "x": 1620,
       "y": 1198.5999996066093,
-      "width": 458.6125183105469,
-      "height": 18.399999618530273,
-      "x1": 0,
-      "y1": -0.800000011920929,
-      "x2": 458.6125183105469,
-      "y2": 17.599999606609344,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "14px",
       "fontWeight": "400",
+      "y1": -0.800000011920929,
+      "width": 458.6125183105469,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 1620,
+      "x1": 0,
+      "y2": 17.599999606609344,
       "fills": [
         {
           "fillColor": "#1b1f24",
           "fillOpacity": 1
         }
       ],
+      "x2": 458.6125183105469,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
+      "height": 18.399999618530273,
       "text": "The API cannot be reached. Nothing was changed; try again in a moment. (502)"
     }
   ],

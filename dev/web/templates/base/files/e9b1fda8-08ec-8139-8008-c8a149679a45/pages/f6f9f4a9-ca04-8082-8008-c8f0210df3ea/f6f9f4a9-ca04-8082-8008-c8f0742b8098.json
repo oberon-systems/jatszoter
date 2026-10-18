@@ -124,28 +124,28 @@
   "hidden": false,
   "positionData": [
     {
-      "x": 52.5,
       "y": 1280.0000003576279,
-      "width": 10.90000057220459,
-      "height": 17.600000381469727,
-      "x1": 0,
-      "y1": -1.600000023841858,
-      "x2": 10.90000057220459,
-      "y2": 16.00000035762787,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "13px",
       "fontWeight": "600",
+      "y1": -1.600000023841858,
+      "width": 10.90000057220459,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 52.5,
+      "x1": 0,
+      "y2": 16.00000035762787,
       "fills": [
         {
           "fillColor": "#ffffff",
           "fillOpacity": 1
         }
       ],
+      "x2": 10.90000057220459,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
+      "height": 17.600000381469727,
       "text": "\u2713"
     }
   ],

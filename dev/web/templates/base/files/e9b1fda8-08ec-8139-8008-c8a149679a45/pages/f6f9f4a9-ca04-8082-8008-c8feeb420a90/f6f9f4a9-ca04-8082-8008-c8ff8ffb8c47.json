@@ -124,28 +124,28 @@
   "hidden": false,
   "positionData": [
     {
-      "x": 1620,
       "y": 2179.6000007390976,
-      "width": 140.0500030517578,
-      "height": 19.200000762939453,
-      "x1": 0,
-      "y1": -1.600000023841858,
-      "x2": 140.0500030517578,
-      "y2": 17.600000739097595,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "14px",
       "fontWeight": "600",
+      "y1": -1.600000023841858,
+      "width": 140.0500030517578,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 1620,
+      "x1": 0,
+      "y2": 17.600000739097595,
       "fills": [
         {
           "fillColor": "#9b1c13",
           "fillOpacity": 1
         }
       ],
+      "x2": 140.0500030517578,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
+      "height": 19.200000762939453,
       "text": "Something went wrong"
     }
   ],

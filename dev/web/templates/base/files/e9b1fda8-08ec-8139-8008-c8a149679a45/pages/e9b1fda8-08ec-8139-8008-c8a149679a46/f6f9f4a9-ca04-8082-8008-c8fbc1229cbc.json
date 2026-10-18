@@ -124,28 +124,28 @@
   "hidden": false,
   "positionData": [
     {
-      "x": 32,
       "y": 1498.5999996066093,
-      "width": 831.1625366210938,
-      "height": 18.399999618530273,
-      "x1": 0,
-      "y1": -0.800000011920929,
-      "x2": 831.1625366210938,
-      "y2": 17.599999606609344,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "14px",
       "fontWeight": "400",
+      "y1": -0.800000011920929,
+      "width": 831.1625366210938,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 32,
+      "x1": 0,
+      "y2": 17.599999606609344,
       "fills": [
         {
           "fillColor": "#57606a",
           "fillOpacity": 1
         }
       ],
+      "x2": 831.1625366210938,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
+      "height": 18.399999618530273,
       "text": "Two lists of one screen, such as Scenarios and Images. Each tab is a link to its own route; the current one is bold with a 2px primary.default line."
     }
   ],

@@ -124,53 +124,53 @@
   "hidden": false,
   "positionData": [
     {
-      "x": 3584,
       "y": 445.09999960660934,
-      "width": 394.26251220703125,
-      "height": 18.399999618530273,
-      "x1": 0,
-      "y1": -0.800000011920929,
-      "x2": 394.26251220703125,
-      "y2": 17.599999606609344,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "14px",
       "fontWeight": "400",
+      "y1": -0.800000011920929,
+      "width": 394.26251220703125,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 3584,
+      "x1": 0,
+      "y2": 17.599999606609344,
       "fills": [
         {
           "fillColor": "#3d444d",
           "fillOpacity": 1
         }
       ],
+      "x2": 394.26251220703125,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
+      "height": 18.399999618530273,
       "text": "Its lease lapses at once and its running deployments fail. It takes no "
     },
     {
-      "x": 3584,
       "y": 461.9000015258789,
-      "width": 219.02500915527344,
-      "height": 18.400001525878906,
-      "x1": 0,
-      "y1": 16,
-      "x2": 219.02500915527344,
-      "y2": 34.400001525878906,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "14px",
       "fontWeight": "400",
+      "y1": 16,
+      "width": 219.02500915527344,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 3584,
+      "x1": 0,
+      "y2": 34.400001525878906,
       "fills": [
         {
           "fillColor": "#3d444d",
           "fillOpacity": 1
         }
       ],
+      "x2": 219.02500915527344,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
+      "height": 18.400001525878906,
       "text": "deployments until it is enabled again."
     }
   ],

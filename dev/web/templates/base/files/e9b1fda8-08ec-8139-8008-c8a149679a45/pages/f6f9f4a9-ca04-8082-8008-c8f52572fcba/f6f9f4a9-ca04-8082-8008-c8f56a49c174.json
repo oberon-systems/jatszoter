@@ -124,28 +124,28 @@
   "hidden": false,
   "positionData": [
     {
-      "x": 3511,
       "y": 452.19999998807907,
-      "width": 577.2000122070312,
-      "height": 16,
-      "x1": 0,
-      "y1": -0.800000011920929,
-      "x2": 577.2000122070312,
-      "y2": 15.199999988079071,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "13px",
       "fontWeight": "400",
+      "y1": -0.800000011920929,
+      "width": 577.2000122070312,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 3511,
+      "x1": 0,
+      "y2": 15.199999988079071,
       "fills": [
         {
           "fillColor": "#aeb6c0",
           "fillOpacity": 1
         }
       ],
+      "x2": 577.2000122070312,
       "direction": "ltr",
       "fontFamily": "\"Source Code Pro\"",
+      "height": 16,
       "text": "The VM is being prepared. The terminal opens when the deployment is READY."
     }
   ],

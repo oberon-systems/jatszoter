@@ -124,28 +124,28 @@
   "hidden": false,
   "positionData": [
     {
-      "x": 2175.5,
       "y": 1327.6000007390976,
-      "width": 168.35000610351562,
-      "height": 19.200000762939453,
-      "x1": 0,
-      "y1": -1.600000023841858,
-      "x2": 168.35000610351562,
-      "y2": 17.600000739097595,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "14px",
       "fontWeight": "600",
+      "y1": -1.600000023841858,
+      "width": 168.35000610351562,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 2175.5,
+      "x1": 0,
+      "y2": 17.600000739097595,
       "fills": [
         {
           "fillColor": "#1b1f24",
           "fillOpacity": 1
         }
       ],
+      "x2": 168.35000610351562,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
+      "height": 19.200000762939453,
       "text": "Storage could not be loaded"
     }
   ],

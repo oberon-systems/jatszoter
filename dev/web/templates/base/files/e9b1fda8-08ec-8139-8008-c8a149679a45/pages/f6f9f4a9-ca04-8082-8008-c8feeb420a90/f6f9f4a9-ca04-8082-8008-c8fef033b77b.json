@@ -124,28 +124,28 @@
   "hidden": false,
   "positionData": [
     {
-      "x": 1232,
       "y": 308.1000007390976,
-      "width": 80.5625,
-      "height": 19.200000762939453,
-      "x1": 0,
-      "y1": -1.600000023841858,
-      "x2": 80.5625,
-      "y2": 17.600000739097595,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "14px",
       "fontWeight": "600",
+      "y1": -1.600000023841858,
+      "width": 80.5625,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 1232,
+      "x1": 0,
+      "y2": 17.600000739097595,
       "fills": [
         {
           "fillColor": "#1b1f24",
           "fillOpacity": 1
         }
       ],
+      "x2": 80.5625,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
+      "height": 19.200000762939453,
       "text": "Set password"
     }
   ],

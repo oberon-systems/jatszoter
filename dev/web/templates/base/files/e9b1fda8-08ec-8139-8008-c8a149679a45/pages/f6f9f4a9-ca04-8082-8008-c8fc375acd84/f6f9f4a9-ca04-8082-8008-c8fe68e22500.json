@@ -124,28 +124,28 @@
   "hidden": false,
   "positionData": [
     {
-      "x": 4644,
       "y": 1039.3999999761581,
-      "width": 45.67499923706055,
-      "height": 24,
-      "x1": 0,
-      "y1": -1.600000023841858,
-      "x2": 45.67499923706055,
-      "y2": 22.399999976158142,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "18px",
       "fontWeight": "600",
+      "y1": -1.600000023841858,
+      "width": 45.67499923706055,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 4644,
+      "x1": 0,
+      "y2": 22.399999976158142,
       "fills": [
         {
           "fillColor": "#ffffff",
           "fillOpacity": 1
         }
       ],
+      "x2": 45.67499923706055,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
+      "height": 24,
       "text": "Stand"
     }
   ],

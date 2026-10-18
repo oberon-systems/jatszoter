@@ -124,28 +124,28 @@
   "hidden": false,
   "positionData": [
     {
-      "x": 2896,
       "y": 2037.1000007390976,
-      "width": 45.1875,
-      "height": 19.200000762939453,
-      "x1": 0,
-      "y1": -1.600000023841858,
-      "x2": 45.1875,
-      "y2": 17.600000739097595,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "14px",
       "fontWeight": "600",
+      "y1": -1.600000023841858,
+      "width": 45.1875,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 2896,
+      "x1": 0,
+      "y2": 17.600000739097595,
       "fills": [
         {
           "fillColor": "#ffffff",
           "fillOpacity": 1
         }
       ],
+      "x2": 45.1875,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
+      "height": 19.200000762939453,
       "text": "Log out"
     }
   ],

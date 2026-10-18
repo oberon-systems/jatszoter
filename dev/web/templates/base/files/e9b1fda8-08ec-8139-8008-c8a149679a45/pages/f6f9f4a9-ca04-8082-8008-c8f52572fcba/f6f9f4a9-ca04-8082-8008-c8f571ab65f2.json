@@ -124,28 +124,28 @@
   "hidden": false,
   "positionData": [
     {
-      "x": 3640.5,
       "y": 1211.5999996066093,
-      "width": 318.0625,
-      "height": 18.399999618530273,
-      "x1": 0,
-      "y1": -0.800000011920929,
-      "x2": 318.0625,
-      "y2": 17.599999606609344,
       "fontStyle": "normal",
       "textTransform": "none",
       "fontSize": "14px",
       "fontWeight": "400",
+      "y1": -0.800000011920929,
+      "width": 318.0625,
       "textDecoration": "none",
       "letterSpacing": "normal",
+      "x": 3640.5,
+      "x1": 0,
+      "y2": 17.599999606609344,
       "fills": [
         {
           "fillColor": "#57606a",
           "fillOpacity": 1
         }
       ],
+      "x2": 318.0625,
       "direction": "ltr",
       "fontFamily": "sourcesanspro",
+      "height": 18.399999618530273,
       "text": "A recording starts when the trainee first opens the link."
     }
   ],

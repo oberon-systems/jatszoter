@@ -33,8 +33,10 @@ operator has not taken control.
   cookie, see [08](08-web-ui.md#operator-session). On first start, when no operator exists, the API creates `admin` /
   `admin` with `password_changed` 0; such a login is refused until it
   sends `new_password`. OIDC is on the [roadmap](07-roadmap.md).
-- **Passwords** - stored as scrypt hashes, the parameters kept with the
-  hash. An unknown user and a wrong password get the same 401. Ten failures
+- **Passwords** - at least 12 characters and three of four classes:
+  lowercase, uppercase, digits, other characters, see
+  [08](08-web-ui.md#password-rule). Stored as scrypt hashes, the parameters
+  kept with the hash. An unknown user and a wrong password get the same 401. Ten failures
   for one name within 15 minutes get 429 until the window passes; the
   counter lives in Valkey.
 - **Auto registration** - `JATSZOTER_AUTO_REGISTER_AGENTS=true` stores every

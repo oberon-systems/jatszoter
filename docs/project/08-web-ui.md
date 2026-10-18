@@ -97,7 +97,8 @@ unless a screen says otherwise. `Missing API` names the routes of
 - API calls: `POST /api/v1/auth/login`, then `GET /api/v1/auth/me`.
 - Actions: log in with name and password. When the API answers 403
   `password change required`, the page asks for a new password twice and
-  sends it as `new_password`.
+  sends it as `new_password`. The [password rule](#password-rule) is
+  checked first.
 - Answers: 401 shows `wrong name or password`, 429 shows `too many
   attempts, try again later`. A user whose role is not `operator` is
   logged out at once and told the account is not an operator's. A
@@ -175,7 +176,8 @@ unless a screen says otherwise. `Missing API` names the routes of
   `POST /api/v1/users/{id}/state`, `POST /api/v1/users/{id}/password`.
 - Shows: name, role, comment, state and creation time, filtered by role.
 - Actions: create a user; enable or disable one, with confirmation; set a
-  one-time password, which the user must change at the first login.
+  one-time password, which the user must change at the first login. The
+  [password rule](#password-rule) is checked first.
 - Missing API: the state and password routes.
 
 ### Logs
@@ -250,6 +252,20 @@ unless a screen says otherwise. `Missing API` names the routes of
   answers 404. A recording whose trainee link is still live says so in
   place of its duration and size, and plays as far as it is written.
 - Missing API: none.
+
+### Password rule
+
+A new password has at least 12 characters and three of four classes:
+lowercase, uppercase, digits, other characters. A changed password also
+differs from the current one.
+
+- The browser checks the rule and the repeated password before the form
+  is sent, and shows the problem under its field.
+- `web` checks them again before it calls the API, and answers 422 with
+  the same field errors. Only `web` knows the current password at login,
+  so the `must differ` check starts there.
+- The API refuses a weak password with 422 as the last check.
+- A hint under the password field states the rule until it is broken.
 
 ### Error pages
 
@@ -465,6 +481,8 @@ X-Content-Type-Options: nosniff
 - A path under `/api/v1` outside the relay paths answers 404 from `web`.
 - No error a browser reaches outside `/api/` answers JSON; each renders
   its board of [Error pages](#error-pages).
+- A weak or mismatched new password from the login or the Users dialog
+  reaches no API route.
 - `GET /s/{token}` through `web` sets the link cookie and redirects to
   `/t/{deployment_id}`, and the access log shows `/s/<redacted>`.
 - A trainee page types into the terminal, requests a check and sees its

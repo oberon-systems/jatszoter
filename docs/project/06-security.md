@@ -83,7 +83,7 @@ operator has not taken control.
 | Threat                         | Mitigation                                        |
 | ------------------------------ | ------------------------------------------------- |
 | Link forwarded to someone else | revoke, and a new link starts a new recording     |
-| Link leaks through `Referer`   | token swapped for a cookie, `no-referrer` policy  |
+| Link leaks through `Referer`   | token swapped for a cookie, `same-origin` policy  |
 | Link left in browser history   | redirect to a URL without the token               |
 | Link guessed                   | 256 random bits, constant-time hash comparison    |
 | Link used after the exam       | revoked when the deployment ends                  |
@@ -138,7 +138,7 @@ The check script is guarded the same way:
   before it reaches the API; see [08](08-web-ui.md#csrf).
 - Signed requests carry no cookie and need neither.
 - Security headers: `Content-Security-Policy` without inline scripts,
-  `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`; the full set is
+  `Referrer-Policy: same-origin`, `X-Frame-Options: DENY`; the full set is
   in [08](08-web-ui.md#security-headers).
 - Operator pages and trainee pages are separate routes; a link cookie
   reaches nothing outside its deployment's routes under

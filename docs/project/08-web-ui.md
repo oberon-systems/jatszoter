@@ -100,7 +100,9 @@ unless a screen says otherwise. `Missing API` names the routes of
   sends it as `new_password`.
 - Answers: 401 shows `wrong name or password`, 429 shows `too many
   attempts, try again later`. A user whose role is not `operator` is
-  logged out at once and told the account is not an operator's.
+  logged out at once and told the account is not an operator's. A
+  refused [CSRF](#csrf) check shows the form again, with the name kept,
+  a fresh token and `The login form has expired`.
 - Missing API: `GET /api/v1/auth/me`.
 
 ### Deployments list
@@ -228,7 +230,9 @@ unless a screen says otherwise. `Missing API` names the routes of
   check; an operator link also takes and gives back control; a viewer
   only watches.
 - A 401 or 403 from the task route shows `this link is not valid or has
-  ended` and nothing else.
+  ended` and nothing else. So does `GET /s/{token}` when the token is
+  malformed or the API refuses it; an API failure there shows the error
+  state.
 - The page is driven by a first-party static script over the relayed JSON
   routes, since `web` never sees the link cookie.
 - Missing API: `GET /api/v1/deployments/{id}/task`.
@@ -246,6 +250,30 @@ unless a screen says otherwise. `Missing API` names the routes of
   answers 404. A recording whose trainee link is still live says so in
   place of its duration and size, and plays as far as it is written.
 - Missing API: none.
+
+### Error pages
+
+- Boards: page `Errors`, and `form expired` on page `Login`.
+- No page answers JSON: every error a browser reaches outside `/api/`
+  renders a page, and an HTMX request gets the flash in its page's flash
+  slot instead.
+- An operator, read from the session cookie even on a route that does not
+  need one, gets the shell with a title, the flash and the actions. Anyone
+  else gets the login card with the flash and `Log in`. By answer:
+
+  - 404: `Page not found`, a refusal to check the link; deployments.
+  - 403 from the API: `Not allowed`, the refusal for the account;
+    deployments.
+  - 403 from a CSRF check: `Request refused`, the form has expired;
+    reload and deployments.
+  - Any other 4xx: `Request refused`, naming the status's reason;
+    deployments.
+  - 500: `Something went wrong`, the error that the page failed; reload
+    and deployments.
+
+- Reload is the page itself for a `GET`, else the `Referer` when it names
+  a page of `web`; without one only deployments is offered.
+- Paths under `/api/` keep FastAPI's JSON, which the trainee script reads.
 
 ## API gaps
 
@@ -306,7 +334,7 @@ never reaches JavaScript.
 - Lapsed: a credential past `expires_at` is never sent. `web` clears the
   cookie and answers a page with 303 to `/login?next=<path>`, an HTMX
   request with `HX-Redirect` to the same. `next` is kept only when it is a
-  local path.
+  local path other than `/`, which lands on `/login` alone.
 - Refused: a 401 from the API answers an HTMX request with `HX-Refresh`,
   since another tab may have refreshed the cookie meanwhile, and a page
   like a lapsed credential. A 403 shows a page that says the action is not
@@ -397,7 +425,7 @@ Every answer of `web`, relayed ones included, carries:
 
 ```text
 Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
-Referrer-Policy: no-referrer
+Referrer-Policy: same-origin
 X-Frame-Options: DENY
 X-Content-Type-Options: nosniff
 ```
@@ -406,6 +434,9 @@ X-Content-Type-Options: nosniff
   asciinema-player 3 compiles its terminal from WebAssembly, which the
   policy above refuses. It allows WebAssembly and still no `eval` of
   JavaScript.
+- `same-origin`, not `no-referrer`: under `no-referrer` a browser sends
+  `Origin: null` with a form `POST`, which the [CSRF](#csrf) check refuses
+  as foreign. No other host gets a `Referer` either way.
 - No page loads a script, a style, a font or an image from another host;
   every third-party file is vendored under the package's static directory.
 - No inline script or style and no `hx-on` attribute: HTMX is configured
@@ -432,6 +463,8 @@ X-Content-Type-Options: nosniff
 - The relay passes `Host` and `Origin` unchanged and forwards no
   `jatszoter_session`, `jatszoter_csrf` or signature header.
 - A path under `/api/v1` outside the relay paths answers 404 from `web`.
+- No error a browser reaches outside `/api/` answers JSON; each renders
+  its board of [Error pages](#error-pages).
 - `GET /s/{token}` through `web` sets the link cookie and redirects to
   `/t/{deployment_id}`, and the access log shows `/s/<redacted>`.
 - A trainee page types into the terminal, requests a check and sees its

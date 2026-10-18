@@ -3,6 +3,7 @@ set -euo pipefail
 
 api=http://127.0.0.1:8080
 www=http://127.0.0.1:8081
+web=http://127.0.0.1:8000
 
 for tool in qemu-system-x86_64 qemu-img xorriso openssl jq curl sha256sum; do
     if ! command -v "$tool" >/dev/null; then
@@ -27,7 +28,7 @@ cleanup() {
             kill -9 "$pid" 2>/dev/null || true
         fi
     done
-    for group in "${server:-}" "${files:-}"; do
+    for group in "${front:-}" "${server:-}" "${files:-}"; do
         if [ -n "$group" ]; then kill -- "-$group" 2>/dev/null || true; fi
     done
     if [ -n "${logs:-}" ]; then kill "$logs" 2>/dev/null || true; fi
@@ -72,9 +73,26 @@ signed() {
         -H "X-Owner: $owner" -H "X-Credential: $credential"
         -H "X-Timestamp: $ts" -H "X-Signature: $signature")
     if [ -n "$body" ]; then
-        args+=(-H "Content-Type: application/json" --data-binary "$body")
+        args+=(-H "Content-Type: application/json" --data-binary @-)
     fi
-    curl "${args[@]}" "$api$path"
+    printf '%s' "$body" | curl "${args[@]}" "$api$path"
+}
+
+# A request to web as the operator who logged in there; cookies stay in the jar.
+browsed() {
+    curl -sS -b "$TEMP_DIR/operator.jar" -c "$TEMP_DIR/operator.jar" "$@"
+}
+
+jarred() {
+    awk -v name="$1" '$6 == name {print $7}' "$TEMP_DIR/operator.jar"
+}
+
+# A form a page posts back with its CSRF token; the fields reach curl on stdin.
+posted() {
+    local path="$1" fields="$2"
+    shift 2
+    printf 'csrf_token=%s&%s' "$(jarred jatszoter_csrf)" "$fields" |
+        browsed --data-binary @- "$@" "$web$path"
 }
 
 deployment_status() {
@@ -146,17 +164,22 @@ viewer() {
 
 # The token reaches curl on stdin; the redirect is not followed.
 open_link() {
-    printf 'url = "%s"\n' "$api/s/$token" | curl -sS -K - -o /dev/null "$@" | tr -d '\r'
+    printf 'url = "%s"\n' "$web/s/$token" | curl -sS -K - -o /dev/null "$@" | tr -d '\r'
 }
 
 header() {
-    sed -n "s/^$1: //Ip" <<<"$opened"
+    sed -n "s/^$1: //Ip" <<<"$2"
 }
 
-# The cookie reaches curl on stdin; an error answer is left to the caller.
+# The cookies and the CSRF token reach curl on stdin; `bare` leaves the token out.
 linked() {
-    printf 'request = "%s"\nurl = "%s"\nheader = "Cookie: jatszoter_link=%s"\n' \
-        "$1" "$api$2" "$cookie" | curl -sS -K - "${@:3}"
+    local sent="X-CSRF-Token: $csrf"
+    if [ "$1" = bare ]; then
+        sent="X-CSRF-Token:"
+        shift
+    fi
+    printf 'request = "%s"\nurl = "%s"\nheader = "Cookie: jatszoter_link=%s; jatszoter_csrf=%s"\nheader = "%s"\n' \
+        "$1" "$web$2" "$cookie" "$csrf" "$sent" | curl -sS -K - "${@:3}"
 }
 
 # Asks as `linked` or `signed` and prints the status the check settles with, nothing else.
@@ -201,28 +224,17 @@ settled() {
     fi
 }
 
-# A trainee socket by cookie and an operator socket by signature; prints check names only.
+# Through web: the trainee socket by the link cookie, the operator's by the session; prints check names only.
 # shellcheck disable=SC2016
 terminal_py='
-import hashlib, hmac, json, os, sys, time
-from urllib.parse import urlsplit
+import json, os, sys, time
 from urllib.request import Request, urlopen
 from websockets.exceptions import WebSocketException
 from websockets.sync.client import connect
 
-target = urlsplit(os.environ["TERMINAL_URL"])
-key = os.environ["TERMINAL_KEY"].encode()
-
-
-def signed(method, path, body=b""):
-    ts = str(int(time.time()))
-    message = "\n".join([ts, method, path, hashlib.sha256(body).hexdigest()])
-    return {
-        "X-Owner": os.environ["TERMINAL_OWNER"],
-        "X-Credential": os.environ["TERMINAL_CREDENTIAL"],
-        "X-Timestamp": ts,
-        "X-Signature": hmac.new(key, message.encode(), hashlib.sha256).hexdigest(),
-    }
+web = os.environ["TERMINAL_WEB"]
+deployment = os.environ["TERMINAL_DEPLOYMENT"]
+session = {"Cookie": "jatszoter_session=" + os.environ["TERMINAL_SESSION"]}
 
 
 class Terminal:
@@ -258,11 +270,11 @@ class Terminal:
         return self.prints(f"{before}printf {mark}-%d $((40 + 2))", f"{mark}-42", seconds)
 
 
+# The form of the detail page; its 303 back to the page is followed.
 def take_control():
-    path = target.path.removesuffix("/attach") + "/control"
-    body = json.dumps({"holder": "operator"}).encode()
-    headers = {**signed("POST", path, body), "Content-Type": "application/json"}
-    request = Request(f"http://{target.netloc}{path}", data=body, headers=headers)
+    headers = {**session, "X-CSRF-Token": os.environ["TERMINAL_CSRF"]}
+    url = f"http://{web}/deployments/{deployment}/control"
+    request = Request(url, data=b"holder=operator", headers=headers)
     with urlopen(request, timeout=30) as response:
         response.read()
     return trainee.held_by("operator") and operator.held_by("operator")
@@ -302,14 +314,20 @@ parts = {
     ],
 }
 checks = parts[os.environ["TERMINAL_PART"]]
-def attach(headers):
-    return connect(target.geturl(), additional_headers=headers, open_timeout=30)
+def attach(path, headers, origin=None):
+    url = f"ws://{web}{path}"
+    return connect(url, additional_headers=headers, origin=origin, open_timeout=30)
 
 
 name = "opening the sockets"
 cookie = {"Cookie": "jatszoter_link=" + os.environ["TERMINAL_COOKIE"]}
+relayed = f"/api/v1/deployments/{deployment}/attach"
+own = f"/deployments/{deployment}/attach"
 try:
-    with attach(cookie) as first, attach(signed("GET", target.path)) as second:
+    with (
+        attach(relayed, cookie) as first,
+        attach(own, session, f"http://{web}") as second,
+    ):
         trainee, operator = Terminal(first), Terminal(second)
         for name, check in checks:
             if not check():
@@ -320,11 +338,11 @@ except (OSError, WebSocketException) as err:
     sys.exit(f"the terminal was refused or dropped at: {name}: {type(err).__name__}")
 '
 
-# The cookie and the key reach the terminal through its environment, never a command line.
+# The cookies and the token reach the terminal through its environment, never a command line.
 terminal() {
-    TERMINAL_PART="$1" TERMINAL_URL="ws://${api#http://}/api/v1/deployments/$deployment/attach" \
-        TERMINAL_COOKIE="$cookie" \
-        TERMINAL_OWNER="$owner" TERMINAL_CREDENTIAL="$credential" TERMINAL_KEY="$key" \
+    TERMINAL_PART="$1" TERMINAL_WEB="${web#http://}" TERMINAL_DEPLOYMENT="$deployment" \
+        TERMINAL_COOKIE="$cookie" TERMINAL_SESSION="$(jarred jatszoter_session)" \
+        TERMINAL_CSRF="$operator_csrf" \
         "$VENV/bin/python" -I -c "$terminal_py"
 }
 
@@ -419,6 +437,10 @@ recordings() {
     signed GET "/api/v1/deployments/$deployment/recordings"
 }
 
+new_password() {
+    "$VENV/bin/python" -c "import secrets; print(secrets.token_urlsafe(24), end='')"
+}
+
 cached_sha256() {
     sha256sum "$1" | cut -d' ' -f1
 }
@@ -438,8 +460,8 @@ if [ ! -f "$image" ] || [ "$(cached_sha256 "$image")" != "$SMOKE_IMAGE_SHA256" ]
 fi
 
 mkdir -m 700 "$TEMP_DIR"
-touch "$TEMP_DIR/api.log" "$TEMP_DIR/agent.log"
-tail -f "$TEMP_DIR/api.log" "$TEMP_DIR/agent.log" &
+touch "$TEMP_DIR/api.log" "$TEMP_DIR/agent.log" "$TEMP_DIR/web.log"
+tail -f "$TEMP_DIR/api.log" "$TEMP_DIR/agent.log" "$TEMP_DIR/web.log" &
 logs=$!
 echo "smoke test, working dir: $TEMP_DIR"
 
@@ -466,6 +488,16 @@ master="$("$VENV/bin/python" -c "import secrets; print(secrets.token_hex(32), en
 server=$!
 wait_for 30 curl -fs -o /dev/null "$api/healthz"
 
+echo "starting web..."
+sealing="$("$VENV/bin/python" -c "import secrets; print(secrets.token_urlsafe(32), end='')")"
+JATSZOTER_WEB_API_URL="$api" \
+    JATSZOTER_WEB_COOKIE_KEYS="{\"smoke\": \"$sealing\"}" \
+    JATSZOTER_WEB_COOKIE_KID=smoke \
+    setsid "$MAKE" -f "$ROOT/Makefile" VENV="$VENV" run-web >"$TEMP_DIR/web.log" 2>&1 &
+front=$!
+unset sealing
+wait_for 30 curl -fs -o /dev/null "$web/healthz"
+
 echo "starting agent..."
 JATSZOTER_AGENT_API_URL="$api" \
     JATSZOTER_AGENT_NAME=alpha \
@@ -485,14 +517,20 @@ if [ "$refused" != 403 ]; then
     echo "a login without a password change answered $refused, not 403" >&2
     exit 1
 fi
-password="$("$VENV/bin/python" -c "import secrets; print(secrets.token_urlsafe(24), end='')")"
-login="$(jq -cn --arg password "$password" \
-    '{name: "admin", password: "admin", new_password: $password}' |
+login="$(PASSWORD="$(new_password)" jq -cn \
+    '{name: "admin", password: "admin", new_password: env.PASSWORD}' |
     curl -fsS -H "Content-Type: application/json" --data-binary @- "$api/api/v1/auth/login")"
 owner="$(jq -r .user_id <<<"$login")"
 credential="$(jq -r .credential.credential <<<"$login")"
 key="$(jq -r .credential.key <<<"$login")"
-unset login password
+unset login
+
+# web logs in as an operator of its own: a second login of admin would supersede the one above.
+echo "creating the operator who logs in through web..."
+gamma="$(signed POST /api/v1/users "$(jq -cn '{name: "gamma", role: "operator"}')" | jq -r .id)"
+password="$(new_password)"
+signed POST "/api/v1/users/$gamma/password" \
+    "$(PASSWORD="$password" jq -cn '{password: env.PASSWORD}')" >/dev/null
 
 echo "registering the image and the scenario..."
 signed POST /api/v1/images \
@@ -544,6 +582,49 @@ if [ ! -s "$TEMP_DIR/agent/vms/$deployment/console.log" ]; then
     exit 1
 fi
 
+echo "logging in through web as gamma..."
+if ! browsed -f -o /dev/null "$web/login"; then
+    echo "the login page of web could not be loaded" >&2
+    exit 1
+fi
+answer="$(posted /login "name=gamma&password=$password" \
+    -o "$TEMP_DIR/login.html" -w '%{http_code}')"
+pending="$(sed -n 's/.*name="pending" value="\([^"]*\)".*/\1/p' "$TEMP_DIR/login.html")"
+if [ "$answer" != 200 ] || [ -z "$pending" ]; then
+    echo "the first login through web answered $answer without asking for a new password" >&2
+    exit 1
+fi
+password="$(new_password)"
+answered="$(posted /login \
+    "pending=$pending&new_password=$password&repeat_password=$password" -o /dev/null -D - |
+    tr -d '\r')"
+answer="$(head -n 1 <<<"$answered" | cut -d' ' -f2)"
+unset pending password
+if [ "$answer" != 303 ] || [ "$(header location "$answered")" != /deployments ]; then
+    echo "the new password through web answered $answer, not 303 to /deployments" >&2
+    exit 1
+fi
+if [ -z "$(jarred jatszoter_session)" ]; then
+    echo "the login through web set no jatszoter_session cookie" >&2
+    exit 1
+fi
+answer="$(browsed -o "$TEMP_DIR/deployments.html" -w '%{http_code}' "$web/deployments")"
+if [ "$answer" != 200 ] || ! grep -qF "/deployments/$deployment\"" "$TEMP_DIR/deployments.html"; then
+    echo "the deployments page answered $answer and does not name the deployment" >&2
+    exit 1
+fi
+operator_csrf="$(sed -n 's/.*<meta name="csrf-token" content="\([^"]*\)".*/\1/p' \
+    "$TEMP_DIR/deployments.html")"
+if [ -z "$operator_csrf" ]; then
+    echo "the deployments page carries no CSRF token" >&2
+    exit 1
+fi
+answer="$(browsed -o /dev/null -w '%{http_code}' -d '' "$web/deployments/$deployment/check")"
+if [ "$answer" != 403 ]; then
+    echo "a check posted to web without its CSRF token answered $answer, not 403" >&2
+    exit 1
+fi
+
 echo "opening the trainee link..."
 link="$(jq -r .link.id <<<"$created")"
 token="$(jq -r .link.token <<<"$created")"
@@ -554,11 +635,11 @@ if [[ ! "$token" =~ ^[A-Za-z0-9_-]{32,}$ ]]; then
 fi
 opened="$(open_link -D -)"
 answer="$(head -n 1 <<<"$opened" | cut -d' ' -f2)"
-if [ "$answer" != 303 ] || [ "$(header location)" != "/t/$deployment" ]; then
+if [ "$answer" != 303 ] || [ "$(header location "$opened")" != "/t/$deployment" ]; then
     echo "opening the link answered $answer, not 303 to /t/$deployment" >&2
     exit 1
 fi
-jar="$(header set-cookie)"
+jar="$(header set-cookie "$opened")"
 cookie="${jar%%;*}"
 attributes="; ${jar#*; };"
 attributes="${attributes,,}"
@@ -574,6 +655,26 @@ for attribute in httponly secure samesite=strict "path=/api/v1/deployments/$depl
         exit 1
     fi
 done
+
+echo "loading the trainee page..."
+shown="$(curl -sS -o /dev/null -D - "$web/t/$deployment" | tr -d '\r')"
+answer="$(head -n 1 <<<"$shown" | cut -d' ' -f2)"
+csrf="$(header set-cookie "$shown" | sed -n 's/^jatszoter_csrf=\([^;]*\);.*/\1/p')"
+unset shown
+if [ "$answer" != 200 ] || [ -z "$csrf" ]; then
+    echo "the trainee page answered $answer and set no jatszoter_csrf cookie" >&2
+    exit 1
+fi
+task="/api/v1/deployments/$deployment/task"
+if ! linked GET "$task" | jq -e '.role == "trainee" and .status == "READY"' >/dev/null; then
+    echo "the relayed task route does not answer the trainee at READY" >&2
+    exit 1
+fi
+answer="$(linked bare POST "/api/v1/deployments/$deployment/checks" -o /dev/null -w '%{http_code}')"
+if [ "$answer" != 403 ]; then
+    echo "a relayed check without its CSRF token answered $answer, not 403" >&2
+    exit 1
+fi
 
 echo "typing as the trainee, then taking control..."
 terminal handover
@@ -600,7 +701,16 @@ if [ "$(jq length <<<"$listed")" != 1 ]; then
     exit 1
 fi
 recording="$(jq -r '.[0].id' <<<"$listed")"
-signed GET "/api/v1/recordings/$recording.cast" >"$TEMP_DIR/recording.cast"
+replayed="$web/deployments/$deployment/recordings/$recording"
+answer="$(browsed -o /dev/null -w '%{http_code}' "$replayed")"
+if [ "$answer" != 200 ]; then
+    echo "the replay page answered $answer, not 200" >&2
+    exit 1
+fi
+if ! browsed -f -o "$TEMP_DIR/recording.cast" "$replayed.cast"; then
+    echo "the recording could not be read through web" >&2
+    exit 1
+fi
 replay "$TEMP_DIR/recording.cast"
 stored="$TEMP_DIR/data/storage/recordings/$deployment/$recording.cast"
 
@@ -615,9 +725,19 @@ if [ "$answer" != 404 ]; then
     echo "opening the revoked link answered $answer, not 404" >&2
     exit 1
 fi
-if grep -qF -f <(printf '%s\n%s\n' "$token" "$cookie") \
-    "$TEMP_DIR/api.log" "$TEMP_DIR/agent.log" "$stored"; then
-    echo "a log or the recording holds the link token or the cookie value" >&2
+answer="$(curl -sS -o /dev/null -w '%{http_code}' "$web/t/$deployment")"
+if [ "$answer" != 200 ]; then
+    echo "the trainee page answered $answer after the revoke, not 200" >&2
+    exit 1
+fi
+answer="$(linked GET "$task" -o /dev/null -w '%{http_code}')"
+if [ "$answer" != 401 ] && [ "$answer" != 403 ]; then
+    echo "the relayed task route answered $answer after the revoke, not 401 or 403" >&2
+    exit 1
+fi
+if grep -qF -f <(printf '%s\n%s\n%s\n' "$token" "$cookie" "$(jarred jatszoter_session)") \
+    "$TEMP_DIR/api.log" "$TEMP_DIR/agent.log" "$TEMP_DIR/web.log" "$stored"; then
+    echo "a log or the recording holds the link token or a cookie value" >&2
     exit 1
 fi
 

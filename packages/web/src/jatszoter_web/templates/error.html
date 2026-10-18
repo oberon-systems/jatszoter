@@ -1,1 +1,34 @@
 {% extends "base.html" %}
+{% from "flash.html" import flash %}
+{% block title %}{% if title %}{{ title }} - {% endif %}Stand{% endblock %}
+{% block header %}
+    {% if operator and title %}
+        <div class="page-header">
+            <div class="titles">
+                <h1 class="title">{{ title }}</h1>
+                <span class="subtitle">{{ subtitle }}</span>
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}
+{% block flashes %}
+    {% if operator or not title %}{{ super() }}{% endif %}
+{% endblock %}
+{% block content %}
+    {% if operator and landing %}
+        <div class="actions actions-start">
+            {% if again %}<a class="button button-primary" href="{{ again }}">Reload page</a>{% endif %}
+            <a class="button {{ 'button-secondary' if again else 'button-primary' }}"
+               href="{{ landing }}">Go to deployments</a>
+        </div>
+    {% elif title %}
+        <div class="center">
+            <div class="card">
+                <h1 class="heading">{{ title }}</h1>
+                {% for item in flashes %}{{ flash(item) }}{% endfor %}
+                <a class="button button-primary button-block"
+                   href="{{ url_for('login_page').path }}">Log in</a>
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}

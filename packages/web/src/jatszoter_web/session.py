@@ -37,7 +37,7 @@ def local(path: str | None) -> str | None:
 
 
 def login_url(request: Request) -> str:
-    """`/login`, with `next` naming the page the browser was on when it is a local GET."""
+    """`/login`, with `next` naming the page the browser was on when it is a local GET but `/`."""
     page: str | None = None
     if "hx-request" in request.headers:
         current = urlsplit(request.headers.get("hx-current-url", ""))
@@ -46,7 +46,7 @@ def login_url(request: Request) -> str:
     elif request.method == "GET":
         page = request.url.path + (f"?{request.url.query}" if request.url.query else "")
     page = local(page)
-    return "/login" if page is None else f"/login?next={quote(page, safe='/')}"
+    return "/login" if page in (None, "/") else f"/login?next={quote(page, safe='/')}"
 
 
 class Session:

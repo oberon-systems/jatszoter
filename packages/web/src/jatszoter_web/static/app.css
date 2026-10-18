@@ -633,6 +633,10 @@ body {
   margin: 0;
 }
 
+.actions-start {
+  justify-content: flex-start;
+}
+
 .table td:last-child {
   text-align: right;
 }

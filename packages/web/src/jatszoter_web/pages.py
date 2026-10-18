@@ -1,17 +1,33 @@
 import json
 import time
 from dataclasses import asdict, dataclass
+from http import HTTPStatus
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
+from urllib.parse import urlsplit
 
 from fastapi import Request
+from fastapi.exception_handlers import (
+    http_exception_handler,
+    request_validation_exception_handler,
+)
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import Scope
 
 from jatszoter_web.api import ApiDown
-from jatszoter_web.cookies import FLASH_COOKIE, SESSION_COOKIE, Operator, seal, unseal
+from jatszoter_web.cookies import (
+    FLASH_COOKIE,
+    SESSION_COOKIE,
+    Operator,
+    seal,
+    unseal,
+    unseal_operator,
+)
 from jatszoter_web.middleware import queue_cookie
-from jatszoter_web.session import NotAllowed, SignedOut, login_url
+from jatszoter_web.session import NotAllowed, SignedOut, local, login_url
 
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
@@ -69,6 +85,19 @@ class Refusal(Exception):
 
 
 NOT_ALLOWED = Flash("refusal", "Not allowed", "This action is not allowed for your account. (403)")
+EXPIRED = Flash(
+    "refusal",
+    "Refused",
+    "The form has expired or came from another page. "
+    "Nothing was changed; reload the page and try again. (403)",
+)
+SERVER_ERROR = Flash(
+    "error",
+    "Something went wrong",
+    "The page failed on the server. Nothing was changed; try again in a moment. (500)",
+)
+LANDING = "/deployments"
+UNCHANGED = "Nothing was changed"
 
 
 def when(timestamp: int | float | None, seconds: bool = False) -> str:
@@ -187,10 +216,99 @@ async def signed_out(request: Request, exc: Exception) -> Response:
     return RedirectResponse(login_url(request), status_code=303)
 
 
-async def not_allowed(request: Request, _: Exception) -> Response:
+def signed_in(request: Request) -> Operator | None:
+    """The operator of the request, read from the session cookie when no route has read it."""
+    operator: Operator | None = getattr(request.state, "operator", None)
+    if operator is None:
+        operator = unseal_operator(request.cookies.get(SESSION_COOKIE), request.app.state.keys)
+        if operator is None or operator.expires_at <= time.time():
+            return None
+        request.state.operator = operator
+    return operator
+
+
+def again(request: Request) -> str | None:
+    """The page to reload: this one for a GET, else the page of ours the form was sent from."""
+    if request.method == "GET":
+        url = request.url
+        return local(url.path + (f"?{url.query}" if url.query else ""))
+    referer = urlsplit(request.headers.get("referer", ""))
+    if referer.netloc.lower() != request.headers.get("host", "").lower():
+        return None
+    return local(referer.path + (f"?{referer.query}" if referer.query else ""))
+
+
+def failure(
+    request: Request,
+    status: int,
+    title: str,
+    subtitle: str,
+    item: Flash,
+    reload: bool = False,
+) -> Response:
+    """An error page: the operator shell with its actions, or the signed-out card."""
     if "hx-request" in request.headers:
-        return flash_slot(request, NOT_ALLOWED, 403)
-    return render(request, "error.html", {"flashes": [NOT_ALLOWED]}, status=403)
+        return flash_slot(request, item, status)
+    signed_in(request)
+    context: dict[str, Any] = {
+        "title": title,
+        "subtitle": subtitle,
+        "flashes": [item],
+        "landing": LANDING,
+    }
+    if reload:
+        context["again"] = again(request)
+    return render(request, "error.html", context, status=status)
+
+
+def not_found(request: Request) -> Response:
+    where = "start from the deployments" if signed_in(request) else "log in"
+    text = f"There is no page at this address. Check the link or {where}. (404)"
+    item = Flash("refusal", "Not found", text)
+    return failure(request, 404, "Page not found", "Nothing lives at this address", item)
+
+
+def refused(request: Request, status: int, reason: str) -> Response:
+    text = f"This request is not accepted: {reason}. Nothing was changed. ({status})"
+    return failure(request, status, "Request refused", UNCHANGED, Flash("refusal", "Refused", text))
+
+
+def server_error(request: Request) -> Response:
+    return failure(request, 500, "Something went wrong", UNCHANGED, SERVER_ERROR, reload=True)
+
+
+def failed_scope(scope: Scope) -> Response:
+    """The server error page for a request that raised before it was answered."""
+    return server_error(Request(scope))
+
+
+async def http_error(request: Request, exc: Exception) -> Response:
+    if not isinstance(exc, StarletteHTTPException) or request.url.path.startswith("/api/"):
+        return await http_exception_handler(request, cast(StarletteHTTPException, exc))
+    status = exc.status_code
+    if status == 403:
+        return failure(request, 403, "Request refused", UNCHANGED, EXPIRED, reload=True)
+    if status == 404:
+        return not_found(request)
+    if status >= 500:
+        return server_error(request)
+    try:
+        reason = HTTPStatus(status).phrase.lower()
+    except ValueError:
+        reason = "the request is not valid"
+    return refused(request, status, reason)
+
+
+async def invalid_request(request: Request, exc: Exception) -> Response:
+    if not isinstance(exc, RequestValidationError) or request.url.path.startswith("/api/"):
+        return await request_validation_exception_handler(
+            request, cast(RequestValidationError, exc)
+        )
+    return refused(request, 422, "the request is not valid")
+
+
+async def not_allowed(request: Request, _: Exception) -> Response:
+    return failure(request, 403, "Not allowed", "Your account cannot open this", NOT_ALLOWED)
 
 
 async def refused_read(request: Request, exc: Exception) -> Response:
@@ -213,4 +331,6 @@ HANDLERS = {
     NotAllowed: not_allowed,
     ApiDown: api_down,
     Refusal: refused_read,
+    StarletteHTTPException: http_error,
+    RequestValidationError: invalid_request,
 }

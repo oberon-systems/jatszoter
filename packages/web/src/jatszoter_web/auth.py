@@ -4,7 +4,7 @@ from contextlib import suppress
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse, Response
 from pydantic import BaseModel, ValidationError
 from starlette.datastructures import FormData
@@ -20,12 +20,11 @@ from jatszoter_web.cookies import (
 )
 from jatszoter_web.csrf import browser_token, check_browser
 from jatszoter_web.middleware import queue_cookie
-from jatszoter_web.pages import Flash, error, refusal, render
+from jatszoter_web.pages import LANDING, Flash, error, refusal, render
 from jatszoter_web.session import OperatorDep, PostedOperatorDep, local
 
 PENDING = "jatszoter_login"
 PENDING_SECONDS = 15 * 60
-LANDING = "/deployments"
 
 WRONG = "wrong name or password"
 THROTTLED = "too many attempts, try again later"
@@ -37,6 +36,7 @@ NOT_OPERATOR = Flash(
     "Trainees open the link they were given.",
 )
 DIFFER = "the two passwords differ"
+EXPIRED = "The login form has expired. Nothing was sent; enter your name and password again"
 
 router = APIRouter()
 
@@ -70,7 +70,10 @@ def login_page(request: Request, next: str | None = None) -> Response:
 
 @router.post("/login")
 async def login(request: Request) -> Response:
-    await check_browser(request)
+    try:
+        await check_browser(request)
+    except HTTPException as refused:
+        return await expired(request, refused.status_code)
     form = await request.form()
     api: Api = request.app.state.api
     keys: dict[str, bytes] = request.app.state.keys
@@ -107,6 +110,13 @@ async def login(request: Request) -> Response:
         failure = failed(status)
         return page(request, {**context, "flashes": [error(failure.message)]}, failure.status)
     return page(request, {**context, "flashes": [refusal(message(response), status)]}, status)
+
+
+async def expired(request: Request, status: int) -> Response:
+    """The login form again, with the name kept and a fresh token, after a refused CSRF check."""
+    form = await request.form()
+    context = {"next": local(field(form, "next")), "name": field(form, "name")}
+    return page(request, {**context, "flashes": [refusal(EXPIRED, status)]}, status)
 
 
 def seal_pending(name: str, password: str, request: Request) -> str:

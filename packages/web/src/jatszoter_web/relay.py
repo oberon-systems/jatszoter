@@ -10,9 +10,10 @@ from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus, InvalidURI
 from websockets.typing import Origin
 
-from jatszoter_web.api import TIMEOUT_SECONDS, Api, ApiDown
+from jatszoter_web.api import TIMEOUT_SECONDS, Api, ApiDown, failed
 from jatszoter_web.cookies import LINK_COOKIE
 from jatszoter_web.csrf import check_browser
+from jatszoter_web.pages import render
 from jatszoter_web.settings import Settings
 
 BODY_LIMIT = 64 * 1024
@@ -77,9 +78,15 @@ async def relay(request: Request) -> Response:
 
 @router.get("/s/{token}")
 async def open_link(request: Request, token: str) -> Response:
+    """The API's redirect to the trainee page; a refused link shows the link-ended card."""
     if not SEGMENT.fullmatch(token):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-    return await relay(request)
+        return render(request, "link_ended.html", status=status.HTTP_404_NOT_FOUND)
+    answer = await relay(request)
+    if answer.status_code < 400:
+        return answer
+    if answer.status_code < 500:
+        return render(request, "link_ended.html", status=answer.status_code)
+    raise failed(answer.status_code)
 
 
 @router.api_route("/api/v1/deployments/{deployment_id:uuid}/{rest:path}", methods=["GET", "POST"])

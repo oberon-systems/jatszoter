@@ -1,10 +1,11 @@
 import logging
 import re
 import time
+from collections.abc import Callable
 
 from starlette.datastructures import MutableHeaders
 from starlette.requests import HTTPConnection
-from starlette.responses import PlainTextResponse
+from starlette.responses import PlainTextResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from jatszoter_web.cookies import set_cookie_header
@@ -15,7 +16,7 @@ SECURITY_HEADERS = {
         "connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; "
         "frame-ancestors 'none'"
     ),
-    "referrer-policy": "no-referrer",
+    "referrer-policy": "same-origin",
     "x-frame-options": "DENY",
     "x-content-type-options": "nosniff",
 }
@@ -57,8 +58,18 @@ class DropUvicornAccess(logging.Filter):
 class Guard:
     """Security headers and queued cookies on every answer, and the access log line."""
 
-    def __init__(self, app: ASGIApp) -> None:
+    def __init__(self, app: ASGIApp, failure: Callable[[Scope], Response] | None = None) -> None:
         self.app = app
+        self.failure = failure
+
+    def failed(self, scope: Scope) -> Response:
+        """The page for a request that raised, plain text when even that page fails."""
+        if self.failure is not None:
+            try:
+                return self.failure(scope)
+            except Exception:
+                access_log.exception("the server error page failed")
+        return PlainTextResponse("Internal Server Error", 500)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -86,7 +97,7 @@ class Guard:
             await self.app(scope, receive, guarded)
         except Exception:
             if status is None:
-                await PlainTextResponse("Internal Server Error", 500)(scope, receive, guarded)
+                await self.failed(scope)(scope, receive, guarded)
             raise
         finally:
             access_log.info(

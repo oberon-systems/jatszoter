@@ -17,6 +17,12 @@ for firmware in /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_VARS_4M.fd;
         exit 1
     fi
 done
+for url in "$api" "$web" "$www"; do
+    if curl -s -o /dev/null "$url"; then
+        echo "something already answers on $url" >&2
+        exit 1
+    fi
+done
 
 # QEMU daemonizes out of the agent's process group, so its pids are killed one by one.
 cleanup() {

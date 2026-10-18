@@ -68,7 +68,7 @@ to cover it. An item marked Done has landed on `main`.
     - Smoke: a check fails before the fix and passes after it.
 11. Web UI, design-first in Penpot ([08](08-web-ui.md)): design system,
     then each screen; CSRF tokens on state-changing requests; the replay
-    page with a vendored asciinema-player and markers as jump points.
+    page with a vendored asciinema-player and markers as jump points. Done.
     - API: the routes of [08](08-web-ui.md#api-gaps), and a user's
       superseded credential answering 401.
     - Web: the operator session, the relay, every screen of version one.

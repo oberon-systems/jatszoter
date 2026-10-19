@@ -33,3 +33,7 @@ data/
 
 # ide
 .idea
+
+# npm packages of make vendor and the built documentation site
+node_modules/
+site/

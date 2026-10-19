@@ -100,7 +100,7 @@ repos:
       - id: hadolint
 
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.30.0
+    rev: v8.30.1
     hooks:
       - id: gitleaks
       # The stock hook reads only the index, so `make lint` never shows it a new file.

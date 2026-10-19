@@ -1,11 +1,13 @@
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "jatszoter-api"
 version = "0.0.0"
 description = "Control plane for jatszoter: agents, scenarios, deployments, links and recordings"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
   "alembic",

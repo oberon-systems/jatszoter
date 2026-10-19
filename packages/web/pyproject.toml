@@ -1,11 +1,13 @@
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "jatszoter-web"
 version = "0.0.0"
 description = "Operator and trainee UI for jatszoter"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
   "cryptography",

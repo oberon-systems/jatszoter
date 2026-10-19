@@ -3,7 +3,8 @@ name = "jatszoter-agent"
 version = "0.0.0"
 edition.workspace = true
 rust-version.workspace = true
-publish.workspace = true
+license.workspace = true
+readme = "README.md"
 description = "Host daemon for jatszoter: leases deployments and runs them in QEMU VMs"
 
 [dependencies]

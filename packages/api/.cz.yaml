@@ -14,7 +14,7 @@ commitizen:
   - packages/api
   major_version_zero: true
   name: wyld_cz
-  tag_format: jatszoter-api-$version
+  tag_format: api-$version
   update_changelog_on_bump: true
   version_provider: pep621
   version_scheme: semver

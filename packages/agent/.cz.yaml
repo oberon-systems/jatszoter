@@ -18,7 +18,7 @@ commitizen:
   # up, and the hook runs before the bump commit takes it along.
   pre_bump_hooks:
   - cargo update --offline --workspace --manifest-path ../../Cargo.toml
-  tag_format: jatszoter-agent-$version
+  tag_format: agent-$version
   update_changelog_on_bump: true
   version_provider: cargo
   version_scheme: semver

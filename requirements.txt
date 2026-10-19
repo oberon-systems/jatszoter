@@ -2,7 +2,7 @@
 -e packages/web
 alembic==1.20.0
 check-jsonschema==0.38.2
-commitizen==4.18.0
+commitizen==4.19.2
 cryptography==50.0.2
 fakeredis==2.38.0
 fastapi==0.141.1
@@ -20,4 +20,4 @@ sqlmodel==0.0.42
 uvicorn==0.52.4
 valkey==6.1.1
 websockets==17.2
-wyld-cz==0.3.1
+wyld-cz==0.4.1

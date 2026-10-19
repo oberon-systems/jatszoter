@@ -156,12 +156,12 @@ repos:
   # so the hook environment needs the provider itself. Keep this rev, the pins
   # in requirements.txt and the provider release in step.
   - repo: https://github.com/commitizen-tools/commitizen
-    rev: v4.18.0
+    rev: v4.19.2
     hooks:
       - id: commitizen
-        additional_dependencies: [wyld-cz==0.3.1]
+        additional_dependencies: [wyld-cz==0.4.1]
       - id: commitizen-branch
-        additional_dependencies: [wyld-cz==0.3.1]
+        additional_dependencies: [wyld-cz==0.4.1]
         stages: [pre-push]
 
   - repo: meta

@@ -1,0 +1,18 @@
+{% extends "main.html" %}
+
+{#- The query is typed in the sidebar; the form below only carries it for the
+    search script, and the stylesheet hides it. #}
+{% block content %}
+
+  <h1 id="search">Search results</h1>
+
+  <form id="content_search" action="search.html">
+    <span role="status" aria-live="polite" class="ui-helper-hidden-accessible"></span>
+    <input name="q" id="mkdocs-search-query" type="text" class="search_input search-query ui-autocomplete-input" aria-label="Search the Docs" autocomplete="off">
+  </form>
+
+  <div id="mkdocs-search-results" class="search-results" data-no-results-text="No results found">
+    Searching...
+  </div>
+
+{% endblock %}

@@ -1,0 +1,16 @@
+{#- Previous and next name the pages they lead to. #}
+<footer>
+  {%- if page and (page.next_page or page.previous_page) %}
+  <div class="site-prev-next" role="navigation" aria-label="Footer Navigation">
+    {%- if page.previous_page %}
+    <a class="site-button" href="{{ page.previous_page.url|url }}">&larr; {{ page.previous_page.title }}</a>
+    {%- else %}
+    <span></span>
+    {%- endif %}
+    {%- if page.next_page %}
+    <a class="site-button" href="{{ page.next_page.url|url }}">{{ page.next_page.title }} &rarr;</a>
+    {%- endif %}
+  </div>
+  {%- endif %}
+  <p class="site-footer">{{ config.site_name }} - MIT licensed - built with <a href="https://www.mkdocs.org/">MkDocs</a></p>
+</footer>

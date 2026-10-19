@@ -1,0 +1,10 @@
+{#- The path and the edit link above the page. #}
+<div class="site-crumbs" role="navigation" aria-label="breadcrumbs navigation">
+  <span class="site-path">
+    <a href="{{ nav.homepage.url|url }}">Docs</a>
+    {%- if page and not page.is_homepage %}<span class="site-sep">/</span>{{ page.title }}{%- endif %}
+  </span>
+  {%- if page and page.edit_url %}
+  <a class="site-edit" href="{{ page.edit_url }}">Edit on GitHub</a>
+  {%- endif %}
+</div>

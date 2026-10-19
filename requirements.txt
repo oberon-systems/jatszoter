@@ -9,6 +9,7 @@ fastapi==0.141.1
 httpx==0.28.1
 Jinja2==3.1.6
 jsonschema==4.26.0
+mkdocs==1.6.1
 penpot-local-stack==0.1.5
 pre_commit==4.6.2
 pydantic-settings==2.15.0

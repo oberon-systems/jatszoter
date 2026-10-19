@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jatszoter-api"
-version = "0.0.0"
+version = "0.1.0"
 description = "Control plane for jatszoter: agents, scenarios, deployments, links and recordings"
 readme = "README.md"
 license = "MIT"

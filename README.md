@@ -8,10 +8,20 @@ watches the VM terminal, hands it to a trainee through a unique link, can take
 control back at any moment, and a check script decides whether the trainee
 fixed the problem. Every terminal session is recorded for replay.
 
+- [Demo](#demo)
 - [Components](#components)
 - [Repository layout](#repository-layout)
 - [Requirements](#requirements)
 - [Development](#development)
+
+## Demo
+
+[![Jatszoter Demo #1](https://img.youtube.com/vi/tisheruLtN0/maxresdefault.jpg)](https://youtu.be/tisheruLtN0)
+
+[Demo #1](https://youtu.be/tisheruLtN0) walks one full cycle on the
+`nginx-502` scenario: a trainee and a deployment are created, the VM
+bootstraps, the trainee fixes the 502 in the terminal and the check passes,
+then the operator stops the deployment and purges its logs.
 
 ## Components
 

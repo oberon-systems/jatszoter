@@ -1,0 +1,7 @@
+*
+!packages/api
+!packages/web
+packages/*/tests
+**/__pycache__
+**/*.egg-info
+**/node_modules

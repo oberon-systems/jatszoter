@@ -33,6 +33,7 @@ How they fit together is in [docs/project/01-architecture.md](docs/project/01-ar
 | `packages/`  | api, agent, web and shared Python code          |
 | `scenarios/` | scenarios, one directory each                   |
 | `docs/`      | project documentation                           |
+| `docker/`    | container images of api and web                 |
 | `prompts/`   | step-by-step implementation prompts             |
 | `dev/web/`   | Penpot mockups of the Web UI                    |
 

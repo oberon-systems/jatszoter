@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+auto_register="${AUTO_REGISTER:-true}"
+case "$auto_register" in
+true | false) ;;
+*)
+    echo "AUTO_REGISTER is true or false, not $auto_register" >&2
+    exit 2
+    ;;
+esac
+
 api=http://127.0.0.1:8080
 web=http://127.0.0.1:8000
 www=http://127.0.0.1:8081
@@ -61,7 +70,7 @@ up() {
     JATSZOTER_DATABASE_DSN="sqlite:///$state/jatszoter.db" \
         JATSZOTER_MASTER_KEYS="{\"dev\": \"$(secret 'token_hex(32)')\"}" \
         JATSZOTER_MASTER_KID=dev \
-        JATSZOTER_AUTO_REGISTER_AGENTS=true \
+        JATSZOTER_AUTO_REGISTER_AGENTS="$auto_register" \
         start api "$MAKE" -C "$state" -f "$ROOT/Makefile" VENV="$VENV" run-api
 
     JATSZOTER_WEB_API_URL="$api" \
@@ -81,7 +90,11 @@ up() {
     trap - EXIT
 
     echo "the stand is up: http://localhost:8000/login, admin / admin, a new password is asked at once"
-    echo "the agent alpha builds and registers on its own; logs: make stand-logs, stop: make stand-down"
+    if [ "$auto_register" = true ]; then
+        echo "the agent alpha builds and registers on its own; logs: make stand-logs, stop: make stand-down"
+    else
+        echo "the agent alpha builds and registers disabled: enable it on the Agents page; logs: make stand-logs, stop: make stand-down"
+    fi
     echo "images, by URL and sha256:"
     local found=
     for image in "$state"/www/*.qcow2; do

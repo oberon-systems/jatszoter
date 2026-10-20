@@ -2,6 +2,9 @@
 
 .PHONY: up down logs
 
+# false makes the stand register agents disabled, as a production API does.
+AUTO_REGISTER ?= true
+
 
 up down logs:
-	ROOT=$(abspath ../..) VENV=$(abspath ../../.venv) MAKE=$(MAKE) bash stand.sh $@
+	ROOT=$(abspath ../..) VENV=$(abspath ../../.venv) MAKE=$(MAKE) AUTO_REGISTER=$(AUTO_REGISTER) bash stand.sh $@

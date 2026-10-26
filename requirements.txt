@@ -1,24 +1,24 @@
 -e packages/api
 -e packages/web
-alembic==1.20.0
+alembic==1.20.1
 check-jsonschema==0.38.2
 commitizen==4.19.2
 cryptography==50.0.2
-fakeredis==2.38.0
-fastapi==0.141.1
+fakeredis==2.40.0
+fastapi==0.161.1
 httpx==0.28.1
 Jinja2==3.1.6
 jsonschema==4.26.0
 mkdocs==1.6.1
 penpot-local-stack==0.1.5
-pre_commit==4.6.2
-pydantic-settings==2.15.0
+pre_commit==4.7.0
+pydantic-settings==2.16.1
 pytest==9.1.1
 python-multipart==0.0.32
-python-statemachine==3.2.1
+python-statemachine==3.2.2
 PyYAML==6.0.3
-sqlmodel==0.0.42
-uvicorn==0.52.4
-valkey==6.1.1
-websockets==17.2
+sqlmodel==0.0.48
+uvicorn==0.54.0
+valkey==6.2.0
+websockets==17.3
 wyld-cz==0.4.1

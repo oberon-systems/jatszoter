@@ -30,6 +30,10 @@ class Cached:
     def _set(self, key: str, value: Any, ttl: int) -> None:
         self._client().set(key, pickle.dumps(value), ex=ttl)
 
+    def _add(self, key: str, value: Any, ttl: int) -> bool:
+        """Store `value` only when `key` is free; whether it was."""
+        return bool(self._client().set(key, pickle.dumps(value), ex=ttl, nx=True))
+
     def _ttl(self, key: str, ttl: int) -> bool:
         return bool(self._client().expire(key, ttl))
 

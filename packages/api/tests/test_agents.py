@@ -1,15 +1,15 @@
 import time
 import uuid
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from sqlmodel import Session, select
 
-from jatszoter_api.errors import InvalidTransitionError
+from jatszoter_api.errors import ConflictError, InvalidTransitionError
 from jatszoter_api.lifecycle import DeploymentStatus
 from jatszoter_api.models import Agent, Deployment, Link, Recording, State
 from jatszoter_api.models._cache import Cached
-from jatszoter_api.models.agent import LEASE_SECONDS
+from jatszoter_api.models.agent import KNOWN_ID, LEASE_SECONDS, _digest
 
 FIELDS: dict[str, Any] = {
     "scenario_id": uuid.uuid4(),
@@ -93,21 +93,60 @@ def test_an_approved_agent_is_claimed_once(session: Session) -> None:
     assert Agent(session=session).claimed(code) is None
 
 
-def test_a_known_agent_registers_again_under_its_id(session: Session) -> None:
+def claim_keys() -> list[bytes]:
+    return cast(list[bytes], Cached._client().keys("claim:*"))
+
+
+@pytest.mark.parametrize("auto_register", [False, True])
+def test_a_stored_id_is_refused_and_writes_no_key(session: Session, auto_register: bool) -> None:
     agent = approved(session)
+    keys = claim_keys()
     again = Agent(session=session, id=agent.id, name="gamma", labels=[])
-    code = again.claim_code(False)
 
-    with pytest.raises(InvalidTransitionError):
-        Agent(session=session).claimed(code)
-    agent.approve()
+    with pytest.raises(ConflictError, match=KNOWN_ID):
+        again.claim_code(auto_register)
 
-    assert len(list(session.exec(select(Agent)))) == 1
+    assert claim_keys() == keys
+    assert not Cached._client().exists(f"registration:{agent.id}")
+    assert Agent(session=session).registrations() == []
+    assert Agent._load(session, id=agent.id)[0].name == "alpha"
+
+
+def test_a_waiting_id_is_refused_and_keeps_the_first_registration(session: Session) -> None:
+    agent_id, code = pending(session)
+    keys = claim_keys()
+    again = Agent(session=session, id=agent_id, name="gamma", labels=[])
+
+    with pytest.raises(ConflictError, match=KNOWN_ID):
+        again.claim_code(False)
+
+    assert claim_keys() == keys
+    [waiting] = Agent(session=session).registrations()
+    assert (waiting.id, waiting.name) == (agent_id, "alpha")
+    assert Agent(session=session, id=agent_id).approve() is not None
     claimed = Agent(session=session).claimed(code)
     assert claimed is not None
-    assert claimed.id == agent.id
-    assert claimed.name == "gamma"
-    assert claimed.state is State.ENABLED
+    assert claimed.name == "alpha"
+
+
+def test_an_id_nobody_knows_may_be_chosen_by_the_agent(session: Session) -> None:
+    chosen = uuid.uuid4()
+
+    Agent(session=session, id=chosen, name="alpha", labels=[]).claim_code(False)
+
+    [waiting] = Agent(session=session).registrations()
+    assert waiting.id == chosen
+
+
+def test_an_unapproved_code_lapses_before_its_registration(session: Session) -> None:
+    agent_id, code = pending(session)
+
+    registration = Cached._client().ttl(f"registration:{agent_id}")
+    claim = Cached._client().ttl(f"claim:{_digest(code)}")
+
+    assert isinstance(registration, int)
+    assert isinstance(claim, int)
+    assert registration > claim
 
 
 def test_self_registering_agents_are_enabled_at_once(session: Session) -> None:

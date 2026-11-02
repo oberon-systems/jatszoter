@@ -7,7 +7,7 @@ from typing import Any, Self, cast
 from pydantic import PrivateAttr
 from sqlmodel import JSON, Column, Field, Session, SQLModel
 
-from jatszoter_api.errors import InvalidTransitionError
+from jatszoter_api.errors import ConflictError, InvalidTransitionError
 from jatszoter_api.lifecycle import TERMINAL, Actor, DeploymentStatus
 from jatszoter_api.models._base import State
 from jatszoter_api.models._cache import Cached
@@ -16,7 +16,10 @@ from jatszoter_api.models.secret import SecretOwner
 
 LEASE_SECONDS = 30
 CLAIM_SECONDS = 24 * 60 * 60
+# Outlives the claim code, so a code nobody approved never finds its registration gone.
+REGISTRATION_SECONDS = CLAIM_SECONDS + 60
 REGISTRATIONS = "registrations"
+KNOWN_ID = "the agent id is already known"
 RUNNING = (
     DeploymentStatus.STARTING,
     DeploymentStatus.BOOTSTRAPPING,
@@ -141,7 +144,9 @@ class Agent(SecretOwner, table=True):
 
     def claim_code(self, auto_register: bool) -> str:
         """Queue the unsaved agent for an operator, or enable it at once when agents register
-        themselves; returns its one-time code."""
+        themselves; returns its one-time code. An id stored or waiting is refused, never rebound."""
+        if self._load(self._session, id=self.id):
+            raise ConflictError(KNOWN_ID)
         code = secrets.token_urlsafe(32)
         if auto_register:
             self.state = State.ENABLED
@@ -154,7 +159,9 @@ class Agent(SecretOwner, table=True):
                 "state": self.state,
                 "registered_at": now,
             }
-            self._set("registration", pending, CLAIM_SECONDS)
+            key = f"registration:{self.id}"
+            if not Cached._add(self, key, pending, REGISTRATION_SECONDS):
+                raise ConflictError(KNOWN_ID)
             self._client().zadd(REGISTRATIONS, {str(self.id): now})
         Cached._set(self, f"claim:{_digest(code)}", self.id, CLAIM_SECONDS)
         return code

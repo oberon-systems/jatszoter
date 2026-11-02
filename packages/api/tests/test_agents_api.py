@@ -28,7 +28,7 @@ from jatszoter_api.models import (
     State,
 )
 from jatszoter_api.models._cache import Cached
-from jatszoter_api.models.agent import LEASE_SECONDS
+from jatszoter_api.models.agent import KNOWN_ID, LEASE_SECONDS
 from jatszoter_api.settings import Settings
 
 LIMIT = 1024 * 1024
@@ -206,23 +206,48 @@ def test_a_refreshed_credential_signs(client: TestClient, session: Session) -> N
     assert fresh.call("POST", "/heartbeat", {"capacity": 1}).status_code == 200
 
 
-def test_a_disabled_agent_registers_again_under_its_id(
-    client: TestClient, session: Session
+@pytest.mark.parametrize("state", [State.ENABLED, State.DISABLED])
+def test_a_stored_id_cannot_register_again(
+    client: TestClient, session: Session, state: State
 ) -> None:
     agent = enroll(client, session)
     stored = Agent(session=session).load(id=uuid.UUID(agent.id))
-    stored.state = State.DISABLED
+    stored.state = state
     stored.save()
 
-    response = client.post("/api/v1/agents/register", json={"name": "alpha", "agent_id": agent.id})
-    code = response.json()["claim_code"]
-    waiting = claim(client, code)
+    response = client.post("/api/v1/agents/register", json={"name": "gamma", "agent_id": agent.id})
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": KNOWN_ID}
+
+
+def test_a_waiting_id_cannot_register_again(operator: Any) -> None:
+    code = register(operator.client, "beta")
+    [pending] = operator.request("GET", AGENTS).json()["registrations"]
+
+    response = operator.client.post(
+        "/api/v1/agents/register", json={"name": "gamma", "agent_id": pending["id"]}
+    )
+
+    assert response.status_code == 409
+    [still] = operator.request("GET", AGENTS).json()["registrations"]
+    assert still["name"] == "beta"
+    operator.request("POST", f"{AGENTS}/{pending['id']}/state", json={"state": "enabled"})
+    assert claim(operator.client, code).status_code == 200
+
+
+def test_a_refused_agent_comes_back_as_a_new_one(client: TestClient, session: Session) -> None:
+    agent = enroll(client, session)
+
+    refused = client.post("/api/v1/agents/register", json={"name": "alpha", "agent_id": agent.id})
+    fresh = client.post("/api/v1/agents/register", json={"name": "alpha"})
+    code = fresh.json()["claim_code"]
     approve(session, code)
     claimed = claim(client, code)
 
-    assert waiting.status_code == 409
+    assert refused.status_code == 409
     assert claimed.status_code == 200
-    assert claimed.json()["agent_id"] == agent.id
+    assert claimed.json()["agent_id"] != agent.id
     again = Enrolled(client, claimed.json())
     assert again.call("POST", "/heartbeat", {"capacity": 1}).status_code == 200
 

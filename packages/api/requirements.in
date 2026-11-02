@@ -1,0 +1,12 @@
+alembic
+fakeredis
+fastapi
+httpx
+jsonschema
+pydantic-settings
+python-multipart
+python-statemachine
+pyyaml
+sqlmodel
+uvicorn[standard]
+valkey

@@ -11,7 +11,7 @@ SHELL := /bin/bash
 export PRE_COMMIT_HOME := $(CURDIR)/.pre-commit
 
 .DEFAULT_GOAL := shell
-.PHONY: install shell test test-api test-web test-agent smoke lint lint-all run-api run-web vendor
+.PHONY: install lock shell test test-api test-web test-agent smoke lint lint-all run-api run-web vendor
 
 
 # common targets
@@ -23,6 +23,14 @@ install:
 	$(PIP) install -r requirements.txt
 	$(VENV)/bin/pre-commit install
 	@stty sane 2> /dev/null; tput cnorm 2> /dev/null; true
+
+# Rewrites what the images install, under the Python of the images. LOCK_ARGS=--upgrade moves versions.
+lock:
+	@for dir in packages/api packages/web; do for name in requirements requirements-build; do \
+		(cd $$dir && uvx --python 3.15 --from pip-tools==7.6.2 pip-compile --quiet $(LOCK_ARGS) \
+			--generate-hashes --allow-unsafe --strip-extras --no-emit-index-url \
+			--output-file=$$name.txt $$name.in) || exit 1; \
+	done; done
 
 
 # tests

@@ -1,0 +1,8 @@
+cryptography
+fastapi
+httpx
+jinja2
+pydantic-settings
+python-multipart
+uvicorn[standard]
+websockets

@@ -1,6 +1,7 @@
 -e packages/api
 -e packages/web
 alembic==1.20.0
+certifi==2026.10.19
 check-jsonschema==0.38.2
 commitizen==4.19.2
 cryptography==50.0.2
@@ -9,9 +10,11 @@ fastapi==0.141.1
 httpx==0.28.1
 Jinja2==3.1.6
 jsonschema==4.26.0
+MarkupSafe==3.0.4
 mkdocs==1.6.1
 penpot-local-stack==0.1.5
 pre_commit==4.6.2
+pydantic==2.14.2
 pydantic-settings==2.15.0
 pytest==9.1.1
 python-multipart==0.0.32

@@ -1,8 +1,16 @@
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Request
-from pydantic import AnyHttpUrl, AnyUrl, Field, PositiveInt, UrlConstraints
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import (
+    AnyHttpUrl,
+    AnyUrl,
+    Field,
+    IPvAnyNetwork,
+    PositiveInt,
+    UrlConstraints,
+    field_validator,
+)
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 ValkeyDsn = Annotated[
     AnyUrl, UrlConstraints(allowed_schemes=["redis", "rediss", "valkey", "valkeys", "unix"])
@@ -20,6 +28,7 @@ class Settings(BaseSettings):
     master_kid: str = ""
     auto_register_agents: bool = False
     scenario_bundle_limit_bytes: int = 10 * 1024 * 1024
+    scenario_fetch_internal_cidrs: Annotated[list[IPvAnyNetwork], NoDecode] = []
     console_tail_bytes: PositiveInt = 8 * 1024 * 1024
     console_limit_bytes: PositiveInt = 64 * 1024 * 1024
     console_viewer_buffer_bytes: PositiveInt = 4 * 1024 * 1024
@@ -33,6 +42,13 @@ class Settings(BaseSettings):
     default_session_minutes: int = 60
     default_trainee_user: UserName = "trainee"
     default_trainee_sudo: bool = False
+
+    @field_validator("scenario_fetch_internal_cidrs", mode="before")
+    @classmethod
+    def _comma_separated(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return [cidr.strip() for cidr in value.split(",") if cidr.strip()]
+        return value
 
 
 def app_settings(request: Request) -> Settings:

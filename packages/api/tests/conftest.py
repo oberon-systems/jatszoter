@@ -67,6 +67,7 @@ def settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, database_dsn: str)
         "SEAWEED_URL",
         "AUTO_REGISTER_AGENTS",
         "SCENARIO_BUNDLE_LIMIT_BYTES",
+        "SCENARIO_FETCH_INTERNAL_CIDRS",
     ):
         monkeypatch.delenv(f"JATSZOTER_{name}", raising=False)
     monkeypatch.chdir(tmp_path)

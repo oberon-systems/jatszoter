@@ -1,4 +1,6 @@
 import asyncio
+import logging
+import secrets
 import uuid
 from typing import Annotated
 
@@ -13,11 +15,15 @@ from jatszoter_api.auth import require_operator
 from jatszoter_api.errors import InvalidBundleError, TooLargeError
 from jatszoter_api.file import File
 from jatszoter_api.models import Image, Scenario
+from jatszoter_api.outbound import CheckedTransport, RefusedAddress
 from jatszoter_api.routes.agents import StrictModel
 from jatszoter_api.routes.deps import FetchUrl, SessionDep, SettingsDep
 from jatszoter_api.settings import Settings, app_settings
 
+log = logging.getLogger(__name__)
+
 FETCH_DEADLINE = 30.0
+ADDRESS_REFUSED = "bundle-fetch-refused: the bundle URL names an address the API may not fetch"
 
 
 class UrlIn(StrictModel):
@@ -42,12 +48,19 @@ def scenario_out(scenario: Scenario) -> ScenarioOut:
     )
 
 
-def fetch_transport() -> httpx.AsyncBaseTransport | None:
+def fetch_transport(settings: SettingsDep) -> httpx.AsyncBaseTransport:
     """The transport bundle downloads go through; tests override it."""
-    return None
+    return CheckedTransport(settings.scenario_fetch_internal_cidrs)
 
 
-async def _fetch(url: str, transport: httpx.AsyncBaseTransport | None, limit: int) -> bytes:
+def _failed(url: str, cause: str) -> InvalidBundleError:
+    """The one answer to a failed fetch: a status and an exception must not map a network."""
+    error_id = secrets.token_hex(6)
+    log.warning("bundle fetch %s from %s failed: %s", error_id, httpx.URL(url).host, cause)
+    return InvalidBundleError(f"bundle-fetch-failed: see the API log for error {error_id}")
+
+
+async def _fetch(url: str, transport: httpx.AsyncBaseTransport, limit: int) -> bytes:
     """GET a bundle as sent, without redirects, cut off past `limit` bytes or the deadline."""
     try:
         # The whole GET sits under one deadline: a check between chunks misses a stall
@@ -58,6 +71,8 @@ async def _fetch(url: str, transport: httpx.AsyncBaseTransport | None, limit: in
                 transport=transport,
                 timeout=FETCH_DEADLINE,
                 follow_redirects=False,
+                # A proxy from the environment would take the request past the address check.
+                trust_env=False,
                 headers={"Accept-Encoding": "identity"},
             ) as client,
             client.stream("GET", url) as response,
@@ -65,7 +80,7 @@ async def _fetch(url: str, transport: httpx.AsyncBaseTransport | None, limit: in
             if response.is_redirect:
                 raise InvalidBundleError("the bundle URL redirects; name the target instead")
             if response.status_code != 200:
-                raise InvalidBundleError(f"the bundle URL answered {response.status_code}")
+                raise _failed(url, f"status {response.status_code}")
             if response.headers.get("content-encoding", "identity").lower() != "identity":
                 raise InvalidBundleError("the bundle URL answered with a Content-Encoding")
             data = bytearray()
@@ -79,16 +94,16 @@ async def _fetch(url: str, transport: httpx.AsyncBaseTransport | None, limit: in
         raise InvalidBundleError(
             f"the bundle URL did not finish within {FETCH_DEADLINE:.0f} seconds"
         ) from None
+    except RefusedAddress:
+        raise InvalidBundleError(ADDRESS_REFUSED) from None
     except httpx.HTTPError as error:
-        raise InvalidBundleError(
-            f"the bundle URL could not be fetched: {type(error).__name__}"
-        ) from None
+        raise _failed(url, type(error).__name__) from None
 
 
 async def _submitted(
     request: Request,
     settings: Annotated[Settings, Depends(app_settings)],
-    transport: Annotated[httpx.AsyncBaseTransport | None, Depends(fetch_transport)],
+    transport: Annotated[httpx.AsyncBaseTransport, Depends(fetch_transport)],
 ) -> bytes:
     """The uploaded bundle, or the one fetched from the URL the request names."""
     limit = settings.scenario_bundle_limit_bytes

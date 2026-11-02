@@ -20,7 +20,7 @@ from jatszoter_api.file import DISK_BASE, File
 from jatszoter_api.middleware import BODY_LIMIT
 from jatszoter_api.models import Image, Role, Scenario
 from jatszoter_api.routes import scenarios
-from jatszoter_api.routes.scenarios import _fetch, fetch_transport
+from jatszoter_api.routes.scenarios import ADDRESS_REFUSED, _fetch, fetch_transport
 from jatszoter_api.settings import Settings
 
 SCENARIOS = "/api/v1/scenarios"
@@ -366,6 +366,69 @@ def test_a_url_the_api_may_not_fetch_is_refused(
     response = fetch(operator, url)
 
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://10.0.0.1/x",
+        "https://169.254.169.254/x",
+        "https://[fe80::1]/x",
+        "https://[::ffff:127.0.0.1]/x",
+        "https://localhost/x",
+        "http://127.0.0.1:1/x",
+    ],
+)
+def test_an_internal_address_is_refused_before_any_connection(operator: Any, url: str) -> None:
+    response = fetch(operator, url)
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == ADDRESS_REFUSED
+
+
+async def _status_503(_: httpx.Request) -> httpx.Response:
+    return httpx.Response(503)
+
+
+async def _connect_timeout(_: httpx.Request) -> httpx.Response:
+    raise httpx.ConnectTimeout("alpha")
+
+
+async def _connect_error(_: httpx.Request) -> httpx.Response:
+    raise httpx.ConnectError("alpha")
+
+
+@pytest.mark.parametrize(
+    ("handler", "cause"),
+    [
+        (_status_503, "status 503"),
+        (_connect_timeout, "ConnectTimeout"),
+        (_connect_error, "ConnectError"),
+    ],
+)
+def test_every_failure_looks_the_same_and_the_log_tells_them_apart(
+    caplog: pytest.LogCaptureFixture, handler: Callable[..., Any], cause: str
+) -> None:
+    transport = httpx.MockTransport(handler)
+
+    with pytest.raises(InvalidBundleError) as refused:
+        asyncio.run(_fetch(f"{BUNDLE_URL}?token=beta", transport, 1024))
+
+    found = re.fullmatch(
+        r"bundle-fetch-failed: see the API log for error ([0-9a-f]{12})", str(refused.value)
+    )
+    assert found is not None
+    assert found.group(1) in caplog.text
+    assert cause in caplog.text
+    assert "example.com" in caplog.text
+    assert "token" not in caplog.text
+
+
+def test_a_proxy_from_the_environment_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HTTPS_PROXY", "http://192.0.2.1:1")
+    transport = httpx.MockTransport(lambda _: sent(b"alpha"))
+
+    assert asyncio.run(_fetch(BUNDLE_URL, transport, 1024)) == b"alpha"
 
 
 def test_http_to_loopback_is_fetched(

@@ -6,9 +6,14 @@ version: 2
 
 updates:
   - package-ecosystem: pip
-    directory: /
+    directories:
+      - /
+      - /packages/api
+      - /packages/web
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 14
     commit-message:
       prefix: "[build][pip]"
     groups:
@@ -23,6 +28,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 14
     commit-message:
       prefix: "[build][pre-commit]"
     groups:
@@ -36,6 +43,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 14
     commit-message:
       prefix: "[build][cargo]"
     groups:
@@ -48,6 +57,8 @@ updates:
       - /docker/web
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 14
     commit-message:
       prefix: "[build][docker]"
     groups:
@@ -59,6 +70,8 @@ updates:
     directory: /packages/web/vendor
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 14
     commit-message:
       prefix: "[build][npm]"
     groups:
@@ -69,6 +82,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 14
     commit-message:
       prefix: "[build][github-actions]"
     groups:

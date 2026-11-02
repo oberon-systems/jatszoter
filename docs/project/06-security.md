@@ -9,6 +9,7 @@ operator has not taken control.
 - [Credentials](#credentials)
 - [Link threats](#link-threats)
 - [Guest and host](#guest-and-host)
+- [Image downloads](#image-downloads)
 - [Scenario secrecy](#scenario-secrecy)
 - [Web](#web)
 - [Acceptance criteria](#acceptance-criteria)
@@ -23,6 +24,7 @@ operator has not taken control.
 | Agent identity            | an open registration         | operator enables, signed calls   |
 | Operator login            | password guessing            | scrypt, same 401, rate limit     |
 | The API's outbound fetch  | a scenario URL               | operators only, fetch rules      |
+| The agent's image fetch   | an image server              | address rule on each connection  |
 | The host                  | a hostile guest              | not protected beyond QEMU itself |
 
 ## Credentials
@@ -113,6 +115,39 @@ operator has not taken control.
 - The seed enables the guest agent's `guest-file-*` and `guest-exec*`
   calls, which RHEL-family guests block by default. That is no loss, since
   the guest is not a security boundary.
+
+## Image downloads
+
+The image server is not trusted, so it must not be able to steer the agent
+to the agent host's loopback or to internal hosts. The API checks only the
+scheme of an image URL, because the agent has its own network and DNS. The
+agent checks every address it connects to.
+
+- Allowed addresses: public ones, and those in
+  `JATSZOTER_AGENT_IMAGE_INTERNAL_CIDRS`, a comma-separated list that is
+  empty by default. Set it for an internal mirror, for example
+  `192.0.2.0/24`.
+- Refused addresses: loopback, private, link-local, CGNAT, multicast,
+  documentation and unspecified ones. An IPv4-mapped IPv6 address counts as
+  the IPv4 address it maps.
+- Names: if any address in a DNS answer is refused, the whole answer is
+  refused. The agent connects only to addresses it checked, so DNS
+  rebinding does not get past the rule.
+- Redirects: followed under the same rules, up to ten hops. The agent sends
+  no `Referer`, so a token in the image URL does not reach the next host.
+- Failures: the operator sees a fixed reason without the address. The
+  address is in the agent's log.
+
+The agent ignores proxy variables for image downloads by default, because
+through a proxy it can check only the proxy's name.
+`JATSZOTER_AGENT_IMAGE_USE_PROXY=true` makes it honor them and log a warning
+at start. Names of image hosts are then not checked, and the proxy decides
+what they reach. IP literals in URLs and redirects are still checked. A
+proxy whose name resolves to an internal address needs its network in
+`JATSZOTER_AGENT_IMAGE_INTERNAL_CIDRS`.
+
+An image server can still send the agent's GET to a public host. The digest
+protects the image in that case.
 
 ## Scenario secrecy
 

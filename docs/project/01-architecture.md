@@ -245,7 +245,8 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
   uses it. It streams into a 0600 part file and is hashed on the way; a
   wrong digest, a body over `JATSZOTER_AGENT_IMAGE_LIMIT_GIB` (default 20)
   or any other failure removes the part file. The URL and every redirect
-  must use https unless they point to loopback.
+  must use https unless they point to loopback, and must pass the address
+  rule in [06](06-security.md#image-downloads).
 
 - QEMU is daemonized with a pid file, so a VM outlives an agent restart and
   reconciliation adopts it. It runs with KVM when `/dev/kvm` is usable and

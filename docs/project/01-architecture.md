@@ -158,9 +158,12 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
 - With `JATSZOTER_AUTO_REGISTER_AGENTS=true`, off by default and meant for
   the smoke stand, a registration is stored `enabled` at once and never waits
   in Valkey.
+- An agent id never rebinds: a registration naming a stored or waiting id is
+  refused with 409, before any key is written.
 - An agent the API refuses, disabled or with a dead credential, registers
-  again under its own id; the approval updates that agent instead of adding
-  one.
+  again under its own id, gets that 409, forgets the id and registers as a
+  new agent for an operator to approve. The old row stays, and a deployment
+  pinned to it keeps waiting until an operator deals with it.
 - The agent keeps its id, claim code and credential in
   `$XDG_CACHE_HOME/jatszoter`, or `~/.cache/jatszoter`, readable by its user
   alone; `JATSZOTER_AGENT_STATE_DIR` moves it.

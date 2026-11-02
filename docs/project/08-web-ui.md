@@ -176,7 +176,8 @@ unless a screen says otherwise. `Missing API` names the routes of
   `POST /api/v1/users/{id}/state`, `POST /api/v1/users/{id}/password`.
 - Shows: name, role, comment, state and creation time, filtered by role.
 - Actions: create a user; enable or disable one, with confirmation; set a
-  one-time password, which the user must change at the first login. The
+  one-time password, which the user must change at the first login. It ends
+  every credential the user already holds. The
   [password rule](#password-rule) is checked first.
 - Missing API: the state and password routes.
 

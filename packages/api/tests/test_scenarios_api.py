@@ -1,6 +1,10 @@
+import asyncio
+import gzip
 import re
 import tarfile
-from collections.abc import Callable, Iterator
+import time
+import tracemalloc
+from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -10,9 +14,11 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session
 
 from jatszoter_api import bundles
+from jatszoter_api.errors import InvalidBundleError
 from jatszoter_api.file import DISK_BASE, File
 from jatszoter_api.models import Image, Role, Scenario
-from jatszoter_api.routes.scenarios import fetch_transport
+from jatszoter_api.routes import scenarios
+from jatszoter_api.routes.scenarios import _fetch, fetch_transport
 from jatszoter_api.settings import Settings
 
 SCENARIOS = "/api/v1/scenarios"
@@ -29,6 +35,27 @@ def member(name: str, kind: bytes = tarfile.REGTYPE) -> tuple[tarfile.TarInfo, b
         return info, b""
     info.size = 5
     return info, b"alpha"
+
+
+def sent(body: bytes, **headers: str) -> httpx.Response:
+    """A response still to be read, as the network gives one; content= arrives consumed."""
+    return httpx.Response(200, headers=headers, stream=httpx.ByteStream(body))
+
+
+class Trickle(httpx.AsyncByteStream):
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        for _ in range(1000):
+            yield b"\0"
+            await asyncio.sleep(0.01)
+
+
+async def stall(_: httpx.Request) -> httpx.Response:
+    await asyncio.sleep(10)
+    return sent(b"")
+
+
+async def trickle(_: httpx.Request) -> httpx.Response:
+    return httpx.Response(200, stream=Trickle())
 
 
 @pytest.fixture
@@ -108,7 +135,7 @@ def test_an_upload_registers_the_sample(operator: Any, pack: Pack, tmp_path: Pat
 def test_a_url_registers_the_sample(
     operator: Any, pack: Pack, served: dict[str, httpx.Response], session: Session
 ) -> None:
-    served[BUNDLE_URL] = httpx.Response(200, content=pack())
+    served[BUNDLE_URL] = sent(pack())
 
     response = fetch(operator)
 
@@ -215,12 +242,72 @@ def test_an_oversized_download_is_refused(
     tmp_path: Path,
     session: Session,
 ) -> None:
-    served[BUNDLE_URL] = httpx.Response(200, content=pack())
+    served[BUNDLE_URL] = sent(pack())
 
     response = fetch(operator)
 
     assert response.status_code == 413
     assert_nothing_kept(tmp_path, session)
+
+
+@pytest.mark.parametrize("encoding", ["gzip", "gzip, gzip", "br"])
+def test_an_encoded_download_is_refused(
+    operator: Any,
+    pack: Pack,
+    served: dict[str, httpx.Response],
+    tmp_path: Path,
+    session: Session,
+    encoding: str,
+) -> None:
+    served[BUNDLE_URL] = sent(pack(), **{"Content-Encoding": encoding})
+
+    response = fetch(operator)
+
+    assert response.status_code == 422
+    assert "Content-Encoding" in response.json()["detail"]
+    assert_nothing_kept(tmp_path, session)
+
+
+def test_a_nested_encoding_is_never_inflated() -> None:
+    limit = 10 * 1024 * 1024
+    bomb = gzip.compress(gzip.compress(bytes(8 * limit), 1), 1)
+    transport = httpx.MockTransport(lambda _: sent(bomb, **{"Content-Encoding": "gzip, gzip"}))
+
+    tracemalloc.start()
+    try:
+        with pytest.raises(InvalidBundleError):
+            asyncio.run(_fetch(BUNDLE_URL, transport, limit))
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert peak < limit
+
+
+def test_the_fetch_asks_for_the_bytes_as_stored() -> None:
+    seen: list[httpx.Request] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return sent(b"alpha")
+
+    fetched = asyncio.run(_fetch(BUNDLE_URL, httpx.MockTransport(answer), 1024))
+
+    assert fetched == b"alpha"
+    assert seen[0].headers["accept-encoding"] == "identity"
+
+
+@pytest.mark.parametrize("handler", [stall, trickle])
+def test_a_slow_server_is_cut_off_at_the_deadline(
+    monkeypatch: pytest.MonkeyPatch, handler: Callable[..., Any]
+) -> None:
+    monkeypatch.setattr(scenarios, "FETCH_DEADLINE", 0.2)
+    started = time.monotonic()
+
+    with pytest.raises(InvalidBundleError, match="did not finish"):
+        asyncio.run(_fetch(BUNDLE_URL, httpx.MockTransport(handler), 1024 * 1024))
+
+    assert time.monotonic() - started < 5
 
 
 def test_a_redirect_is_not_followed(
@@ -257,7 +344,7 @@ def test_a_url_the_api_may_not_fetch_is_refused(
 def test_http_to_loopback_is_fetched(
     operator: Any, pack: Pack, served: dict[str, httpx.Response]
 ) -> None:
-    served["http://127.0.0.1:8081/nginx-502.tar.gz"] = httpx.Response(200, content=pack())
+    served["http://127.0.0.1:8081/nginx-502.tar.gz"] = sent(pack())
 
     response = fetch(operator, "http://127.0.0.1:8081/nginx-502.tar.gz")
 
@@ -299,3 +386,22 @@ def test_only_an_operator_reaches_scenarios(
     assert upload(viewer, pack()).status_code == 403
     assert viewer.request("GET", SCENARIOS).status_code == 403
     assert api.get(SCENARIOS).status_code == 401
+
+
+def test_a_viewer_makes_the_api_fetch_nothing(sign_in: Callable[..., Any], api: TestClient) -> None:
+    seen: list[httpx.Request] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(answer)
+    overrides = api.app.dependency_overrides  # type: ignore[attr-defined]
+    overrides[fetch_transport] = lambda: transport
+    viewer = sign_in(name="beta", role=Role.VIEWER)
+
+    response = fetch(viewer)
+    overrides.clear()
+
+    assert response.status_code == 403
+    assert seen == []

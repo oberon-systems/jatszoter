@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from typing import Annotated
 
@@ -16,7 +17,7 @@ from jatszoter_api.routes.agents import StrictModel
 from jatszoter_api.routes.deps import FetchUrl, SessionDep, SettingsDep
 from jatszoter_api.settings import Settings, app_settings
 
-FETCH_TIMEOUT = 30.0
+FETCH_DEADLINE = 30.0
 
 
 class UrlIn(StrictModel):
@@ -41,15 +42,55 @@ def scenario_out(scenario: Scenario) -> ScenarioOut:
     )
 
 
-def fetch_transport() -> httpx.BaseTransport | None:
+def fetch_transport() -> httpx.AsyncBaseTransport | None:
     """The transport bundle downloads go through; tests override it."""
     return None
 
 
+async def _fetch(url: str, transport: httpx.AsyncBaseTransport | None, limit: int) -> bytes:
+    """GET a bundle as sent, without redirects, cut off past `limit` bytes or the deadline."""
+    try:
+        # The whole GET sits under one deadline: a check between chunks misses a stall
+        # in the headers or the chunk framing.
+        async with (
+            asyncio.timeout(FETCH_DEADLINE),
+            httpx.AsyncClient(
+                transport=transport,
+                timeout=FETCH_DEADLINE,
+                follow_redirects=False,
+                headers={"Accept-Encoding": "identity"},
+            ) as client,
+            client.stream("GET", url) as response,
+        ):
+            if response.is_redirect:
+                raise InvalidBundleError("the bundle URL redirects; name the target instead")
+            if response.status_code != 200:
+                raise InvalidBundleError(f"the bundle URL answered {response.status_code}")
+            if response.headers.get("content-encoding", "identity").lower() != "identity":
+                raise InvalidBundleError("the bundle URL answered with a Content-Encoding")
+            data = bytearray()
+            # Not aiter_bytes: it inflates a whole chunk before the limit sees it.
+            async for chunk in response.aiter_raw():
+                data += chunk
+                if len(data) > limit:
+                    raise TooLargeError(f"the bundle is larger than {limit} bytes")
+            return bytes(data)
+    except TimeoutError:
+        raise InvalidBundleError(
+            f"the bundle URL did not finish within {FETCH_DEADLINE:.0f} seconds"
+        ) from None
+    except httpx.HTTPError as error:
+        raise InvalidBundleError(
+            f"the bundle URL could not be fetched: {type(error).__name__}"
+        ) from None
+
+
 async def _submitted(
-    request: Request, settings: Annotated[Settings, Depends(app_settings)]
-) -> bytes | str:
-    """The uploaded bundle, or the URL to fetch it from."""
+    request: Request,
+    settings: Annotated[Settings, Depends(app_settings)],
+    transport: Annotated[httpx.AsyncBaseTransport | None, Depends(fetch_transport)],
+) -> bytes:
+    """The uploaded bundle, or the one fetched from the URL the request names."""
     limit = settings.scenario_bundle_limit_bytes
     if request.headers.get("content-type", "").startswith("multipart/form-data"):
         form = await request.form(max_files=1, max_fields=0)
@@ -61,35 +102,11 @@ async def _submitted(
             raise TooLargeError(f"the bundle is larger than {limit} bytes")
         return data
     try:
-        return UrlIn.model_validate_json(await request.body()).url
+        url = UrlIn.model_validate_json(await request.body()).url
     except ValidationError as error:
         errors = error.errors(include_url=False, include_context=False)
         raise RequestValidationError(errors) from None
-
-
-def _fetch(url: str, transport: httpx.BaseTransport | None, limit: int) -> bytes:
-    """GET a bundle without following redirects, cut off past `limit` bytes."""
-    try:
-        with (
-            httpx.Client(
-                transport=transport, timeout=FETCH_TIMEOUT, follow_redirects=False
-            ) as client,
-            client.stream("GET", url) as response,
-        ):
-            if response.is_redirect:
-                raise InvalidBundleError("the bundle URL redirects; name the target instead")
-            if response.status_code != 200:
-                raise InvalidBundleError(f"the bundle URL answered {response.status_code}")
-            data = bytearray()
-            for chunk in response.iter_bytes():
-                data += chunk
-                if len(data) > limit:
-                    raise TooLargeError(f"the bundle is larger than {limit} bytes")
-            return bytes(data)
-    except httpx.HTTPError as error:
-        raise InvalidBundleError(
-            f"the bundle URL could not be fetched: {type(error).__name__}"
-        ) from None
+    return await _fetch(url, transport, limit)
 
 
 router = APIRouter(prefix="/scenarios", dependencies=[Depends(require_operator)])
@@ -97,14 +114,11 @@ router = APIRouter(prefix="/scenarios", dependencies=[Depends(require_operator)]
 
 @router.post("", status_code=201)
 def create(
-    submitted: Annotated[bytes | str, Depends(_submitted)],
-    transport: Annotated[httpx.BaseTransport | None, Depends(fetch_transport)],
+    bundle: Annotated[bytes, Depends(_submitted)],
     session: SessionDep,
     settings: SettingsDep,
 ) -> ScenarioOut:
-    limit = settings.scenario_bundle_limit_bytes
-    bundle = submitted if isinstance(submitted, bytes) else _fetch(submitted, transport, limit)
-    checked = bundles.read(bundle, limit)
+    checked = bundles.read(bundle, settings.scenario_bundle_limit_bytes)
     image = checked.document["image"]
     try:
         Image(session=session).load(name=image)

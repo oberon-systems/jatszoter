@@ -33,6 +33,17 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test
         run: cargo test --workspace --locked
+      # The distro passt is too old (docs/project/09-guest-network.md); the runner drops the
+      # user namespace restriction instead of installing an AppArmor profile.
+      - name: Guest network
+        env:
+          PASST_TAG: 2026_10_02.cba3570
+        run: |
+          git clone --quiet --depth 1 --branch "$PASST_TAG" https://passt.top/passt "$RUNNER_TEMP/passt"
+          test "$(git -C "$RUNNER_TEMP/passt" rev-parse --short=7 HEAD)" = "${PASST_TAG#*.}"
+          make -C "$RUNNER_TEMP/passt"
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          PATH="$RUNNER_TEMP/passt:$PATH" cargo test --workspace --locked netcheck -- --ignored
 
   version:
     if: startsWith(github.ref, 'refs/tags/agent-')

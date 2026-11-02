@@ -136,6 +136,9 @@ An operator registers a scenario with a signed `POST /api/v1/scenarios`
 Fetch rules:
 
 - `https`, or `http` to a loopback address only;
+- only public addresses, unless a network is listed in
+  `JATSZOTER_SCENARIO_FETCH_INTERNAL_CIDRS`; see
+  [06](06-security.md#bundle-downloads);
 - no redirects;
 - no `Content-Encoding`: the API asks for `identity` and refuses anything
   else, since the bundle is already a tar.gz;

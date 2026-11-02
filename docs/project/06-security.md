@@ -10,6 +10,7 @@ operator has not taken control.
 - [Link threats](#link-threats)
 - [Guest and host](#guest-and-host)
 - [Image downloads](#image-downloads)
+- [Bundle downloads](#bundle-downloads)
 - [Request bodies](#request-bodies)
 - [Scenario secrecy](#scenario-secrecy)
 - [Web](#web)
@@ -24,7 +25,7 @@ operator has not taken control.
 | Operator control          | a trainee with a modified UI | enforced in the API              |
 | Agent identity            | an open registration         | operator enables, signed calls   |
 | Operator login            | password guessing            | scrypt, same 401, rate limit     |
-| The API's outbound fetch  | a scenario URL               | operators only, fetch rules      |
+| The API's outbound fetch  | a scenario URL               | operators only, address rule     |
 | The agent's image fetch   | an image server              | address rule on each connection  |
 | The host                  | a hostile guest              | not protected beyond QEMU itself |
 
@@ -153,6 +154,26 @@ proxy whose name resolves to an internal address needs its network in
 
 An image server can still send the agent's GET to a public host. The digest
 protects the image in that case.
+
+## Bundle downloads
+
+A bundle URL must not make the API reach its own loopback or internal hosts.
+The API checks every address a bundle URL resolves to, with the ranges of
+[Image downloads](#image-downloads), before it connects.
+
+- Allowed addresses: public ones, and those in
+  `JATSZOTER_SCENARIO_FETCH_INTERNAL_CIDRS`, a comma-separated list that is
+  empty by default. Set it for an internal server, for example
+  `192.0.2.0/24`.
+- Names: if any address in a DNS answer is refused, the whole answer is
+  refused. The API connects only to addresses it checked and verifies the
+  certificate against the name, so DNS rebinding does not get past the rule.
+- Proxies: the API ignores proxy variables for bundle downloads, because a
+  proxy would take the request past the check.
+- Failures: a refused address answers `bundle-fetch-refused`. A connection
+  failure or a status other than 200 answers `bundle-fetch-failed` with an
+  error id, so the answer does not map a network. The API log has the host
+  and the cause under that id, and never the rest of the URL.
 
 ## Request bodies
 

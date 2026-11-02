@@ -7,6 +7,7 @@ pub mod console;
 pub mod error;
 pub mod images;
 pub mod lease;
+pub mod netcheck;
 pub mod qga;
 pub mod qmp;
 pub mod reconcile;

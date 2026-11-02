@@ -159,6 +159,7 @@ fn agent(dir: &TempDir, api: FakeApi, state: State) -> Agent<FakeApi, CountingRu
         qemu: "qemu-system-x86_64".into(),
         qemu_img: "qemu-img".into(),
         xorriso: "xorriso".into(),
+        passt: "passt".into(),
         ovmf_code: "/nonexistent/OVMF_CODE.fd".into(),
         ovmf_vars: "/nonexistent/OVMF_VARS.fd".into(),
     };

@@ -5,9 +5,51 @@ Linux troubleshooting. It leases deployments from the API, runs each one in
 a [QEMU](https://www.qemu.org/) VM bootstrapped with
 [cloud-init](https://cloud-init.io/), and ships the VM consoles back.
 
-## Install
+## Requirements
 
-The host needs QEMU and KVM.
+The agent runs as an unprivileged user and spawns these host tools:
+
+| Tool                 | Used for                              | Setting                     |
+| -------------------- | ------------------------------------- | --------------------------- |
+| `qemu-system-x86_64` | the VMs, QEMU 7.2 or newer            | `JATSZOTER_AGENT_QEMU`      |
+| `qemu-img`           | the overlay disk over the base image  | `JATSZOTER_AGENT_QEMU_IMG`  |
+| `xorriso`            | the cloud-init seed ISO               | `JATSZOTER_AGENT_XORRISO`   |
+| `passt`              | the guest network, `2026_10_02`+      | `JATSZOTER_AGENT_PASST`     |
+| OVMF                 | UEFI firmware the VMs boot through    | `JATSZOTER_AGENT_OVMF_CODE` |
+
+KVM is optional: without a usable `/dev/kvm` the VMs run under TCG, many
+times slower. Give the agent's user access to `/dev/kvm`, usually through
+the `kvm` group.
+
+On Debian or Ubuntu:
+
+```bash
+sudo apt install qemu-system-x86 qemu-utils xorriso ovmf
+```
+
+On Rocky, Alma or RHEL 9:
+
+```bash
+sudo dnf install qemu-kvm qemu-img xorriso edk2-ovmf
+```
+
+The RHEL family ships QEMU as `/usr/libexec/qemu-kvm` and OVMF under
+`/usr/share/edk2/ovmf/`, so point `JATSZOTER_AGENT_QEMU`,
+`JATSZOTER_AGENT_OVMF_CODE` and `JATSZOTER_AGENT_OVMF_VARS` there.
+
+### passt
+
+[passt](https://passt.top/) gives each guest outbound NAT without root and
+keeps it away from the host's loopback. The release in Ubuntu 24.04 is too
+old and unsafe, so passt is installed by hand: follow
+`docs/project/09-guest-network.md` of the repository. Then check the host
+before the agent runs on it:
+
+```bash
+jatszoter-agent check-network
+```
+
+## Install
 
 ```bash
 cargo install jatszoter-agent

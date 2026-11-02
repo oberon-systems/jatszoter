@@ -29,6 +29,7 @@ fn runtime_at(dir: &TempDir, api_url: &str) -> QemuRuntime {
         qemu: "/nonexistent/qemu-system-x86_64".into(),
         qemu_img: "/nonexistent/qemu-img".into(),
         xorriso: "/nonexistent/xorriso".into(),
+        passt: "/nonexistent/passt".into(),
         ovmf_code: "/nonexistent/OVMF_CODE.fd".into(),
         ovmf_vars: "/nonexistent/OVMF_VARS.fd".into(),
     };

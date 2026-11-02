@@ -88,6 +88,7 @@ impl QemuRuntime {
                     qemu: config.qemu.clone(),
                     qemu_img: config.qemu_img.clone(),
                     xorriso: config.xorriso.clone(),
+                    passt: config.passt.clone(),
                     ovmf_code: config.ovmf_code.clone(),
                     ovmf_vars: config.ovmf_vars.clone(),
                 },

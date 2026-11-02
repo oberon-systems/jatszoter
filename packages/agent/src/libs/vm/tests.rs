@@ -13,7 +13,8 @@ use tokio::net::UnixListener;
 use tokio::task::JoinHandle;
 
 use super::{
-    base_format, create, destroy, eject_seed, list, qemu_args, Record, Tools, VmSpec, GIB,
+    base_format, create, destroy, eject_seed, list, passt_args, qemu_args, Record, Tools, VmSpec,
+    GIB,
 };
 use crate::libs::api::Seed;
 use crate::libs::config::prepare_private_dir;
@@ -46,6 +47,7 @@ fn missing_tools() -> Tools {
         qemu: "/nonexistent/qemu-system-x86_64".into(),
         qemu_img: "/nonexistent/qemu-img".into(),
         xorriso: "/nonexistent/xorriso".into(),
+        passt: "/nonexistent/passt".into(),
         ovmf_code: "/nonexistent/OVMF_CODE.fd".into(),
         ovmf_vars: "/nonexistent/OVMF_VARS.fd".into(),
     }
@@ -153,7 +155,7 @@ fn the_argv_for_kvm() {
             "-drive",
             "if=virtio,format=qcow2,file=/state/vms/alpha/disk.qcow2",
             "-netdev",
-            "user,id=net0",
+            "stream,id=net0,server=off,addr.type=unix,addr.path=/state/vms/alpha/net.sock",
             "-device",
             "virtio-net-pci,netdev=net0",
             "-chardev",
@@ -198,6 +200,38 @@ fn the_argv_for_tcg() {
 }
 
 #[test]
+fn passt_keeps_the_gateway_off_the_host_loopback() {
+    let args = strings(passt_args(Path::new("/state/vms/alpha")));
+
+    assert_eq!(
+        args,
+        [
+            "--one-off",
+            "--no-map-gw",
+            "--ipv4-only",
+            "--address",
+            "10.0.2.15",
+            "--netmask",
+            "24",
+            "--gateway",
+            "10.0.2.2",
+            "--dns",
+            "10.0.2.3",
+            "--dns-forward",
+            "10.0.2.3",
+            "--tcp-ports",
+            "none",
+            "--udp-ports",
+            "none",
+            "--socket",
+            "/state/vms/alpha/net.sock",
+            "--pid",
+            "/state/vms/alpha/passt.pid",
+        ]
+    );
+}
+
+#[test]
 fn a_comma_in_a_path_is_escaped() {
     let dir = Path::new("/state,beta/vms/alpha");
 
@@ -213,6 +247,10 @@ fn a_comma_in_a_path_is_escaped() {
         args.contains(&"if=pflash,format=raw,unit=1,file=/state,,beta/vms/alpha/efivars.fd".into())
     );
     assert!(args.contains(&"/state,beta/vms/alpha/qemu.pid".into()));
+    assert!(args.contains(
+        &"stream,id=net0,server=off,addr.type=unix,addr.path=/state,,beta/vms/alpha/net.sock"
+            .into()
+    ));
     assert!(args.contains(
         &"socket,id=serial0,server=on,wait=off,path=/state,,beta/vms/alpha/serial.sock,\
           logfile=/state,,beta/vms/alpha/console.log,logappend=on"
@@ -359,6 +397,28 @@ async fn destroy_kills_a_live_vm_and_removes_live_dead_and_orphan() {
 }
 
 #[tokio::test]
+async fn destroy_kills_the_vm_passt_and_spares_an_unrelated_one() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path().join("vms");
+    let alpha = fake(&root, "alpha", Some("vm-alpha"), None);
+    let beta = fake(&root, "beta", Some("vm-beta"), None);
+    let mut passt = sleeper(alpha.join("net.sock").to_str().unwrap());
+    let mut unrelated = sleeper("passt");
+    fs::write(alpha.join("passt.pid"), format!("{}\n", passt.id())).unwrap();
+    fs::write(beta.join("passt.pid"), format!("{}\n", unrelated.id())).unwrap();
+
+    destroy(&alpha).await.unwrap();
+    destroy(&beta).await.unwrap();
+    let running = unrelated.try_wait().unwrap().is_none();
+    unrelated.kill().unwrap();
+    unrelated.wait().unwrap();
+
+    assert_eq!(passt.wait().unwrap().signal(), Some(9));
+    assert!(running);
+    assert!(!alpha.exists() && !beta.exists());
+}
+
+#[tokio::test]
 async fn destroy_is_idempotent() {
     let tmp = TempDir::new().unwrap();
     let dir = fake(tmp.path(), "alpha", Some("vm-alpha"), None);
@@ -495,7 +555,7 @@ async fn a_missing_vars_template_fails_the_start_and_leaves_no_directory() {
     assert!(list(&root).unwrap().is_empty());
 }
 
-// Needs qemu-system-x86_64, qemu-img, xorriso and OVMF, so it runs only with `-- --ignored`.
+// Needs qemu-system-x86_64, qemu-img, xorriso, passt and OVMF, so it runs only with `-- --ignored`.
 #[tokio::test]
 #[ignore]
 async fn a_real_vm_starts_is_listed_and_is_destroyed() {
@@ -513,6 +573,7 @@ async fn a_real_vm_starts_is_listed_and_is_destroyed() {
         qemu: "qemu-system-x86_64".into(),
         qemu_img: "qemu-img".into(),
         xorriso: "xorriso".into(),
+        passt: "passt".into(),
         ovmf_code: "/usr/share/OVMF/OVMF_CODE_4M.fd".into(),
         ovmf_vars: "/usr/share/OVMF/OVMF_VARS_4M.fd".into(),
     };
@@ -524,6 +585,7 @@ async fn a_real_vm_starts_is_listed_and_is_destroyed() {
 
     let vm = create(&root, &spec, &tools).await.unwrap();
     let pid = fs::read_to_string(vm.dir.join("qemu.pid")).unwrap();
+    let passt_pid = fs::read_to_string(vm.dir.join("passt.pid")).unwrap();
     let found = list(&root).unwrap();
     let iso = vm.dir.join("seed.iso");
     let mode = fs::metadata(&iso).unwrap().permissions().mode() & 0o777;
@@ -558,4 +620,6 @@ async fn a_real_vm_starts_is_listed_and_is_destroyed() {
     assert!(fs::read_dir(&root).unwrap().next().is_none());
     let cmdline = fs::read(format!("/proc/{}/cmdline", pid.trim())).unwrap_or_default();
     assert!(!cmdline.windows(8).any(|window| window == b"vm-alpha"));
+    let passt_cmdline = fs::read(format!("/proc/{}/cmdline", passt_pid.trim())).unwrap_or_default();
+    assert!(!passt_cmdline.windows(8).any(|window| window == b"net.sock"));
 }

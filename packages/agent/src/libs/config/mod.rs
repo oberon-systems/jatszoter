@@ -17,6 +17,7 @@ const GIB: u64 = 1 << 30;
 const DEFAULT_QEMU: &str = "qemu-system-x86_64";
 const DEFAULT_QEMU_IMG: &str = "qemu-img";
 const DEFAULT_XORRISO: &str = "xorriso";
+const DEFAULT_PASST: &str = "passt";
 const DEFAULT_OVMF_CODE: &str = "/usr/share/OVMF/OVMF_CODE_4M.fd";
 const DEFAULT_OVMF_VARS: &str = "/usr/share/OVMF/OVMF_VARS_4M.fd";
 const PREFIX: &str = "JATSZOTER_AGENT_";
@@ -33,6 +34,7 @@ pub struct Config {
     pub qemu: PathBuf,
     pub qemu_img: PathBuf,
     pub xorriso: PathBuf,
+    pub passt: PathBuf,
     pub ovmf_code: PathBuf,
     pub ovmf_vars: PathBuf,
 }
@@ -49,8 +51,45 @@ pub struct RawConfig {
     pub qemu: Option<PathBuf>,
     pub qemu_img: Option<PathBuf>,
     pub xorriso: Option<PathBuf>,
+    pub passt: Option<PathBuf>,
     pub ovmf_code: Option<PathBuf>,
     pub ovmf_vars: Option<PathBuf>,
+}
+
+/// What `check-network` needs: the guest network without the API settings.
+#[derive(Debug, Clone)]
+pub struct NetConfig {
+    pub state_dir: PathBuf,
+    pub passt: PathBuf,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct RawNetConfig {
+    state_dir: Option<PathBuf>,
+    passt: Option<PathBuf>,
+}
+
+fn state_dir(
+    raw: Option<PathBuf>,
+    cache_home: Option<PathBuf>,
+    home: Option<PathBuf>,
+) -> Result<PathBuf, AgentError> {
+    let state_dir = match raw {
+        Some(dir) => dir,
+        None => cache_home
+            .or_else(|| home.map(|home| home.join(".cache")))
+            .ok_or_else(|| {
+                AgentError::Config("HOME is not set, so the state directory is unknown".into())
+            })?
+            .join("jatszoter"),
+    };
+    if !state_dir.is_absolute() {
+        return Err(AgentError::Config(format!(
+            "{PREFIX}STATE_DIR {} must be an absolute path",
+            state_dir.display()
+        )));
+    }
+    Ok(state_dir)
 }
 
 impl Config {
@@ -59,21 +98,7 @@ impl Config {
         cache_home: Option<PathBuf>,
         home: Option<PathBuf>,
     ) -> Result<Self, AgentError> {
-        let state_dir = match raw.state_dir {
-            Some(dir) => dir,
-            None => cache_home
-                .or_else(|| home.map(|home| home.join(".cache")))
-                .ok_or_else(|| {
-                    AgentError::Config("HOME is not set, so the state directory is unknown".into())
-                })?
-                .join("jatszoter"),
-        };
-        if !state_dir.is_absolute() {
-            return Err(AgentError::Config(format!(
-                "{PREFIX}STATE_DIR {} must be an absolute path",
-                state_dir.display()
-            )));
-        }
+        let state_dir = state_dir(raw.state_dir, cache_home, home)?;
         let image_limit_gib = raw
             .image_limit_gib
             .map_or(Ok(DEFAULT_IMAGE_LIMIT_GIB), check_image_limit)?;
@@ -87,6 +112,7 @@ impl Config {
             qemu: raw.qemu.unwrap_or_else(|| DEFAULT_QEMU.into()),
             qemu_img: raw.qemu_img.unwrap_or_else(|| DEFAULT_QEMU_IMG.into()),
             xorriso: raw.xorriso.unwrap_or_else(|| DEFAULT_XORRISO.into()),
+            passt: raw.passt.unwrap_or_else(|| DEFAULT_PASST.into()),
             ovmf_code: raw.ovmf_code.unwrap_or_else(|| DEFAULT_OVMF_CODE.into()),
             ovmf_vars: raw.ovmf_vars.unwrap_or_else(|| DEFAULT_OVMF_VARS.into()),
         })
@@ -98,19 +124,34 @@ impl Config {
 }
 
 pub fn load() -> Result<Config, AgentError> {
-    // A .env file is read only when named: one picked up from the working directory could
-    // redirect the API URL the agent trusts.
+    read_env_file()?;
+    let raw: RawConfig = envy::prefixed(PREFIX).from_env().map_err(describe)?;
+    Config::parse(raw, var("XDG_CACHE_HOME"), var("HOME"))
+}
+
+pub fn load_net() -> Result<NetConfig, AgentError> {
+    read_env_file()?;
+    let raw: RawNetConfig = envy::prefixed(PREFIX).from_env().map_err(describe)?;
+    Ok(NetConfig {
+        state_dir: state_dir(raw.state_dir, var("XDG_CACHE_HOME"), var("HOME"))?,
+        passt: raw.passt.unwrap_or_else(|| DEFAULT_PASST.into()),
+    })
+}
+
+// A .env file is read only when named: one picked up from the working directory could
+// redirect the API URL the agent trusts.
+fn read_env_file() -> Result<(), AgentError> {
     if let Ok(path) = std::env::var(ENV_FILE) {
         dotenvy::from_path(&path)
             .map_err(|err| AgentError::Config(format!("{ENV_FILE} {path}: {err}")))?;
     }
-    let raw: RawConfig = envy::prefixed(PREFIX).from_env().map_err(describe)?;
-    let var = |key: &str| {
-        std::env::var_os(key)
-            .filter(|value| !value.is_empty())
-            .map(PathBuf::from)
-    };
-    Config::parse(raw, var("XDG_CACHE_HOME"), var("HOME"))
+    Ok(())
+}
+
+fn var(key: &str) -> Option<PathBuf> {
+    std::env::var_os(key)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
 }
 
 fn describe(err: envy::Error) -> AgentError {

@@ -23,7 +23,9 @@ use crate::libs::qmp::Qmp;
 const RECORD: &str = "vm.json";
 const DISK: &str = "disk.qcow2";
 const PID_FILE: &str = "qemu.pid";
+pub(crate) const PASST_PID: &str = "passt.pid";
 const QMP: &str = "qmp.sock";
+pub(crate) const NET: &str = "net.sock";
 pub const SERIAL: &str = "serial.sock";
 pub const CONSOLE_LOG: &str = "console.log";
 pub const QGA: &str = "qga.sock";
@@ -32,7 +34,7 @@ const EFIVARS: &str = "efivars.fd";
 const SEED_DIR: &str = "seed";
 const SEED_DEVICE: &str = "seed0";
 const GIB: u64 = 1 << 30;
-const SOCKETS: [&str; 3] = [QMP, SERIAL, QGA];
+const SOCKETS: [&str; 4] = [QMP, SERIAL, QGA, NET];
 // sun_path holds 108 bytes, the terminating NUL included.
 const MAX_SOCKET_PATH: usize = 107;
 const MAX_ID: usize = 64;
@@ -61,6 +63,7 @@ pub struct Tools {
     pub qemu: PathBuf,
     pub qemu_img: PathBuf,
     pub xorriso: PathBuf,
+    pub passt: PathBuf,
     pub ovmf_code: PathBuf,
     pub ovmf_vars: PathBuf,
 }
@@ -149,9 +152,12 @@ pub fn qemu_args(spec: &VmSpec, dir: &Path, kvm: bool, firmware: &Path) -> Vec<O
             &format!("ide-cd,id={SEED_DEVICE},drive=seed,bus=ide.1"),
         ]));
     }
+    args.push("-netdev".into());
+    args.push(option(
+        "stream,id=net0,server=off,addr.type=unix,addr.path=",
+        &dir.join(NET),
+    ));
     args.extend(words(&[
-        "-netdev",
-        "user,id=net0",
         "-device",
         "virtio-net-pci,netdev=net0",
         "-chardev",
@@ -181,6 +187,38 @@ pub fn qemu_args(spec: &VmSpec, dir: &Path, kvm: bool, firmware: &Path) -> Vec<O
         "-pidfile",
     ]));
     args.push(dir.join(PID_FILE).into_os_string());
+    args
+}
+
+// --no-map-gw keeps the gateway from leading to the host's loopback, the reason passt
+// replaces QEMU's user-mode network; --one-off ends passt together with QEMU.
+pub(crate) fn passt_args(dir: &Path) -> Vec<OsString> {
+    let mut args: Vec<OsString> = [
+        "--one-off",
+        "--no-map-gw",
+        "--ipv4-only",
+        "--address",
+        "10.0.2.15",
+        "--netmask",
+        "24",
+        "--gateway",
+        "10.0.2.2",
+        "--dns",
+        "10.0.2.3",
+        "--dns-forward",
+        "10.0.2.3",
+        "--tcp-ports",
+        "none",
+        "--udp-ports",
+        "none",
+        "--socket",
+    ]
+    .iter()
+    .map(OsString::from)
+    .collect();
+    args.push(dir.join(NET).into_os_string());
+    args.push("--pid".into());
+    args.push(dir.join(PASST_PID).into_os_string());
     args
 }
 
@@ -266,6 +304,7 @@ async fn start(
         .arg(dir.join(DISK))
         .arg(format!("{}G", spec.disk_gib)))
     .await?;
+    run(Command::new(&tools.passt).args(passt_args(dir))).await?;
     let args = qemu_args(spec, dir, kvm_usable(), &tools.ovmf_code);
     run(Command::new(&tools.qemu).args(args)).await?;
 
@@ -356,6 +395,7 @@ pub async fn destroy(dir: &Path) -> Result<(), AgentError> {
     if let Some(record) = read_record(dir) {
         stop(dir, &record.vm_id, asked).await?;
     }
+    stop_passt(dir)?;
     match tokio::fs::remove_dir_all(dir).await {
         Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
         other => Ok(other?),
@@ -392,6 +432,17 @@ async fn stop(dir: &Path, vm_id: &str, asked: bool) -> Result<(), AgentError> {
     }
 }
 
+fn stop_passt(dir: &Path) -> Result<(), AgentError> {
+    let socket = dir.join(NET);
+    let Some(pid) = running(&dir.join(PASST_PID), socket.as_os_str().as_bytes()) else {
+        return Ok(());
+    };
+    match kill(pid, Signal::SIGKILL) {
+        Ok(()) | Err(Errno::ESRCH) => Ok(()),
+        Err(err) => Err(AgentError::Vm(format!("kill passt {pid}: {err}"))),
+    }
+}
+
 async fn exited(dir: &Path, vm_id: &str, wait: Duration) -> bool {
     let deadline = Instant::now() + wait;
     loop {
@@ -411,18 +462,18 @@ pub fn read_record(dir: &Path) -> Option<Record> {
 
 /// The pid in `qemu.pid`, if that process still runs this VM: a reused pid is not ours.
 fn owner(dir: &Path, vm_id: &str) -> Option<Pid> {
-    let pid: i32 = fs::read_to_string(dir.join(PID_FILE))
-        .ok()?
-        .trim()
-        .parse()
-        .ok()?;
-    if pid <= 0 || vm_id.is_empty() {
+    running(&dir.join(PID_FILE), vm_id.as_bytes())
+}
+
+fn running(pid_file: &Path, mark: &[u8]) -> Option<Pid> {
+    let pid: i32 = fs::read_to_string(pid_file).ok()?.trim().parse().ok()?;
+    if pid <= 0 || mark.is_empty() {
         return None;
     }
     let cmdline = fs::read(format!("/proc/{pid}/cmdline")).ok()?;
     cmdline
-        .windows(vm_id.len())
-        .any(|window| window == vm_id.as_bytes())
+        .windows(mark.len())
+        .any(|window| window == mark)
         .then_some(Pid::from_raw(pid))
 }
 

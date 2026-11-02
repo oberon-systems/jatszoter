@@ -5,7 +5,7 @@ api=http://127.0.0.1:8080
 www=http://127.0.0.1:8081
 web=http://127.0.0.1:8000
 
-for tool in qemu-system-x86_64 qemu-img xorriso openssl jq curl sha256sum; do
+for tool in qemu-system-x86_64 qemu-img xorriso passt openssl jq curl sha256sum; do
     if ! command -v "$tool" >/dev/null; then
         echo "smoke test needs $tool on PATH" >&2
         exit 1
@@ -301,6 +301,15 @@ def serves():
     return operator.prints(line, "hello from app", 60)
 
 
+# Api, web and files listen on the host loopback; the gateway must lead to none of them.
+def walled_off():
+    ports = os.environ["TERMINAL_HOST_PORTS"]
+    count = len(ports.split())
+    probe = "timeout 3 bash -c \"exec 3<>/dev/tcp/10.0.2.2/$p\" 2>/dev/null || n=$((n + 1))"
+    line = f"n=0; for p in {ports}; do {probe}; done; printf walled-%d-of-{count} $n"
+    return operator.prints(line, f"walled-{count}-of-{count}")
+
+
 unit = "sed -i s/8018/8081/ /etc/systemd/system/app.service"
 parts = {
     "handover": [
@@ -313,6 +322,7 @@ parts = {
     ],
     "fix": [
         ("the operator still holds control", lambda: operator.held_by("operator")),
+        ("the guest reaches nothing on the host loopback", walled_off),
         ("the app unit goes back to port 8081", lambda: fixes("unit", unit)),
         ("systemd reloads its units", lambda: fixes("reload", "systemctl daemon-reload")),
         ("the app unit restarts", lambda: fixes("restart", "systemctl restart app.service")),
@@ -348,7 +358,7 @@ except (OSError, WebSocketException) as err:
 terminal() {
     TERMINAL_PART="$1" TERMINAL_WEB="${web#http://}" TERMINAL_DEPLOYMENT="$deployment" \
         TERMINAL_COOKIE="$cookie" TERMINAL_SESSION="$(jarred jatszoter_session)" \
-        TERMINAL_CSRF="$operator_csrf" \
+        TERMINAL_CSRF="$operator_csrf" TERMINAL_HOST_PORTS="${api##*:} ${web##*:} ${www##*:}" \
         "$VENV/bin/python" -I -c "$terminal_py"
 }
 
@@ -503,6 +513,9 @@ JATSZOTER_WEB_API_URL="$api" \
 front=$!
 unset sealing
 wait_for 30 curl -fs -o /dev/null "$web/healthz"
+
+echo "checking the guest network..."
+JATSZOTER_AGENT_STATE_DIR="$TEMP_DIR/agent" cargo run -q -p jatszoter-agent -- check-network
 
 echo "starting agent..."
 JATSZOTER_AGENT_API_URL="$api" \

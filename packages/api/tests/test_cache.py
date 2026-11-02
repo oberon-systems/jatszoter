@@ -1,12 +1,28 @@
+import json
+import pickle
+import uuid
+from pathlib import Path
+from typing import Any
+
 import pytest
 from sqlmodel import Session
 
-from jatszoter_api.models import Agent, Role, State, User, _cache
-from jatszoter_api.models._cache import Cached
+from jatszoter_api.models import Agent, Link, Role, State, User, _cache
+from jatszoter_api.models._cache import Cached, _derived, _mac
 
 DAY = 24 * 60 * 60
 KID = "current"
 KEYS = {KID: "b" * 64}
+
+
+class Touches:
+    """Creates `path` when unpickled, standing in for any code a hostile entry would run."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def __reduce__(self) -> tuple[Any, tuple[Path]]:
+        return Path.touch, (self.path,)
 
 
 def ttl(key: str) -> int:
@@ -25,6 +41,12 @@ def enabled_agent(session: Session) -> Agent:
     agent = Agent(session=session, name="alpha", state=State.ENABLED)
     agent.save()
     return agent
+
+
+def raw_entry(key: str) -> bytes:
+    raw = Cached._client().get(key)
+    assert isinstance(raw, bytes)
+    return raw
 
 
 def test_nothing_is_cached_unless_asked(session: Session) -> None:
@@ -117,6 +139,134 @@ def test_a_refresh_drops_the_cached_secret(session: Session, refreshes: int) -> 
     assert not Cached._client().exists(f"secret:{agent.id}")
     assert agent.secret is not None
     assert agent.secret.pending_generation == 1 + refreshes
+
+
+def test_a_pickle_written_by_another_client_never_runs(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    marker = tmp_path / "ran"
+    Cached._client().set("claim:alpha", pickle.dumps(Touches(marker)))
+
+    assert Cached()._get("claim:alpha") is None
+
+    assert not marker.exists()
+    assert "refused a cache entry" in caplog.text
+    assert "alpha" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b'"00000000-0000-4000-8000-000000000001"',
+        b"current\n" + b"0" * 64 + b'\n"alpha"',
+        b"unknown\n" + b"0" * 64 + b'\n"alpha"',
+        b"\n\n",
+        b"\xff\xfe",
+    ],
+)
+def test_a_value_written_by_another_client_is_refused(raw: bytes) -> None:
+    Cached.connect(None, KEYS, KID)
+    Cached._client().set("claim:alpha", raw)
+
+    assert Cached()._get("claim:alpha") is None
+
+
+def test_a_value_signed_with_a_key_the_api_does_not_hold_is_refused() -> None:
+    Cached.connect(None, KEYS, KID)
+    payload = json.dumps("alpha").encode()
+    mac = _mac(_derived("c" * 64), "claim:alpha", payload)
+    Cached._client().set("claim:alpha", b"\n".join((KID.encode(), mac, payload)))
+
+    assert Cached()._get("claim:alpha") is None
+
+
+def test_a_value_moved_to_another_entry_is_refused() -> None:
+    Cached.connect(None, KEYS, KID)
+    Cached()._set("claim:alpha", "gamma", 60)
+    Cached._client().rename("claim:alpha", "claim:beta")
+
+    assert Cached()._get("claim:beta") is None
+
+
+def test_a_miss_on_a_refused_owner_entry_loads_the_real_value(session: Session) -> None:
+    agent = enabled_agent(session)
+    agent.issue(2 * DAY, KID, KEYS)
+    Cached._client().set(f"secret:{agent.id}", json.dumps({"generation": 99}))
+
+    assert agent.secret.generation == 1
+
+
+def test_the_master_key_is_not_the_cache_key() -> None:
+    Cached.connect(None, KEYS, KID)
+    Cached()._set("alpha", 1, 60)
+
+    raw = raw_entry("alpha")
+    assert KEYS[KID].encode() not in raw
+    assert _mac(KEYS[KID].encode(), "alpha", b"1") not in raw
+    assert _mac(_derived(KEYS[KID]), "alpha", b"1") in raw
+
+
+def test_an_entry_of_a_retired_key_stays_readable_while_that_key_is_listed() -> None:
+    Cached.connect(None, {"old": "a" * 64}, "old")
+    Cached()._set("alpha", 1, 60)
+    raw = raw_entry("alpha")
+
+    Cached.connect(None, {"old": "a" * 64, KID: "b" * 64}, KID)
+    Cached._client().set("alpha", raw)
+
+    assert Cached()._get("alpha") == 1
+
+
+def test_an_entry_of_a_dropped_key_is_refused() -> None:
+    Cached.connect(None, {"old": "a" * 64}, "old")
+    Cached()._set("alpha", 1, 60)
+    raw = raw_entry("alpha")
+
+    Cached.connect(None, KEYS, KID)
+    Cached._client().set("alpha", raw)
+
+    assert Cached()._get("alpha") is None
+
+
+def test_without_a_master_key_the_cache_still_works_on_a_key_of_its_own() -> None:
+    Cached.connect(None)
+
+    Cached()._set("alpha", {"beta": 1}, 60)
+
+    assert Cached()._get("alpha") == {"beta": 1}
+
+
+def test_a_lease_survives_the_cache_with_its_types(session: Session) -> None:
+    agent = enabled_agent(session)
+
+    lease = agent.heartbeat(2)
+
+    stored = agent.lease
+    assert stored == lease
+    assert stored is not None
+    assert stored.id == lease.id
+
+
+def test_a_cached_secret_reads_the_same_on_a_miss_and_on_a_hit(session: Session) -> None:
+    agent = enabled_agent(session)
+    agent.issue(2 * DAY, KID, KEYS)
+
+    missed = agent.secret
+    hit = agent.secret
+
+    assert missed == hit
+    assert (hit.generation, hit.pending_generation) == (1, None)
+
+
+def test_a_link_session_resumes_through_the_cache(session: Session) -> None:
+    link = Link(session=session, deployment_id=uuid.uuid4(), user_id=uuid.uuid4())
+    link.save()
+
+    token = link.open()
+
+    assert Link(session=session).resume(token).id == link.id
+    with pytest.raises(IndexError):
+        Link(session=session).resume("alpha")
 
 
 def test_connecting_without_a_dsn_opens_an_empty_in_memory_cache() -> None:

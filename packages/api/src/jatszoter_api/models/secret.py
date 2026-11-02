@@ -2,7 +2,7 @@ import hashlib
 import hmac
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any, Self, cast
 
 from pydantic import PrivateAttr
@@ -100,10 +100,11 @@ class SecretOwner(Base):
     @property
     def secret(self) -> Generations:
         """The owner's generations for `verify`, loaded into the cache on a miss."""
-        return cast(Generations, self._get("secret", self._stored_generations))
+        return Generations(**cast(dict[str, Any], self._get("secret", self._stored_generations)))
 
-    def _stored_generations(self) -> Generations:
-        return Generations(self.stored_secret.generation, self.stored_secret.pending_generation)
+    def _stored_generations(self) -> dict[str, Any]:
+        stored = self.stored_secret
+        return asdict(Generations(stored.generation, stored.pending_generation))
 
     def issue(self, ttl: int, kid: str, keys: dict[str, str]) -> tuple[Credential, str]:
         """First call opens generation 1; later calls hand out a fresh pending generation."""

@@ -87,8 +87,9 @@ def claim(client: TestClient, code: str) -> Response:
 
 
 def approve(session: Session, code: str) -> None:
-    agent_id = Cached()._get(f"claim:{hashlib.sha256(code.encode()).hexdigest()}")
-    assert agent_id is not None
+    stored_id = Cached()._get(f"claim:{hashlib.sha256(code.encode()).hexdigest()}")
+    assert stored_id is not None
+    agent_id = uuid.UUID(stored_id)
     try:
         agent = Agent(session=session).load(id=agent_id)
     except IndexError:

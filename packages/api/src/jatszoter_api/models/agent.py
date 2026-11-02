@@ -59,8 +59,8 @@ class Agent(SecretOwner, table=True):
     @property
     def lease(self) -> Lease | None:
         """The live lease, read without renewing it; only a heartbeat does that."""
-        lease: Lease | None = Cached._get(self, f"lease:{self.id}")
-        return lease
+        lease = Cached._get(self, f"lease:{self.id}")
+        return None if lease is None else Lease.model_validate(lease)
 
     @property
     def deployments(self) -> list[Deployment]:
@@ -219,12 +219,12 @@ class Agent(SecretOwner, table=True):
 
     def claimed(self, code: str) -> Self | None:
         """The approved agent the code names; None for an unknown or spent code."""
-        agent_id: uuid.UUID | None = Cached()._get(f"claim:{_digest(code)}")
+        agent_id: str | None = Cached()._get(f"claim:{_digest(code)}")
         if agent_id is None:
             return None
         if Cached()._get(f"registration:{agent_id}") is not None:
             raise InvalidTransitionError(f"agent {agent_id} waits for an operator")
-        return self.load(id=agent_id)
+        return self.load(id=uuid.UUID(agent_id))
 
     def redeem(self, code: str) -> bool:
         """Spend the claim code; only the first of two racing claims gets True."""

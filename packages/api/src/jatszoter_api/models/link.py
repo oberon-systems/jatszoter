@@ -78,4 +78,4 @@ class Link(Base, table=True):
         if link_id is None:
             raise IndexError("no session")
         Cached._ttl(self, key, SESSION_SECONDS)
-        return self.load(id=link_id)
+        return self.load(id=uuid.UUID(link_id))

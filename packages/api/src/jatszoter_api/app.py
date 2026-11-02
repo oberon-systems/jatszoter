@@ -66,7 +66,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
     dsn = str(settings.database_dsn)
     migrate(dsn)
-    Cached.connect(None if settings.valkey_dsn is None else str(settings.valkey_dsn))
+    Cached.connect(
+        None if settings.valkey_dsn is None else str(settings.valkey_dsn),
+        settings.master_keys,
+        settings.master_kid,
+    )
     # The same filter instance every time, so a second app adds nothing.
     logging.getLogger("uvicorn.access").addFilter(_REDACT_LINKS)
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, redirect_slashes=False)

@@ -1,18 +1,62 @@
-import pickle
+import hashlib
+import hmac
+import logging
+import secrets
+from collections.abc import Mapping
 from typing import Any
 
 import fakeredis
+from pydantic_core import from_json, to_json
 from valkey import Valkey as CacheClient
 
+log = logging.getLogger(__name__)
+
 _CLIENT: CacheClient | None = None
+_KEYS: dict[bytes, bytes] = {}
+_KID = b""
+_LOCAL_KID = b"local"
+
+
+def _derived(master: str) -> bytes:
+    """The cache's own key, so a leak of it gives no credential key."""
+    return hmac.new(master.encode(), b"jatszoter cache", hashlib.sha256).digest()
+
+
+def _mac(secret: bytes, key: str, payload: bytes) -> bytes:
+    """Covers the key too, so a value cannot be moved to another entry."""
+    return hmac.new(secret, key.encode() + b"\0" + payload, hashlib.sha256).hexdigest().encode()
+
+
+def _sealed(key: str, value: Any) -> bytes:
+    payload = to_json(value)
+    return b"\n".join((_KID, _mac(_KEYS[_KID], key, payload), payload))
+
+
+def _unsealed(key: str, raw: bytes) -> Any | None:
+    """The value of an entry the API wrote; anything else counts as a miss."""
+    parts = raw.split(b"\n", 2)
+    if len(parts) == 3:
+        kid, mac, payload = parts
+        secret = _KEYS.get(kid)
+        if secret is not None and hmac.compare_digest(mac, _mac(secret, key, payload)):
+            return from_json(payload)
+    log.warning("refused a cache entry the API did not write under %s", key.partition(":")[0])
+    return None
 
 
 class Cached:
     @staticmethod
-    def connect(dsn: str | None) -> None:
+    def connect(
+        dsn: str | None, master_keys: Mapping[str, str] | None = None, master_kid: str = ""
+    ) -> None:
         """Open the cache once at start: Valkey at `dsn`, or an in-memory fake without one."""
-        global _CLIENT
+        global _CLIENT, _KEYS, _KID
         _CLIENT = fakeredis.FakeValkey() if dsn is None else CacheClient.from_url(dsn)
+        _KEYS = {kid.encode(): _derived(master) for kid, master in (master_keys or {}).items()}
+        _KID = master_kid.encode()
+        if _KID not in _KEYS:
+            _KID = _LOCAL_KID
+            _KEYS[_KID] = secrets.token_bytes(32)
 
     @staticmethod
     def _client() -> CacheClient:
@@ -22,17 +66,14 @@ class Cached:
 
     def _get(self, key: str) -> Any | None:
         raw = self._client().get(key)
-        if not isinstance(raw, bytes):
-            return None
-        # The cache belongs to the API alone; nothing a client sends is ever unpickled.
-        return pickle.loads(raw)  # noqa: S301
+        return _unsealed(key, raw) if isinstance(raw, bytes) else None
 
     def _set(self, key: str, value: Any, ttl: int) -> None:
-        self._client().set(key, pickle.dumps(value), ex=ttl)
+        self._client().set(key, _sealed(key, value), ex=ttl)
 
     def _add(self, key: str, value: Any, ttl: int) -> bool:
         """Store `value` only when `key` is free; whether it was."""
-        return bool(self._client().set(key, pickle.dumps(value), ex=ttl, nx=True))
+        return bool(self._client().set(key, _sealed(key, value), ex=ttl, nx=True))
 
     def _ttl(self, key: str, ttl: int) -> bool:
         return bool(self._client().expire(key, ttl))
@@ -41,7 +82,7 @@ class Cached:
         return bool(self._client().delete(key))
 
     def _count(self, key: str) -> int:
-        """Read a counter `_increment` wrote: a bare number `_get` cannot unpickle."""
+        """Read a counter `_increment` wrote: a bare number, not a sealed entry."""
         raw = self._client().get(key)
         return int(raw) if isinstance(raw, bytes) else 0
 

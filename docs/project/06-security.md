@@ -13,6 +13,7 @@ operator has not taken control.
 - [Bundle downloads](#bundle-downloads)
 - [Request bodies](#request-bodies)
 - [Images](#images)
+- [Valkey](#valkey)
 - [Scenario secrecy](#scenario-secrecy)
 - [Web](#web)
 - [Acceptance criteria](#acceptance-criteria)
@@ -211,6 +212,25 @@ build time.
 - Updates: Dependabot proposes them after a 14-day cooldown.
 - Drift: `pip check` fails the build when `pyproject.toml` names a dependency
   the lock lacks.
+
+## Valkey
+
+Write access to Valkey must not become code execution in the API, or a claim
+code or link session of the writer's choosing.
+
+- Entries read through `_get`: registrations, claim codes, link sessions,
+  leases and cached secrets. They are JSON, signed with HMAC-SHA256 under a
+  key derived from the master key. Valkey never sees that key.
+- A signature covers the entry's key, so a value cannot be moved to another
+  entry. An entry that fails the check counts as a miss and is logged.
+- Master key rotation: an entry stays readable while its kid is listed in
+  `JATSZOTER_MASTER_KEYS`.
+- Not signed: login counters, the console tail and its offsets, control of a
+  console, and recording pointers. A writer cannot run code through them, but
+  can change them. A writer can also delete any entry, or put back an older
+  signed value of the same entry.
+
+Keep Valkey private, with a password.
 
 ## Scenario secrecy
 

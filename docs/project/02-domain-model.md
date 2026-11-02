@@ -174,7 +174,8 @@ deployments before a new one is granted.
 ## Row cache
 
 The same Valkey, or fakeredis without a DSN, caches the few values the hot
-path reads on every request; SQL stays the source of truth.
+path reads on every request; SQL stays the source of truth. Entries are
+signed JSON, see [06](06-security.md#valkey).
 
 - Every model inherits `Cached`: `_get`, `_set`, `_ttl` and `_delete` on a
   full key. `Base` overrides them to keep entries under `<key>:<id>`, ten

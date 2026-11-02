@@ -99,9 +99,15 @@ operator has not taken control.
   QEMU escape is out of scope.
 - QEMU runs as the agent's unprivileged user with KVM; VM directories and
   sockets are 0700.
-- User-mode NAT gives the guest outbound access and nothing inbound. The
-  host itself stays reachable from the guest through the NAT gateway;
-  firewall host services accordingly.
+- passt gives the guest outbound NAT and nothing inbound. It runs with
+  `--no-map-gw`, so the gateway does not lead to the agent host's loopback:
+  services bound to `127.0.0.1` are out of the guest's reach. QEMU's own
+  user-mode network is not used because its gateway does.
+- passt older than `2026_10_02` forwards a guest packet sent to
+  `127.0.0.1` to the host's loopback. `jatszoter-agent check-network`
+  refuses such a host; see [09](09-guest-network.md).
+- Services the agent host binds to its other addresses stay reachable from
+  the guest, as from any client on the network; firewall them accordingly.
 - The agent never passes scenario text or trainee input to a host shell;
   every host process is spawned with an argument vector.
 - The seed enables the guest agent's `guest-file-*` and `guest-exec*`

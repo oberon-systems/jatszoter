@@ -233,6 +233,8 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
     seed.iso                   cloud-init NoCloud seed, removed once ejected
     efivars.fd                 the VM's own UEFI variable store
     qemu.pid                   pid file of the daemonized QEMU
+    passt.pid                  pid file of the VM's passt
+    net.sock                   passt, the VM's network
     qmp.sock                   QMP
     serial.sock                serial console
     console.log                everything the guest printed on ttyS0
@@ -268,8 +270,22 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
   holds the seed of [03](03-scenario-format.md#bootstrap).
 - QEMU attaches `seed.iso` read-only as a CD-ROM. After the marker says
   `ok`, the agent ejects it through QMP and deletes the file.
-- Network is QEMU user-mode NAT: the guest reaches the internet for package
-  installs, nothing reaches the guest from outside.
+- Network is NAT through [passt](https://passt.top/), one unprivileged
+  process per VM from `JATSZOTER_AGENT_PASST` (default `passt`). The agent
+  starts it before QEMU, and QEMU joins it over `net.sock` with
+  `-netdev stream`, so QEMU 7.2 or newer is required.
+- The guest sees `10.0.2.15/24`, gateway `10.0.2.2` and DNS `10.0.2.3`,
+  IPv4 only. passt forwards DNS to the host's first resolver and opens
+  every other connection as an ordinary socket of the agent's user. The
+  guest reaches the internet for package installs; nothing reaches the
+  guest from outside.
+- passt runs with `--no-map-gw`: the gateway does not lead to the host's
+  loopback, unlike QEMU's own user-mode network. It runs with `--one-off`
+  and exits when QEMU does; destroy also kills the pid in `passt.pid` when
+  its command line names the VM's `net.sock`.
+- passt must be `2026_10_02` or newer; `jatszoter-agent check-network`
+  starts it as above, plays the guest and fails when the host is not safe.
+  Installing it is [09](09-guest-network.md).
 - The trainee's shell is the guest's serial console `ttyS0`; no SSH and no
   port forwarding are involved.
 - QEMU logs the serial console to `console.log` from boot; the agent ships

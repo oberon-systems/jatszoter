@@ -1,5 +1,6 @@
 import asyncio
 import gzip
+import os
 import re
 import tarfile
 import time
@@ -16,6 +17,7 @@ from sqlmodel import Session
 from jatszoter_api import bundles
 from jatszoter_api.errors import InvalidBundleError
 from jatszoter_api.file import DISK_BASE, File
+from jatszoter_api.middleware import BODY_LIMIT
 from jatszoter_api.models import Image, Role, Scenario
 from jatszoter_api.routes import scenarios
 from jatszoter_api.routes.scenarios import _fetch, fetch_transport
@@ -248,6 +250,31 @@ def test_an_oversized_download_is_refused(
 
     assert response.status_code == 413
     assert_nothing_kept(tmp_path, session)
+
+
+def test_a_bundle_over_the_small_body_limit_still_uploads(operator: Any, pack: Pack) -> None:
+    bundle = pack(changes={"filler.bin": os.urandom(2 * BODY_LIMIT)})
+    assert len(bundle) > BODY_LIMIT
+
+    assert upload(operator, bundle).status_code == 201
+
+
+def test_a_body_past_the_upload_limit_is_refused_by_size(
+    operator: Any, settings: Settings, tmp_path: Path, session: Session
+) -> None:
+    bundle = bytes(settings.scenario_bundle_limit_bytes + BODY_LIMIT + 1)
+
+    response = upload(operator, bundle)
+
+    assert response.status_code == 413
+    assert response.json() == {"detail": "the request body is too large"}
+    assert_nothing_kept(tmp_path, session)
+
+
+def test_another_route_keeps_the_small_limit(operator: Any) -> None:
+    response = operator.request("POST", "/api/v1/images", files={"alpha": bytes(2 * BODY_LIMIT)})
+
+    assert response.status_code == 413
 
 
 @pytest.mark.parametrize("encoding", ["gzip", "gzip, gzip", "br"])

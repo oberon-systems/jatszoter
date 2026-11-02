@@ -9,6 +9,7 @@ from sqlmodel import Session, create_engine
 
 from jatszoter_api.console_hub import ConsoleHub
 from jatszoter_api.errors import DomainError
+from jatszoter_api.middleware import BODY_LIMIT, BodyLimit
 from jatszoter_api.models import Role, State, User
 from jatszoter_api.models._cache import Cached
 from jatszoter_api.models.user import ADMIN
@@ -86,6 +87,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             admin.save()
             log.warning("no operator existed: created user admin, due for a password change")
     app.add_exception_handler(DomainError, domain_error_handler)
+    upload = settings.scenario_bundle_limit_bytes + BODY_LIMIT
+    app.add_middleware(BodyLimit, wider={("POST", "/api/v1/scenarios"): upload})
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:

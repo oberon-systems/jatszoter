@@ -144,9 +144,14 @@ Fetch rules:
 
 Bundle rules:
 
-- regular files only: no links, no absolute paths, no `..`;
+- regular files only: no links, no sparse files, no absolute paths, no `..`;
 - files sit at the root of the archive or under one top directory named
-  like the `id`.
+  like the `id`;
+- `scenario.yaml` is at most 64 KiB and uses no YAML aliases.
+
+The schema also limits the lists: at most 16 `tags`, 64 `packages` and 32
+`hints`. A refused document gets its JSON path and the rule it breaks, not
+its value.
 
 The API validates `scenario.yaml` against the schema, checks that every
 named file exists and that the named `image` is already registered. It

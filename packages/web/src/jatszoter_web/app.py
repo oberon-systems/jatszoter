@@ -21,7 +21,7 @@ from jatszoter_web import (
 )
 from jatszoter_web.api import Api
 from jatszoter_web.auth import router as auth_router
-from jatszoter_web.middleware import DropUvicornAccess, Guard
+from jatszoter_web.middleware import BODY_LIMIT, BodyLimit, DropUvicornAccess, Guard
 from jatszoter_web.pages import HANDLERS, failed_scope
 from jatszoter_web.relay import router as relay_router
 from jatszoter_web.settings import Settings
@@ -53,6 +53,8 @@ def create_app(
     app.state.api = api
     for error, handler in HANDLERS.items():
         app.add_exception_handler(error, handler)
+    upload = catalog.BUNDLE_LIMIT + BODY_LIMIT
+    app.add_middleware(BodyLimit, wider={("POST", "/scenarios"): upload})
     app.add_middleware(Guard, failure=failed_scope)
 
     @app.get("/healthz")

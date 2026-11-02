@@ -5,6 +5,7 @@ from fastapi.responses import Response
 from starlette.datastructures import UploadFile
 
 from jatszoter_web.api import ApiDown
+from jatszoter_web.middleware import BODY_LIMIT
 from jatszoter_web.pages import Flash, error, fragment, redirect, refusal, render
 from jatszoter_web.screens import field, read, refused
 from jatszoter_web.session import OperatorDep, PostedOperatorDep
@@ -52,7 +53,7 @@ async def scenario_dialog(request: Request, _: OperatorDep) -> Response:
 
 @router.post("/scenarios")
 async def register_scenario(request: Request, session: PostedOperatorDep) -> Response:
-    form = await request.form(max_files=1, max_fields=4)
+    form = await request.form(max_files=1, max_fields=4, max_part_size=BODY_LIMIT)
     url = field(form, "url")
     bundle = form.get("bundle")
     values = {"url": url}

@@ -16,7 +16,6 @@ from jatszoter_web.csrf import check_browser
 from jatszoter_web.pages import render
 from jatszoter_web.settings import Settings
 
-BODY_LIMIT = 64 * 1024
 SEGMENT = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9_.-]*")
 PASSED_ON = ("origin", "content-type", "accept")
 PASSED_BACK = ("content-type", "location", "cache-control", "referrer-policy")
@@ -38,22 +37,10 @@ def link_cookie(cookies: dict[str, str]) -> str | None:
     return f"{LINK_COOKIE}={token}" if token else None
 
 
-async def bounded_body(request: Request) -> bytes:
-    length = request.headers.get("content-length", "")
-    if length.isdigit() and int(length) > BODY_LIMIT:
-        raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="too large")
-    body = bytearray()
-    async for chunk in request.stream():
-        body += chunk
-        if len(body) > BODY_LIMIT:
-            raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="too large")
-    return bytes(body)
-
-
 async def relay(request: Request) -> Response:
     """The request passed to the API unsigned, with the allow-listed headers alone."""
     api: Api = request.app.state.api
-    body = await bounded_body(request)
+    body = await request.body()
     headers = [("host", request.headers.get("host", ""))]
     headers += [(name, request.headers[name]) for name in PASSED_ON if name in request.headers]
     cookie = link_cookie(request.cookies)

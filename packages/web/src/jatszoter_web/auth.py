@@ -101,6 +101,9 @@ async def login(request: Request) -> Response:
     try:
         await check_browser(request)
     except HTTPException as refused:
+        # Only a refused token shows the form again; a body refused by size cannot be read twice.
+        if refused.status_code != 403:
+            raise
         return await expired(request, refused.status_code)
     form = await request.form()
     api: Api = request.app.state.api

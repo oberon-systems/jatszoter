@@ -10,6 +10,7 @@ operator has not taken control.
 - [Link threats](#link-threats)
 - [Guest and host](#guest-and-host)
 - [Image downloads](#image-downloads)
+- [Request bodies](#request-bodies)
 - [Scenario secrecy](#scenario-secrecy)
 - [Web](#web)
 - [Acceptance criteria](#acceptance-criteria)
@@ -152,6 +153,24 @@ proxy whose name resolves to an internal address needs its network in
 
 An image server can still send the agent's GET to a public host. The digest
 protects the image in that case.
+
+## Request bodies
+
+Anyone who reaches `api` or `web` can send a body, so both refuse one past
+its limit with 413 before a signature or a CSRF token is checked. They check
+`Content-Length` first and then count the bytes as they arrive, so a chunked
+body is cut at the same limit.
+
+- Default: 64 KiB.
+- `POST /api/v1/scenarios` in `api`:
+  `JATSZOTER_SCENARIO_BUNDLE_LIMIT_BYTES` plus 64 KiB for the multipart
+  framing.
+- `POST /scenarios` in `web`: 10 MiB plus the same 64 KiB.
+- WebSockets are not covered. The console and the recordings have their own
+  limits.
+
+No stand needs a reverse proxy. A deployment that adds one should set the
+same limits there.
 
 ## Scenario secrecy
 

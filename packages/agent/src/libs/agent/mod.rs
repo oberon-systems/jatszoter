@@ -112,12 +112,19 @@ impl<A: Api, R: Runtime> Agent<A, R> {
     }
 
     // A refused credential sends the agent back to registration under the id it already has.
+    // The API never rebinds a known id, so the agent then comes back as a new one.
     async fn enroll(&mut self) -> Result<Duration, AgentError> {
         let Some(code) = self.state.claim_code.clone() else {
-            let code = self
+            let Some(code) = self
                 .api
                 .register(&self.name, &self.labels, self.state.agent_id.as_deref())
-                .await?;
+                .await?
+            else {
+                tracing::warn!("the API knows this agent id; registering as a new agent");
+                self.state.agent_id = None;
+                self.store.save(&self.state)?;
+                return Ok(Duration::ZERO);
+            };
             self.state.claim_code = Some(code);
             self.store.save(&self.state)?;
             tracing::info!(agent_id = ?self.state.agent_id, "registered, waiting for an operator");

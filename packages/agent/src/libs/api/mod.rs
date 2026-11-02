@@ -168,12 +168,13 @@ pub enum Signed<T> {
 }
 
 pub(crate) trait Api {
+    /// `None` is the 409 of an id the API already knows.
     async fn register(
         &self,
         name: &str,
         labels: &[String],
         agent_id: Option<&str>,
-    ) -> Result<String, AgentError>;
+    ) -> Result<Option<String>, AgentError>;
     async fn claim(&self, code: &str) -> Result<Claim, AgentError>;
     async fn heartbeat(
         &self,
@@ -330,7 +331,7 @@ impl Api for HttpApi {
         name: &str,
         labels: &[String],
         agent_id: Option<&str>,
-    ) -> Result<String, AgentError> {
+    ) -> Result<Option<String>, AgentError> {
         let response = self
             .client
             .post(self.url("api/v1/agents/register")?)
@@ -341,8 +342,11 @@ impl Api for HttpApi {
             })
             .send()
             .await?;
+        if response.status() == StatusCode::CONFLICT {
+            return Ok(None);
+        }
         let out: RegisterOut = accepted(response, StatusCode::CREATED)?.json().await?;
-        Ok(out.claim_code)
+        Ok(Some(out.claim_code))
     }
 
     async fn claim(&self, code: &str) -> Result<Claim, AgentError> {

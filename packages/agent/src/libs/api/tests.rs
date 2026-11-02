@@ -64,7 +64,25 @@ async fn register_sends_the_name_labels_and_known_id() {
         .await
         .unwrap();
 
-    assert_eq!(code, "delta");
+    assert_eq!(code.as_deref(), Some("delta"));
+}
+
+#[tokio::test]
+async fn a_known_id_gets_no_code() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/agents/register"))
+        .respond_with(ResponseTemplate::new(409))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let code = api(&server)
+        .register("alpha", &[], Some("gamma"))
+        .await
+        .unwrap();
+
+    assert_eq!(code, None);
 }
 
 #[tokio::test]

@@ -19,6 +19,7 @@ struct FakeApi {
     beats: Mutex<VecDeque<Signed<Lease>>>,
     refreshes: Mutex<VecDeque<Signed<Credential>>>,
     registered: Mutex<Vec<Option<String>>>,
+    known_ids: Mutex<Vec<String>>,
     signed_with: Mutex<Vec<String>>,
     desired: Mutex<VecDeque<Signed<Option<Vec<Desired>>>>>,
     moves: Mutex<VecDeque<Signed<Moved>>>,
@@ -32,12 +33,16 @@ impl Api for FakeApi {
         _name: &str,
         _labels: &[String],
         agent_id: Option<&str>,
-    ) -> Result<String, AgentError> {
+    ) -> Result<Option<String>, AgentError> {
         self.registered
             .lock()
             .unwrap()
             .push(agent_id.map(str::to_owned));
-        Ok("delta".into())
+        let known = self.known_ids.lock().unwrap();
+        if agent_id.is_some_and(|id| known.iter().any(|other| other == id)) {
+            return Ok(None);
+        }
+        Ok(Some("delta".into()))
     }
 
     async fn claim(&self, _code: &str) -> Result<Claim, AgentError> {
@@ -265,6 +270,28 @@ async fn a_refused_credential_registers_again_under_the_same_id() {
     let saved = StateStore::new(dir.path()).load().unwrap();
     assert_eq!(saved.agent_id.as_deref(), Some("gamma"));
     assert!(saved.credential.is_none());
+}
+
+#[tokio::test]
+async fn a_known_id_is_forgotten_and_the_agent_registers_as_a_new_one() {
+    let dir = tempfile::tempdir().unwrap();
+    let api = FakeApi::default();
+    api.beats.lock().unwrap().push_back(Signed::Refused);
+    api.known_ids.lock().unwrap().push("gamma".into());
+    let mut agent = agent(&dir, api, enrolled());
+
+    agent.cycle().await.unwrap();
+    assert_eq!(agent.cycle().await.unwrap(), Duration::ZERO);
+    assert_eq!(agent.cycle().await.unwrap(), CLAIM_POLL);
+
+    assert_eq!(
+        *agent.api.registered.lock().unwrap(),
+        vec![Some("gamma".to_owned()), None]
+    );
+    let saved = StateStore::new(dir.path()).load().unwrap();
+    assert!(saved.agent_id.is_none());
+    assert!(saved.credential.is_none());
+    assert_eq!(saved.claim_code.as_deref(), Some("delta"));
 }
 
 #[tokio::test]

@@ -29,6 +29,7 @@ const QGA_WAIT: Duration = Duration::from_secs(5);
 const MARKER_MAX: usize = 256;
 const OVERDUE: &str = "bootstrap timeout";
 const CONSOLE_RETRY: Duration = Duration::from_secs(5);
+const CAP_TICK: Duration = Duration::from_secs(1);
 
 type Full = Arc<Mutex<HashSet<String>>>;
 
@@ -67,6 +68,8 @@ pub struct QemuRuntime {
     tasks: HashMap<String, JoinHandle<()>>,
     kinds: HashMap<String, Kind>,
     consoles: HashMap<String, JoinHandle<()>>,
+    // By deployment id: the console limit the task cuts the log to, and the task.
+    caps: HashMap<String, (u64, JoinHandle<()>)>,
     // By check id: the deployment and the task; it stays while the API names the check.
     checks: HashMap<String, (String, JoinHandle<()>)>,
     full: Full,
@@ -100,6 +103,7 @@ impl QemuRuntime {
             tasks: HashMap::new(),
             kinds: HashMap::new(),
             consoles: HashMap::new(),
+            caps: HashMap::new(),
             checks: HashMap::new(),
             full: Full::default(),
             fence: None,
@@ -139,6 +143,7 @@ impl QemuRuntime {
                         .any(|vm| vm.alive && vm.dir == self.shared.root.join(&item.id))
             })
             .collect();
+        self.keep_caps(&wanted);
         self.consoles.retain(|id, task| {
             if wanted.iter().any(|item| &item.id == id) {
                 return !task.is_finished();
@@ -163,6 +168,29 @@ impl QemuRuntime {
             );
             self.consoles
                 .insert(item.id.clone(), tokio::spawn(work.instrument(span)));
+        }
+    }
+
+    // A cap runs apart from shipping: QEMU keeps writing while the API is away and after 4413.
+    fn keep_caps(&mut self, wanted: &[&Desired]) {
+        self.caps.retain(|id, (limit, task)| {
+            let kept = wanted
+                .iter()
+                .any(|item| &item.id == id && item.limits.console_bytes == *limit);
+            if !kept {
+                task.abort();
+            }
+            kept
+        });
+        for item in wanted {
+            if self.caps.contains_key(&item.id) {
+                continue;
+            }
+            let limit = item.limits.console_bytes;
+            let log = self.shared.root.join(&item.id).join(vm::CONSOLE_LOG);
+            let span = tracing::info_span!("deployment", deployment_id = %item.id);
+            let task = tokio::spawn(cap_console(log, limit).instrument(span));
+            self.caps.insert(item.id.clone(), (limit, task));
         }
     }
 
@@ -268,6 +296,7 @@ impl Runtime for QemuRuntime {
             .drain()
             .chain(self.consoles.drain())
             .map(|(_, task)| task)
+            .chain(self.caps.drain().map(|(_, (_, task))| task))
             .chain(self.checks.drain().map(|(_, (_, task))| task))
             .inspect(JoinHandle::abort)
             .collect();
@@ -321,6 +350,24 @@ async fn ship_console(shared: Arc<Shared>, auth: Auth, deployment_id: String, fu
             Err(err) => tracing::warn!(error = %err, "the console socket failed"),
         }
         sleep(CONSOLE_RETRY).await;
+    }
+}
+
+async fn cap_console(log: PathBuf, limit: u64) {
+    let mut warned = false;
+    loop {
+        match console::cap(&log, limit) {
+            Ok(true) if !warned => {
+                tracing::warn!(
+                    limit,
+                    "the console log passed its limit; it is cut back to it"
+                );
+                warned = true;
+            }
+            Ok(_) => {}
+            Err(err) => tracing::warn!(error = %err, "capping the console log failed"),
+        }
+        sleep(CAP_TICK).await;
     }
 }
 

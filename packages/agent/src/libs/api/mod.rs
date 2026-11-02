@@ -82,6 +82,22 @@ pub struct Timeouts {
     pub session_minutes: u64,
 }
 
+pub const CONSOLE_LIMIT: u64 = 64 * 1024 * 1024;
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Limits {
+    pub console_bytes: u64,
+}
+
+// What an API from before the limits were sent stands for.
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            console_bytes: CONSOLE_LIMIT,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Desired {
     pub id: String,
@@ -91,6 +107,8 @@ pub struct Desired {
     pub image: ImageRef,
     pub resources: Resources,
     pub timeouts: Timeouts,
+    #[serde(default)]
+    pub limits: Limits,
     #[serde(default)]
     pub check: Option<String>,
 }

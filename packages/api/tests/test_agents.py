@@ -280,7 +280,7 @@ def test_capacity_zero_assigns_nothing(session: Session) -> None:
     session.refresh(pinned)
     assert waiting.agent_id is None
     assert pinned.vm_id is None
-    assert agent.desired() == []
+    assert agent.desired(1024) == []
 
 
 def test_held_deployments_take_their_slots(session: Session) -> None:

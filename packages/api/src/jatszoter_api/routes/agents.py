@@ -102,6 +102,10 @@ class Timeouts(BaseModel):
     session_minutes: int
 
 
+class Limits(BaseModel):
+    console_bytes: int
+
+
 class DesiredOut(BaseModel):
     id: uuid.UUID
     vm_id: uuid.UUID
@@ -110,6 +114,7 @@ class DesiredOut(BaseModel):
     image: ImageRef
     resources: Resources
     timeouts: Timeouts
+    limits: Limits
     check: uuid.UUID | None
 
 
@@ -271,8 +276,9 @@ def refresh(agent: AgentDep, settings: SettingsDep) -> CredentialOut:
 
 
 @router.get("/{agent_id}/deployments")
-def desired(agent: LeasedDep) -> list[DesiredOut]:
-    return [DesiredOut.model_validate(entry) for entry in agent.desired()]
+def desired(agent: LeasedDep, settings: SettingsDep) -> list[DesiredOut]:
+    entries = agent.desired(settings.console_limit_bytes)
+    return [DesiredOut.model_validate(entry) for entry in entries]
 
 
 @router.post("/{agent_id}/deployments/{deployment_id}/transition")

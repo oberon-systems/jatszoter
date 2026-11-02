@@ -113,7 +113,7 @@ class Agent(SecretOwner, table=True):
         self._deployments = None
         return lease
 
-    def desired(self) -> list[dict[str, Any]]:
+    def desired(self, console_bytes: int) -> list[dict[str, Any]]:
         """What the agent should run: every deployment it holds, with what its VM needs."""
         return [
             {
@@ -136,6 +136,7 @@ class Agent(SecretOwner, table=True):
                     "check_seconds": row.check_seconds,
                     "session_minutes": row.session_minutes,
                 },
+                "limits": {"console_bytes": console_bytes},
                 "check": None if row.pending is None else row.pending.id,
             }
             for row in self.deployments

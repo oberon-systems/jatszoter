@@ -6,7 +6,8 @@ use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
 use super::{
     mac, sign, Api, CheckResult, CheckStatus, Claim, Desired, Event, HttpApi, ImageRef, Lease,
-    Moved, Posted, Resources, ScenarioRef, Script, Seed, Signed, Status, Timeouts,
+    Limits, Moved, Posted, Resources, ScenarioRef, Script, Seed, Signed, Status, Timeouts,
+    CONSOLE_LIMIT,
 };
 use crate::libs::error::AgentError;
 use crate::libs::state::Credential;
@@ -259,6 +260,7 @@ fn desired() -> Desired {
             check_seconds: 60,
             session_minutes: 90,
         },
+        limits: Limits::default(),
         check: None,
     }
 }
@@ -302,6 +304,28 @@ async fn a_desired_state_with_every_field_parses() {
         .unwrap();
 
     assert_eq!(state, Signed::Accepted(Some(vec![desired()])));
+}
+
+#[test]
+fn a_desired_deployment_takes_the_console_limit_the_api_sends() {
+    let mut entry = desired_json();
+    entry["limits"] = json!({"console_bytes": 4096});
+
+    let item: Desired = serde_json::from_value(entry).unwrap();
+
+    assert_eq!(
+        item.limits,
+        Limits {
+            console_bytes: 4096
+        }
+    );
+}
+
+#[test]
+fn a_desired_deployment_without_limits_gets_the_default_console_limit() {
+    let item: Desired = serde_json::from_value(desired_json()).unwrap();
+
+    assert_eq!(item.limits.console_bytes, CONSOLE_LIMIT);
 }
 
 #[tokio::test]

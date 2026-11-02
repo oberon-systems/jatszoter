@@ -21,7 +21,7 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{accept_async, accept_hdr_async, WebSocketStream};
 use url::Url;
 
-use super::{read_at, ship, CHUNK};
+use super::{cap, read_at, ship, CHUNK};
 use crate::libs::agent::{Auth, Signer};
 use crate::libs::api::sign;
 use crate::libs::error::AgentError;
@@ -525,4 +525,34 @@ fn read_at_past_the_end_and_on_a_missing_file_reads_nothing() {
         read_at(&dir.path().join("missing.log"), 0, &mut buffer).unwrap(),
         0
     );
+}
+
+#[test]
+fn cap_leaves_a_missing_file_and_one_within_the_limit_alone() {
+    let (dir, path) = log(b"login: ");
+
+    assert!(!cap(&dir.path().join("missing.log"), 4).unwrap());
+    assert!(!cap(&path, 7).unwrap());
+    assert!(!dir.path().join("missing.log").exists());
+    assert_eq!(fs::read(&path).unwrap(), b"login: ");
+}
+
+#[test]
+fn cap_cuts_a_longer_file_to_the_limit() {
+    let (_dir, path) = log(b"login: alpha");
+
+    assert!(cap(&path, 7).unwrap());
+    assert_eq!(fs::read(&path).unwrap(), b"login: ");
+}
+
+#[test]
+fn a_writer_in_append_mode_goes_on_at_the_cut() {
+    let (_dir, path) = log(b"");
+    let mut writer = OpenOptions::new().append(true).open(&path).unwrap();
+    writer.write_all(b"login: alpha").unwrap();
+
+    cap(&path, 7).unwrap();
+    writer.write_all(b"beta").unwrap();
+
+    assert_eq!(fs::read(&path).unwrap(), b"login: beta");
 }

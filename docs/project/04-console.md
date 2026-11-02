@@ -70,6 +70,10 @@ The API keeps two copies of a deployment's console.
   `JATSZOTER_CONSOLE_LIMIT_BYTES` (64 MiB by default): the API closes the
   agent's socket with code 4413 and the agent ships nothing more for that
   deployment.
+- The API sends that limit with every deployment it hands an agent, as
+  `limits.console_bytes`. Nothing past it can ever be shipped, so the agent
+  cuts `console.log` on its host back to the limit every second, also after
+  4413 and while the API is away.
 - Where the API holds the log is the end of the tail, or the full log's size
   when Valkey lost the tail, so an API restart never duplicates bytes in the
   full log.

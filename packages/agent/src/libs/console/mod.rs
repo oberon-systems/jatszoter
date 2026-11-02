@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{self, ErrorKind, Read, Seek, SeekFrom};
 use std::ops::RangeInclusive;
 use std::path::Path;
@@ -144,6 +144,19 @@ pub fn read_at(path: &Path, offset: u64, buf: &mut [u8]) -> io::Result<usize> {
     };
     file.seek(SeekFrom::Start(offset))?;
     file.read(buf)
+}
+
+/// Cuts the log back to `limit`; `true` when it was longer. A missing file is left alone.
+pub fn cap(path: &Path, limit: u64) -> io::Result<bool> {
+    let file = match OpenOptions::new().write(true).open(path) {
+        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(false),
+        other => other?,
+    };
+    if file.metadata()?.len() <= limit {
+        return Ok(false);
+    }
+    file.set_len(limit)?;
+    Ok(true)
 }
 
 fn request(url: &Url, signer: &Signer, deployment_id: &str) -> Result<Request, AgentError> {

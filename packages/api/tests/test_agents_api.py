@@ -333,7 +333,7 @@ def move(agent: Enrolled, deployment_id: str, **body: Any) -> Response:
 
 
 def test_the_desired_state_carries_the_image_of_the_deployment(
-    client: TestClient, session: Session, scenario: Scenario
+    client: TestClient, session: Session, settings: Settings, scenario: Scenario
 ) -> None:
     agent = enroll(client, session)
     image = Image(session=session, name="debian-13", url="https://example.com/b", digest="c" * 64)
@@ -356,8 +356,21 @@ def test_the_desired_state_carries_the_image_of_the_deployment(
         "image": {"name": "debian-13", "url": "https://example.com/b", "digest": "c" * 64},
         "resources": {"cpus": 2, "memory_mib": 2048, "disk_gib": 8},
         "timeouts": {"bootstrap_seconds": 600, "check_seconds": 30, "session_minutes": 45},
+        "limits": {"console_bytes": settings.console_limit_bytes},
         "check": None,
     }
+
+
+def test_the_desired_state_carries_the_console_limit_of_the_settings(
+    session: Session, settings: Settings, scenario: Scenario
+) -> None:
+    small = settings.model_copy(update={"console_limit_bytes": 4096})
+
+    with TestClient(create_app(small)) as client:
+        agent, _ = held(client, session, scenario)
+        [entry] = agent.call("GET", "/deployments").json()
+
+    assert entry["limits"] == {"console_bytes": 4096}
 
 
 def test_an_agent_assigns_then_fails_its_deployment(

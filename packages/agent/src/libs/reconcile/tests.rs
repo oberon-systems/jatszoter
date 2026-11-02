@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::slice;
 
 use super::{plan, Action};
-use crate::libs::api::{Desired, ImageRef, Resources, ScenarioRef, Status, Timeouts};
+use crate::libs::api::{Desired, ImageRef, Limits, Resources, ScenarioRef, Status, Timeouts};
 use crate::libs::vm::{OnDisk, Record};
 
 fn desired(id: &str, status: Status) -> Desired {
@@ -31,6 +31,7 @@ fn desired(id: &str, status: Status) -> Desired {
             check_seconds: 30,
             session_minutes: 60,
         },
+        limits: Limits::default(),
         check: None,
     }
 }

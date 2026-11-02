@@ -4,15 +4,19 @@ use std::sync::Arc;
 use tempfile::TempDir;
 use tokio::sync::oneshot::{self, error::TryRecvError};
 use tokio::sync::RwLock;
+use tokio::time::{sleep, timeout, Duration};
 use url::Url;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::{Kind, QemuRuntime};
 use crate::libs::agent::{Auth, Runtime, Signer};
-use crate::libs::api::{Desired, HttpApi, ImageRef, Resources, ScenarioRef, Status, Timeouts};
+use crate::libs::api::{
+    Desired, HttpApi, ImageRef, Limits, Resources, ScenarioRef, Status, Timeouts,
+};
 use crate::libs::config::Config;
 use crate::libs::state::Credential;
+use crate::libs::vm::{self, OnDisk};
 
 fn runtime(dir: &TempDir) -> QemuRuntime {
     runtime_at(dir, "https://api.example.com/")
@@ -64,6 +68,7 @@ fn stopping(id: &str) -> Desired {
             check_seconds: 30,
             session_minutes: 60,
         },
+        limits: Limits::default(),
         check: None,
     }
 }
@@ -156,12 +161,50 @@ async fn fencing_empties_the_consoles() {
         std::future::pending::<()>().await;
     });
     runtime.consoles.insert("alpha".into(), task);
+    let cap = tokio::spawn(std::future::pending::<()>());
+    runtime.caps.insert("alpha".into(), (4, cap));
 
     runtime.destroy_all().unwrap();
     runtime.fence.take().unwrap().await.unwrap();
 
     assert!(runtime.consoles.is_empty());
+    assert!(runtime.caps.is_empty());
     assert_eq!(released.try_recv(), Err(TryRecvError::Closed));
+}
+
+#[tokio::test]
+async fn a_live_vm_has_its_console_log_cut_to_the_limit_until_it_is_no_longer_wanted() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut runtime = runtime(&dir);
+    let vm_dir = dir.path().join("vms").join("alpha");
+    fs::create_dir_all(&vm_dir).unwrap();
+    let log = vm_dir.join(vm::CONSOLE_LOG);
+    fs::write(&log, b"login: alpha").unwrap();
+    let item = Desired {
+        status: Status::Ready,
+        limits: Limits { console_bytes: 7 },
+        ..stopping("alpha")
+    };
+    let on_disk = [OnDisk {
+        dir: vm_dir.clone(),
+        record: None,
+        alive: true,
+    }];
+    let auth: Auth = Arc::new(RwLock::new(None));
+
+    runtime.keep_consoles(&auth, std::slice::from_ref(&item), &on_disk);
+    let cut = timeout(Duration::from_secs(5), async {
+        while fs::metadata(&log).unwrap().len() != 7 {
+            sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await;
+
+    assert!(cut.is_ok());
+    assert_eq!(fs::read(&log).unwrap(), b"login: ");
+    assert_eq!(runtime.caps.get("alpha").map(|(limit, _)| *limit), Some(7));
+    runtime.keep_consoles(&auth, &[], &on_disk);
+    assert!(runtime.caps.is_empty());
 }
 
 #[tokio::test]

@@ -192,6 +192,7 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
   image      name, url, digest
   resources  cpus, memory_mib, disk_gib
   timeouts   bootstrap_seconds, check_seconds, session_minutes
+  limits     console_bytes
   check      the id of the pending check, or null
   ```
 

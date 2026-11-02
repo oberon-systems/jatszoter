@@ -71,6 +71,7 @@ up() {
         JATSZOTER_MASTER_KEYS="{\"dev\": \"$(secret 'token_hex(32)')\"}" \
         JATSZOTER_MASTER_KID=dev \
         JATSZOTER_AUTO_REGISTER_AGENTS="$auto_register" \
+        JATSZOTER_SCENARIO_FETCH_INTERNAL_CIDRS=127.0.0.1/32 \
         start api "$MAKE" -C "$state" -f "$ROOT/Makefile" VENV="$VENV" run-api
 
     JATSZOTER_WEB_API_URL="$api" \

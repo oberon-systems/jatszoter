@@ -499,6 +499,7 @@ master="$("$VENV/bin/python" -c "import secrets; print(secrets.token_hex(32), en
         JATSZOTER_MASTER_KEYS="{\"smoke\": \"$master\"}" \
         JATSZOTER_MASTER_KID=smoke \
         JATSZOTER_AUTO_REGISTER_AGENTS=true \
+        JATSZOTER_SCENARIO_FETCH_INTERNAL_CIDRS=127.0.0.1/32 \
         exec setsid "$MAKE" -f "$ROOT/Makefile" VENV="$VENV" run-api >"$TEMP_DIR/api.log" 2>&1
 ) &
 server=$!

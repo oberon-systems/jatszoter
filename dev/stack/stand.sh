@@ -81,6 +81,7 @@ up() {
     JATSZOTER_AGENT_API_URL="$api" \
         JATSZOTER_AGENT_NAME=alpha \
         JATSZOTER_AGENT_STATE_DIR="$state/agent" \
+        JATSZOTER_AGENT_IMAGE_INTERNAL_CIDRS=127.0.0.1/32 \
         RUST_LOG=jatszoter_agent=info \
         start agent cargo run -q --manifest-path "$ROOT/Cargo.toml" -p jatszoter-agent
 

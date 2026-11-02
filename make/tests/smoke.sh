@@ -521,6 +521,7 @@ echo "starting agent..."
 JATSZOTER_AGENT_API_URL="$api" \
     JATSZOTER_AGENT_NAME=alpha \
     JATSZOTER_AGENT_STATE_DIR="$TEMP_DIR/agent" \
+    JATSZOTER_AGENT_IMAGE_INTERNAL_CIDRS=127.0.0.1/32 \
     RUST_LOG=jatszoter_agent=debug \
     setsid cargo run -q -p jatszoter-agent >>"$TEMP_DIR/agent.log" 2>&1 &
 agent=$!

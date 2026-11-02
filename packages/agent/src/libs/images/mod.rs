@@ -114,6 +114,7 @@ fn download_error(digest: &str, err: reqwest::Error) -> AgentError {
 pub struct ImageCache {
     dir: PathBuf,
     limit: u64,
+    deadline: Duration,
     client: Client,
     rule: AddressRule,
     locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
@@ -123,6 +124,7 @@ impl ImageCache {
     pub fn new(
         dir: &Path,
         limit_bytes: u64,
+        deadline: Duration,
         internal_cidrs: &[IpNet],
         use_proxy: bool,
     ) -> Result<Self, AgentError> {
@@ -164,6 +166,7 @@ impl ImageCache {
         Ok(Self {
             dir: dir.to_owned(),
             limit: limit_bytes,
+            deadline,
             client: builder.build()?,
             rule,
             locks: Mutex::default(),
@@ -197,8 +200,12 @@ impl ImageCache {
         {
             return Ok(path);
         }
-        self.download(url, digest, &path)
+        let deadline = self.deadline;
+        tokio::time::timeout(deadline, self.download(url, digest, &path))
             .await
+            .map_err(|_| {
+                AgentError::Image(format!("{digest}: download took longer than {deadline:?}"))
+            })?
             .map_err(|err| match err {
                 AgentError::Image(_) => err,
                 other => AgentError::Image(format!("{digest}: {other}")),

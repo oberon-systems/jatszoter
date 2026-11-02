@@ -9,6 +9,7 @@ use ipnet::IpNet;
 use reqwest::dns::Resolve;
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use url::Url;
 use wiremock::matchers::{any, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -17,6 +18,7 @@ use super::{is_public, AddressRule, ImageCache, ADDRESS_REFUSED};
 use crate::libs::error::AgentError;
 
 const BODY: &[u8] = b"alpha base image";
+const DEADLINE: Duration = Duration::from_secs(30);
 
 fn nets(cidrs: &[&str]) -> Vec<IpNet> {
     cidrs.iter().map(|cidr| cidr.parse().unwrap()).collect()
@@ -42,8 +44,19 @@ fn images(dir: &TempDir) -> PathBuf {
     dir.path().join("images")
 }
 
+fn cache_within(dir: &TempDir, limit: u64, deadline: Duration) -> ImageCache {
+    ImageCache::new(
+        &images(dir),
+        limit,
+        deadline,
+        &nets(&["127.0.0.1/32"]),
+        false,
+    )
+    .unwrap()
+}
+
 fn cache(dir: &TempDir, limit: u64) -> ImageCache {
-    ImageCache::new(&images(dir), limit, &nets(&["127.0.0.1/32"]), false).unwrap()
+    cache_within(dir, limit, DEADLINE)
 }
 
 fn url(server: &MockServer) -> Url {
@@ -152,6 +165,38 @@ async fn a_body_over_the_limit_leaves_no_file() {
 }
 
 #[tokio::test]
+async fn a_trickling_server_is_cut_off_at_the_deadline() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut request = [0; 1024];
+        assert!(stream.read(&mut request).await.unwrap() > 0);
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 1000000\r\n\r\n")
+            .await
+            .unwrap();
+        for _ in 0..1000 {
+            if stream.write_all(b"a").await.is_err() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    });
+    let dir = TempDir::new().unwrap();
+    let slow = Url::parse(&format!("http://{address}/base.qcow2")).unwrap();
+
+    let err = cache_within(&dir, 1 << 20, Duration::from_millis(200))
+        .ensure(&slow, &digest(BODY))
+        .await
+        .unwrap_err();
+
+    server.abort();
+    assert!(err.to_string().contains("took longer than"), "{err}");
+    assert!(names(&images(&dir)).is_empty());
+}
+
+#[tokio::test]
 async fn plain_http_off_loopback_is_refused() {
     let dir = TempDir::new().unwrap();
     let remote = Url::parse("http://192.0.2.1/base.qcow2").unwrap();
@@ -215,7 +260,7 @@ async fn a_first_url_outside_the_rule_makes_no_request() {
     let server = MockServer::start().await;
     serve(&server, ResponseTemplate::new(200).set_body_bytes(BODY), 0).await;
     let dir = TempDir::new().unwrap();
-    let strict = ImageCache::new(&images(&dir), 1024, &[], false).unwrap();
+    let strict = ImageCache::new(&images(&dir), 1024, DEADLINE, &[], false).unwrap();
 
     let err = strict
         .ensure(&url(&server), &digest(BODY))

@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::time::Duration;
 
 use super::{parse_api_url, parse_cidrs, parse_labels, parse_name, Config, RawConfig};
 
@@ -97,6 +98,31 @@ fn the_image_download_is_strict_by_default() {
 
     assert!(config.image_internal_cidrs.is_empty());
     assert!(!config.image_use_proxy);
+}
+
+#[test]
+fn the_image_download_deadline_is_bounded() {
+    let parse = |minutes| {
+        Config::parse(
+            RawConfig {
+                image_download_minutes: minutes,
+                ..raw()
+            },
+            None,
+            Some("/home/alpha".into()),
+        )
+    };
+
+    assert_eq!(
+        parse(None).unwrap().image_download_deadline,
+        Duration::from_secs(3600)
+    );
+    assert_eq!(
+        parse(Some(5)).unwrap().image_download_deadline,
+        Duration::from_secs(300)
+    );
+    assert!(parse(Some(0)).is_err());
+    assert!(parse(Some(1441)).is_err());
 }
 
 #[test]

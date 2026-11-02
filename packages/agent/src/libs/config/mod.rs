@@ -1,6 +1,7 @@
 use std::fs::{self, DirBuilder};
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use ipnet::IpNet;
 use serde::Deserialize;
@@ -14,6 +15,8 @@ const MAX_LABELS: usize = 16;
 const MAX_LABEL: usize = 32;
 const DEFAULT_IMAGE_LIMIT_GIB: u32 = 20;
 const MAX_IMAGE_LIMIT_GIB: u32 = 512;
+const DEFAULT_IMAGE_DOWNLOAD_MINUTES: u32 = 60;
+const MAX_IMAGE_DOWNLOAD_MINUTES: u32 = 1440;
 const GIB: u64 = 1 << 30;
 const DEFAULT_QEMU: &str = "qemu-system-x86_64";
 const DEFAULT_QEMU_IMG: &str = "qemu-img";
@@ -32,6 +35,7 @@ pub struct Config {
     pub capacity: u32,
     pub state_dir: PathBuf,
     pub image_limit_bytes: u64,
+    pub image_download_deadline: Duration,
     pub image_internal_cidrs: Vec<IpNet>,
     pub image_use_proxy: bool,
     pub qemu: PathBuf,
@@ -51,6 +55,7 @@ pub struct RawConfig {
     pub capacity: Option<u32>,
     pub state_dir: Option<PathBuf>,
     pub image_limit_gib: Option<u32>,
+    pub image_download_minutes: Option<u32>,
     pub image_internal_cidrs: Option<String>,
     pub image_use_proxy: Option<bool>,
     pub qemu: Option<PathBuf>,
@@ -107,6 +112,9 @@ impl Config {
         let image_limit_gib = raw
             .image_limit_gib
             .map_or(Ok(DEFAULT_IMAGE_LIMIT_GIB), check_image_limit)?;
+        let image_download_minutes = raw
+            .image_download_minutes
+            .map_or(Ok(DEFAULT_IMAGE_DOWNLOAD_MINUTES), check_image_download)?;
         Ok(Self {
             api_url: parse_api_url(&raw.api_url)?,
             name: parse_name(&raw.name)?,
@@ -114,6 +122,7 @@ impl Config {
             capacity: raw.capacity.map_or(Ok(DEFAULT_CAPACITY), check_capacity)?,
             state_dir,
             image_limit_bytes: u64::from(image_limit_gib) * GIB,
+            image_download_deadline: Duration::from_secs(u64::from(image_download_minutes) * 60),
             image_internal_cidrs: raw
                 .image_internal_cidrs
                 .as_deref()
@@ -283,6 +292,16 @@ fn check_image_limit(gib: u32) -> Result<u32, AgentError> {
     } else {
         Err(AgentError::Config(format!(
             "{PREFIX}IMAGE_LIMIT_GIB must be an integer in 1..={MAX_IMAGE_LIMIT_GIB}"
+        )))
+    }
+}
+
+fn check_image_download(minutes: u32) -> Result<u32, AgentError> {
+    if (1..=MAX_IMAGE_DOWNLOAD_MINUTES).contains(&minutes) {
+        Ok(minutes)
+    } else {
+        Err(AgentError::Config(format!(
+            "{PREFIX}IMAGE_DOWNLOAD_MINUTES must be an integer in 1..={MAX_IMAGE_DOWNLOAD_MINUTES}"
         )))
     }
 }

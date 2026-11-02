@@ -25,7 +25,11 @@ jobs:
         with:
           python-version: '3.15'
       - name: Install
-        run: pip install ./packages/api httpx pytest
+        run: |
+          pip install --require-hashes --only-binary :all: -r packages/api/requirements-build.txt
+          pip install --require-hashes --only-binary :all: --no-binary pyyaml --no-build-isolation -r packages/api/requirements.txt
+          pip install --no-deps --no-build-isolation ./packages/api
+          pip install "$(grep '^pytest==' requirements.txt)"
       - name: Test
         run: pytest -q packages/api
 
@@ -58,7 +62,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
       - name: Build
-        run: uv build --out-dir dist packages/api
+        run: uv build --out-dir dist --build-constraints packages/api/requirements-build.txt --require-hashes packages/api
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2
 
   image:

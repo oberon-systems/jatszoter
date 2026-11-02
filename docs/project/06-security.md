@@ -102,8 +102,9 @@ operator has not taken control.
 
 - The guest is not a security boundary. A trainee has root in the VM, and a
   QEMU escape is out of scope.
-- QEMU runs as the agent's unprivileged user with KVM; VM directories and
-  sockets are 0700.
+- QEMU runs as the agent's unprivileged user with KVM. VM directories are
+  0700, which keeps everyone but that user away from the sockets, logs and
+  disks inside them, whatever modes those files have.
 - passt gives the guest outbound NAT and nothing inbound. It runs with
   `--no-map-gw`, so the gateway does not lead to the agent host's loopback:
   services bound to `127.0.0.1` are out of the guest's reach. QEMU's own

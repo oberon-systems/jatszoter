@@ -28,9 +28,11 @@ properties:
   tags:
     type: array
     uniqueItems: true
+    maxItems: 16
     items:
       type: string
       pattern: ^[a-z0-9-]+$
+      maxLength: 32
   image:
     description: Name of an image registered in the API.
     type: string
@@ -84,8 +86,10 @@ properties:
     description: Installed by cloud-init before the steps run.
     type: array
     uniqueItems: true
+    maxItems: 64
     items:
       type: string
+      maxLength: 128
 
   steps:
     description: Scripts run as root in this order, then removed from the VM.
@@ -106,9 +110,11 @@ properties:
 
   hints:
     type: array
+    maxItems: 32
     items:
       type: string
       minLength: 1
+      maxLength: 1000
 
 $defs:
   file:

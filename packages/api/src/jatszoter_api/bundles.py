@@ -14,6 +14,7 @@ from jsonschema.exceptions import best_match
 from jatszoter_api.errors import InvalidBundleError, TooLargeError
 
 DOCUMENT = "scenario.yaml"
+DOCUMENT_LIMIT = 64 * 1024
 # Room for the tar headers and for scripts that compress well.
 UNPACKED_FACTOR = 4
 
@@ -25,6 +26,15 @@ class Bundle:
     document: dict[str, Any]
     digest: str
     files: dict[str, bytes]
+
+
+class _NoAliases(yaml.SafeLoader):
+    """A loader without aliases: a few of them expand into gigabytes, and a scenario needs none."""
+
+    def compose_node(self, parent: Any, index: Any) -> Any:
+        if self.check_event(yaml.AliasEvent):
+            raise InvalidBundleError(f"{DOCUMENT} uses a YAML alias; write the value out")
+        return super().compose_node(parent, index)
 
 
 @functools.cache
@@ -60,6 +70,7 @@ def _members(raw: bytes) -> tuple[dict[tuple[str, ...], bytes], set[tuple[str, .
     """Regular files by their path parts, and the directories; anything else is refused."""
     files: dict[tuple[str, ...], bytes] = {}
     directories: set[tuple[str, ...]] = set()
+    room = len(raw)
     try:
         with tarfile.open(fileobj=io.BytesIO(raw), mode="r:") as tar:
             for member in tar:
@@ -72,6 +83,12 @@ def _members(raw: bytes) -> tuple[dict[tuple[str, ...], bytes], set[tuple[str, .
                     raise InvalidBundleError(f"member {member.name!r} is not a regular file")
                 if not parts or parts in files:
                     raise InvalidBundleError(f"member {member.name!r} is repeated or unnamed")
+                # tarfile fills the holes of a sparse member with NUL up to the size in its header.
+                if member.issparse():
+                    raise InvalidBundleError(f"member {member.name!r} is a sparse file")
+                if not 0 <= member.size <= room:
+                    raise InvalidBundleError(f"member {member.name!r} declares more than is left")
+                room -= member.size
                 content = tar.extractfile(member)
                 files[parts] = content.read() if content is not None else b""
     except tarfile.TarError:
@@ -91,6 +108,16 @@ def _layout(
     if len(tops) != 1:
         raise InvalidBundleError("the bundle holds more than one top directory or no files")
     return tops.pop(), {"/".join(parts[1:]): content for parts, content in files.items()}
+
+
+def _loaded(content: bytes) -> Any:
+    if len(content) > DOCUMENT_LIMIT:
+        raise TooLargeError(f"{DOCUMENT} is larger than {DOCUMENT_LIMIT} bytes")
+    try:
+        return _NoAliases(content).get_single_data()
+    # The constructors raise ValueError on a bad date or a huge integer, and deep nesting recurses.
+    except (yaml.YAMLError, RecursionError, ValueError):
+        raise InvalidBundleError(f"{DOCUMENT} is not valid YAML") from None
 
 
 def _named(document: dict[str, Any]) -> list[tuple[str, str]]:
@@ -115,13 +142,11 @@ def read(data: bytes, limit: int) -> Bundle:
     top, files = _layout(*_members(_unpacked(data, UNPACKED_FACTOR * limit)))
     if DOCUMENT not in files:
         raise InvalidBundleError(f"the bundle has no {DOCUMENT}")
-    try:
-        document = yaml.safe_load(files[DOCUMENT])
-    except yaml.YAMLError:
-        raise InvalidBundleError(f"{DOCUMENT} is not valid YAML") from None
+    document = _loaded(files[DOCUMENT])
     error = best_match(_validator().iter_errors(document))
     if error is not None:
-        raise InvalidBundleError(f"{DOCUMENT} at {error.json_path}: {error.message}")
+        rule = f"{error.validator} {error.validator_value}"
+        raise InvalidBundleError(f"{DOCUMENT} at {error.json_path}: {rule}")
     if top is not None and top != document["id"]:
         raise InvalidBundleError(f"the top directory {top!r} is not named like the id")
     for field, name in _named(document):

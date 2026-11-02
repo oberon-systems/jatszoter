@@ -69,7 +69,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     Cached.connect(None if settings.valkey_dsn is None else str(settings.valkey_dsn))
     # The same filter instance every time, so a second app adds nothing.
     logging.getLogger("uvicorn.access").addFilter(_REDACT_LINKS)
-    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, redirect_slashes=False)
     app.state.settings = settings
     app.state.engine = create_engine(dsn)
     app.state.console_hub = ConsoleHub(settings.console_viewer_buffer_bytes)

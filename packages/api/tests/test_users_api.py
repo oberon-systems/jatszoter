@@ -168,6 +168,21 @@ def test_a_one_time_password_must_be_changed_at_the_next_login(
     assert login(api, "beta", "One time password", new_password="Staple of the paddock").is_success
 
 
+def test_a_reset_ends_the_credentials_the_user_already_holds(
+    operator: Any, sign_in: Callable[..., Any]
+) -> None:
+    viewer = sign_in(name="beta", role=Role.VIEWER)
+    user_id = viewer.request("GET", "/api/v1/auth/me").json()["id"]
+
+    response = operator.request(
+        "POST", f"{USERS}/{user_id}/password", json={"password": "One time password"}
+    )
+
+    assert response.status_code == 204
+    assert viewer.request("GET", "/api/v1/auth/me").status_code == 401
+    assert viewer.request("POST", "/api/v1/auth/credential").status_code == 401
+
+
 @pytest.mark.parametrize(
     "body",
     [

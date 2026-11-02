@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 from sqlmodel import Session
 
+from jatszoter_api.errors import InvalidPasswordError
 from jatszoter_api.models import Agent, Credential, Role, State, User
 from jatszoter_api.models.secret import REFRESH_BEFORE_SECONDS, SIGNATURE_WINDOW_SECONDS
 
@@ -194,6 +195,34 @@ def test_logout_ends_every_credential_issued_so_far(session: Session) -> None:
     fresh, _ = user.issue(3600, KID, KEYS)
     assert signed(user, fresh)
     assert not signed(user, live)
+
+
+def test_a_password_reset_ends_every_credential_issued_so_far(session: Session) -> None:
+    user = User(session=session, name="beta", role=Role.OPERATOR, state=State.ENABLED)
+    user.save()
+    live, _ = user.issue(3600, KID, KEYS)
+    pending, _ = user.issue(3600, KID, KEYS)
+    assert user.secret.generation == live.generation
+
+    user.reset_password("One time password")
+
+    assert user.secret.generation == pending.generation + 1
+    assert user.secret.pending_generation is None
+    assert not signed(user, live)
+    assert not signed(user, pending)
+    fresh, _ = user.issue(3600, KID, KEYS)
+    assert signed(user, fresh)
+
+
+def test_a_weak_password_reset_leaves_the_credentials_alone(session: Session) -> None:
+    user = User(session=session, name="beta", role=Role.OPERATOR, state=State.ENABLED)
+    user.save()
+    live, _ = user.issue(3600, KID, KEYS)
+
+    with pytest.raises(InvalidPasswordError):
+        user.reset_password("short")
+
+    assert signed(user, live)
 
 
 def test_a_credential_has_no_key_without_its_master_key(session: Session) -> None:

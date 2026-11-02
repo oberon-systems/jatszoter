@@ -106,12 +106,16 @@ class User(SecretOwner, table=True):
             raise NotAuthorizedError("not authorized")
         Cached._delete(self, key)
 
-    def logout(self) -> None:
-        """End every credential issued to this user so far."""
+    def _end_credentials(self) -> None:
+        """Move past every generation issued so far; `save` stores it, then the cache must go."""
         secret = self.stored_secret
         secret.generation = max(secret.generation, secret.pending_generation or 0) + 1
         secret.pending_generation = None
-        secret.save()
+
+    def logout(self) -> None:
+        """End every credential issued to this user so far."""
+        self._end_credentials()
+        self.stored_secret.save()
         self._delete("secret")
 
     def check_password(self, plain: str) -> bool:
@@ -132,12 +136,14 @@ class User(SecretOwner, table=True):
         return self
 
     def reset_password(self, password: str) -> None:
-        """Set a one-time password, which the next login must change."""
+        """Set a one-time password, which the next login must change, and end every credential."""
         if weak(password):
             raise InvalidPasswordError(WEAK)
         self.password = _hashed(password)
         self.password_changed = 0
+        self._end_credentials()
         self.save()
+        self._delete("secret")
 
     def change_password(self, old: str, new: str) -> None:
         """Replace the password and mark it changed, refusing a weak or unchanged one."""

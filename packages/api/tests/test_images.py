@@ -41,7 +41,7 @@ def test_an_unknown_image_does_not_load(session: Session) -> None:
 
 def test_an_operator_registers_and_lists_images(operator: Any) -> None:
     created = operator.request("POST", IMAGES, json=body())
-    other = operator.request("POST", IMAGES, json=body(name="beta", url="http://192.0.2.1/b"))
+    other = operator.request("POST", IMAGES, json=body(name="beta", url="https://192.0.2.1/b"))
     listed = operator.request("GET", IMAGES)
 
     assert created.status_code == 201
@@ -67,6 +67,7 @@ def test_a_registered_name_conflicts(operator: Any, change: dict[str, str]) -> N
         {"name": "-alpha"},
         {"url": "ftp://example.com/alpha.qcow2"},
         {"url": "file:///srv/alpha.qcow2"},
+        {"url": "http://192.0.2.10/x.qcow2"},
         {"url": "alpha"},
         {"digest": "A" * 64},
         {"digest": "a" * 63},
@@ -76,6 +77,12 @@ def test_a_bad_name_url_or_digest_is_unprocessable(operator: Any, change: dict[s
     response = operator.request("POST", IMAGES, json=body(**change))
 
     assert response.status_code == 422
+
+
+def test_plain_http_to_loopback_is_registered(operator: Any) -> None:
+    response = operator.request("POST", IMAGES, json=body(url="http://127.0.0.1:8081/x.qcow2"))
+
+    assert response.status_code == 201
 
 
 def test_only_an_operator_reaches_images(sign_in: Callable[..., Any], api: Any) -> None:

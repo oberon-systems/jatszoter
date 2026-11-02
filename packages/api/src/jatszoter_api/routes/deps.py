@@ -93,11 +93,6 @@ def _parsed(url: str) -> httpx.URL:
     return parsed
 
 
-def _web(url: str) -> str:
-    _parsed(url)
-    return url
-
-
 def _fetchable(url: str) -> str:
     """`https`, or `http` to a loopback address: the only URLs the API fetches itself."""
     parsed = _parsed(url)
@@ -111,5 +106,6 @@ def _fetchable(url: str) -> str:
     raise ValueError("only https, or http to a loopback address")
 
 
-WebUrl = Annotated[str, Field(max_length=2048), AfterValidator(_web)]
+# The agent fetches an image from its own network, so only the agent can check the address.
+ImageUrl = Annotated[str, Field(max_length=2048), AfterValidator(_fetchable)]
 FetchUrl = Annotated[str, Field(max_length=2048), AfterValidator(_fetchable)]

@@ -7,12 +7,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from jatszoter_api.auth import require_operator
 from jatszoter_api.models import Image
 from jatszoter_api.routes.agents import StrictModel
-from jatszoter_api.routes.deps import SessionDep, WebUrl
+from jatszoter_api.routes.deps import ImageUrl, SessionDep
 
 
 class ImageIn(StrictModel):
     name: Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9.-]{0,63}$")]
-    url: WebUrl
+    url: ImageUrl
     digest: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 
 

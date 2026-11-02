@@ -12,6 +12,7 @@ operator has not taken control.
 - [Image downloads](#image-downloads)
 - [Bundle downloads](#bundle-downloads)
 - [Request bodies](#request-bodies)
+- [Images](#images)
 - [Scenario secrecy](#scenario-secrecy)
 - [Web](#web)
 - [Acceptance criteria](#acceptance-criteria)
@@ -192,6 +193,23 @@ body is cut at the same limit.
 
 No stand needs a reverse proxy. A deployment that adds one should set the
 same limits there.
+
+## Images
+
+The API and web images install what was reviewed, not what PyPI serves at
+build time.
+
+- Dependencies: `packages/{api,web}/requirements.txt` holds every version
+  with its hashes, and the build refuses anything else. `make lock` rewrites
+  it from `requirements.in`, and `LOCK_ARGS=--upgrade` moves the versions.
+- Wheels only, with one exception: PyYAML has no wheel for Python 3.15 yet,
+  so it builds from its hash-checked source with the locked setuptools.
+- Build backend: `requirements-build.txt` pins setuptools for the image and
+  for the published wheels.
+- Base image: named by digest.
+- Updates: Dependabot proposes them after a 14-day cooldown.
+- Drift: `pip check` fails the build when `pyproject.toml` names a dependency
+  the lock lacks.
 
 ## Scenario secrecy
 

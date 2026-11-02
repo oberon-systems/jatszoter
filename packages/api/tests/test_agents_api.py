@@ -172,6 +172,25 @@ def test_an_unsigned_or_altered_heartbeat_is_refused(
     assert agent.call("POST", "/heartbeat", {"capacity": 1}, **headers).status_code == 401
 
 
+@pytest.mark.parametrize("timestamp", [b"\xb2", b"1" * 5000, b"1" * 13, b"-1", b"1.5", b" 1"])
+def test_a_timestamp_that_is_not_an_ascii_number_is_refused(
+    client: TestClient, session: Session, timestamp: bytes
+) -> None:
+    agent = enroll(client, session)
+
+    response = client.post(
+        f"/api/v1/agents/{agent.id}/heartbeat",
+        json={"capacity": 1},
+        headers=[
+            (b"X-Credential", agent.credential.encode()),
+            (b"X-Timestamp", timestamp),
+            (b"X-Signature", b"0" * 64),
+        ],
+    )
+
+    assert response.status_code == 401
+
+
 def test_a_credential_signs_for_its_own_agent_only(client: TestClient, session: Session) -> None:
     alpha, beta = enroll(client, session), enroll(client, session, "beta")
     alpha.id = beta.id

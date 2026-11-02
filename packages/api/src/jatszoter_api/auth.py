@@ -1,3 +1,4 @@
+import re
 import uuid
 from typing import Annotated, NamedTuple
 from urllib.parse import urlsplit
@@ -12,6 +13,8 @@ from jatszoter_api.models.secret import SecretOwner
 from jatszoter_api.settings import Settings, app_settings
 
 LINK_COOKIE = "jatszoter_link"
+# Not isdigit: it passes a superscript and any length, and int() refuses both.
+TIMESTAMP = re.compile(r"[0-9]{1,12}")
 
 
 def unauthorized() -> HTTPException:
@@ -52,7 +55,7 @@ def _signed[T: SecretOwner](
 ) -> T:
     """The owner `owner_id` names, once its signed request checks out."""
     credential = _credential(owner_id, x_credential)
-    if credential is None or not x_timestamp.isdigit():
+    if credential is None or not TIMESTAMP.fullmatch(x_timestamp):
         raise unauthorized()
     try:
         owner = model(session=session).load(id=owner_id)

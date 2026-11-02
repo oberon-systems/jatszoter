@@ -82,6 +82,8 @@ impl QemuRuntime {
                 images: ImageCache::new(
                     &config.state_dir.join("images"),
                     config.image_limit_bytes,
+                    &config.image_internal_cidrs,
+                    config.image_use_proxy,
                 )?,
                 root: config.state_dir.join("vms"),
                 tools: Tools {

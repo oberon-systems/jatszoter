@@ -1,13 +1,16 @@
 use std::collections::HashMap;
 use std::fs;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use ipnet::IpNet;
+use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use reqwest::{redirect, Client};
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
-use url::Url;
+use url::{Host, Url};
 
 use crate::libs::config::{is_https_or_loopback, prepare_private_dir};
 use crate::libs::error::AgentError;
@@ -16,16 +19,113 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const READ_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_REDIRECTS: usize = 10;
 const PART: &str = ".part-";
+const SCHEME_REFUSED: &str = "URL must use https unless it points to loopback";
+const ADDRESS_REFUSED: &str =
+    "address is neither public nor in JATSZOTER_AGENT_IMAGE_INTERNAL_CIDRS";
+
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+struct Refused(&'static str);
+
+#[derive(Clone)]
+struct AddressRule(Arc<[IpNet]>);
+
+impl AddressRule {
+    fn allows(&self, ip: IpAddr) -> bool {
+        let ip = ip.to_canonical();
+        is_public(ip) || self.0.iter().any(|net| net.contains(&ip))
+    }
+
+    // A name passes here: the resolver checks what it resolves to.
+    fn allows_url(&self, url: &Url) -> bool {
+        match url.host() {
+            Some(Host::Ipv4(ip)) => self.allows(IpAddr::V4(ip)),
+            Some(Host::Ipv6(ip)) => self.allows(IpAddr::V6(ip)),
+            Some(Host::Domain(_)) => true,
+            None => false,
+        }
+    }
+}
+
+// The connector dials only what this returns, so a name cannot rebind past the check.
+impl Resolve for AddressRule {
+    fn resolve(&self, name: Name) -> Resolving {
+        let rule = self.clone();
+        Box::pin(async move {
+            let addrs: Vec<SocketAddr> =
+                tokio::net::lookup_host((name.as_str(), 0)).await?.collect();
+            if let Some(addr) = addrs.iter().find(|addr| !rule.allows(addr.ip())) {
+                tracing::warn!(
+                    host = name.as_str(),
+                    address = %addr.ip(),
+                    "an image host resolves to a refused address"
+                );
+                return Err(Refused(ADDRESS_REFUSED).into());
+            }
+            Ok(Box::new(addrs.into_iter()) as Addrs)
+        })
+    }
+}
+
+fn is_public(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => is_public_v4(ip),
+        IpAddr::V6(ip) => is_public_v6(ip),
+    }
+}
+
+fn is_public_v4(ip: Ipv4Addr) -> bool {
+    !matches!(
+        ip.octets(),
+        [0 | 10 | 127, ..]
+            | [100, 64..=127, ..]
+            | [169, 254, ..]
+            | [172, 16..=31, ..]
+            | [192, 0, 0 | 2, _]
+            | [192, 88, 99, _]
+            | [192, 168, ..]
+            | [198, 18 | 19, ..]
+            | [198, 51, 100, _]
+            | [203, 0, 113, _]
+            | [224..=255, ..]
+    )
+}
+
+fn is_public_v6(ip: Ipv6Addr) -> bool {
+    matches!(ip.segments(), [0x2000..=0x3fff, ..])
+        && !matches!(
+            ip.segments(),
+            [0x2001, 0..=0x1ff, ..] | [0x2001, 0xdb8, ..] | [0x2002, ..] | [0x3fff, 0..=0xfff, ..]
+        )
+}
+
+// reqwest's Display drops the source, which holds the only useful part of a refusal.
+fn download_error(digest: &str, err: reqwest::Error) -> AgentError {
+    let mut source = std::error::Error::source(&err);
+    while let Some(cause) = source {
+        if let Some(refused) = cause.downcast_ref::<Refused>() {
+            return AgentError::Image(format!("{digest}: {refused}"));
+        }
+        source = cause.source();
+    }
+    err.without_url().into()
+}
 
 pub struct ImageCache {
     dir: PathBuf,
     limit: u64,
     client: Client,
+    rule: AddressRule,
     locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
 }
 
 impl ImageCache {
-    pub fn new(dir: &Path, limit_bytes: u64) -> Result<Self, AgentError> {
+    pub fn new(
+        dir: &Path,
+        limit_bytes: u64,
+        internal_cidrs: &[IpNet],
+        use_proxy: bool,
+    ) -> Result<Self, AgentError> {
         prepare_private_dir(dir)?;
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
@@ -33,23 +133,39 @@ impl ImageCache {
                 fs::remove_file(entry.path())?;
             }
         }
-        let client = Client::builder()
+        let rule = AddressRule(internal_cidrs.into());
+        let followed = rule.clone();
+        let builder = Client::builder()
             .connect_timeout(CONNECT_TIMEOUT)
             .read_timeout(READ_TIMEOUT)
-            .redirect(redirect::Policy::custom(|attempt| {
+            .referer(false)
+            .dns_resolver(rule.clone())
+            .redirect(redirect::Policy::custom(move |attempt| {
                 if attempt.previous().len() >= MAX_REDIRECTS {
                     attempt.error("too many redirects")
-                } else if is_https_or_loopback(attempt.url()) {
-                    attempt.follow()
+                } else if !is_https_or_loopback(attempt.url()) {
+                    attempt.error(Refused(SCHEME_REFUSED))
+                } else if !followed.allows_url(attempt.url()) {
+                    attempt.error(Refused(ADDRESS_REFUSED))
                 } else {
-                    attempt.error("redirect must use https unless it points to loopback")
+                    attempt.follow()
                 }
-            }))
-            .build()?;
+            }));
+        // Through a proxy the resolver sees the proxy's name, not the image host's.
+        let builder = if use_proxy {
+            tracing::warn!(
+                "JATSZOTER_AGENT_IMAGE_USE_PROXY is on: names of image hosts are not checked \
+                 against the address rule, the proxy decides what they reach"
+            );
+            builder
+        } else {
+            builder.no_proxy()
+        };
         Ok(Self {
             dir: dir.to_owned(),
             limit: limit_bytes,
-            client,
+            client: builder.build()?,
+            rule,
             locks: Mutex::default(),
         })
     }
@@ -61,9 +177,10 @@ impl ImageCache {
             ));
         }
         if !is_https_or_loopback(url) {
-            return Err(AgentError::Image(format!(
-                "{digest}: URL must use https unless it points to loopback"
-            )));
+            return Err(AgentError::Image(format!("{digest}: {SCHEME_REFUSED}")));
+        }
+        if !self.rule.allows_url(url) {
+            return Err(AgentError::Image(format!("{digest}: {ADDRESS_REFUSED}")));
         }
         let path = self.dir.join(format!("{digest}.qcow2"));
         let lock = Arc::clone(
@@ -102,7 +219,7 @@ impl ImageCache {
             .send()
             .await
             .and_then(reqwest::Response::error_for_status)
-            .map_err(reqwest::Error::without_url)?;
+            .map_err(|err| download_error(digest, err))?;
         let limit = self.limit;
         let over_limit = || AgentError::Image(format!("{digest}: larger than {limit} bytes"));
         if response.content_length().is_some_and(|len| len > limit) {

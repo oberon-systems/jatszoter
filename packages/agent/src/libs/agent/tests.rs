@@ -156,6 +156,8 @@ fn agent(dir: &TempDir, api: FakeApi, state: State) -> Agent<FakeApi, CountingRu
         capacity: 2,
         state_dir: dir.path().to_path_buf(),
         image_limit_bytes: 1 << 30,
+        image_internal_cidrs: Vec::new(),
+        image_use_proxy: false,
         qemu: "qemu-system-x86_64".into(),
         qemu_img: "qemu-img".into(),
         xorriso: "xorriso".into(),

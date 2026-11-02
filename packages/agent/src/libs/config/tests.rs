@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use super::{parse_api_url, parse_labels, parse_name, Config, RawConfig};
+use super::{parse_api_url, parse_cidrs, parse_labels, parse_name, Config, RawConfig};
 
 fn raw() -> RawConfig {
     RawConfig {
@@ -89,6 +89,26 @@ fn capacity_is_bounded() {
     };
 
     assert!(Config::parse(too_many, None, Some("/home/alpha".into())).is_err());
+}
+
+#[test]
+fn the_image_download_is_strict_by_default() {
+    let config = Config::parse(raw(), None, Some("/home/alpha".into())).unwrap();
+
+    assert!(config.image_internal_cidrs.is_empty());
+    assert!(!config.image_use_proxy);
+}
+
+#[test]
+fn internal_cidrs_are_a_list_of_networks() {
+    let cidrs = parse_cidrs(" 192.0.2.0/24 , ::1/128,,").unwrap();
+
+    assert_eq!(cidrs.len(), 2);
+    assert_eq!(cidrs[0].to_string(), "192.0.2.0/24");
+    assert!(parse_cidrs("").unwrap().is_empty());
+    for bad in ["192.0.2.1", "192.0.2.0/33", "alpha"] {
+        assert!(parse_cidrs(bad).is_err(), "{bad}");
+    }
 }
 
 #[test]

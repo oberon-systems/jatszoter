@@ -2,6 +2,7 @@ use std::fs::{self, DirBuilder};
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
+use ipnet::IpNet;
 use serde::Deserialize;
 use url::{Host, Url};
 
@@ -31,6 +32,8 @@ pub struct Config {
     pub capacity: u32,
     pub state_dir: PathBuf,
     pub image_limit_bytes: u64,
+    pub image_internal_cidrs: Vec<IpNet>,
+    pub image_use_proxy: bool,
     pub qemu: PathBuf,
     pub qemu_img: PathBuf,
     pub xorriso: PathBuf,
@@ -48,6 +51,8 @@ pub struct RawConfig {
     pub capacity: Option<u32>,
     pub state_dir: Option<PathBuf>,
     pub image_limit_gib: Option<u32>,
+    pub image_internal_cidrs: Option<String>,
+    pub image_use_proxy: Option<bool>,
     pub qemu: Option<PathBuf>,
     pub qemu_img: Option<PathBuf>,
     pub xorriso: Option<PathBuf>,
@@ -109,6 +114,11 @@ impl Config {
             capacity: raw.capacity.map_or(Ok(DEFAULT_CAPACITY), check_capacity)?,
             state_dir,
             image_limit_bytes: u64::from(image_limit_gib) * GIB,
+            image_internal_cidrs: raw
+                .image_internal_cidrs
+                .as_deref()
+                .map_or(Ok(Vec::new()), parse_cidrs)?,
+            image_use_proxy: raw.image_use_proxy.unwrap_or(false),
             qemu: raw.qemu.unwrap_or_else(|| DEFAULT_QEMU.into()),
             qemu_img: raw.qemu_img.unwrap_or_else(|| DEFAULT_QEMU_IMG.into()),
             xorriso: raw.xorriso.unwrap_or_else(|| DEFAULT_XORRISO.into()),
@@ -251,6 +261,20 @@ fn check_capacity(capacity: u32) -> Result<u32, AgentError> {
             "{PREFIX}CAPACITY must be an integer in 0..={MAX_CAPACITY}"
         )))
     }
+}
+
+pub fn parse_cidrs(raw: &str) -> Result<Vec<IpNet>, AgentError> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|cidr| !cidr.is_empty())
+        .map(|cidr| {
+            cidr.parse().map_err(|_| {
+                AgentError::Config(format!(
+                    "{PREFIX}IMAGE_INTERNAL_CIDRS: {cidr} is not an address with a prefix length"
+                ))
+            })
+        })
+        .collect()
 }
 
 fn check_image_limit(gib: u32) -> Result<u32, AgentError> {

@@ -17,6 +17,7 @@ from jatszoter_web.pages import render
 from jatszoter_web.settings import Settings
 
 SEGMENT = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9_.-]*")
+HOST_HEADER = re.compile(r"(?:[A-Za-z0-9._-]+|\[[0-9A-Fa-f:.]+\])(?::[0-9]{1,5})?")
 PASSED_ON = ("origin", "content-type", "accept")
 PASSED_BACK = ("content-type", "location", "cache-control", "referrer-policy")
 # What the browser gets when the API's socket ends without a code it could be given.
@@ -86,7 +87,11 @@ async def link_call(request: Request, rest: str) -> Response:
 
 
 def upstream_uri(settings: Settings, host: str, path: str, query: str) -> str:
-    """The API's socket URI under the browser's own `Host`, which the API's `Origin` check reads."""
+    """The API's socket URI under the browser's own `Host`, which the API's `Origin` check reads.
+
+    Only a plain host[:port]: a `/`, `?` or `@` in it would move the path this URI opens."""
+    if not HOST_HEADER.fullmatch(host):
+        raise InvalidURI(host, "not a host[:port]")
     base = urlsplit(settings.api_base)
     scheme = "wss" if base.scheme == "https" else "ws"
     return f"{scheme}://{host}{base.path.rstrip('/')}{path}" + (f"?{query}" if query else "")

@@ -10,11 +10,13 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 from websockets.asyncio.server import Server, ServerConnection, serve
 from websockets.datastructures import Headers
+from websockets.exceptions import InvalidURI
 from websockets.http11 import Request, Response
 
 from jatszoter_web.api import signature
 from jatszoter_web.app import create_app
 from jatszoter_web.cookies import CSRF_COOKIE, LINK_COOKIE, SESSION_COOKIE, Operator, seal_operator
+from jatszoter_web.relay import upstream_uri
 from jatszoter_web.settings import Settings
 
 ATTACH = "/api/v1/deployments/00000000-0000-4000-8000-0000000000d1/attach"
@@ -145,6 +147,46 @@ def test_an_api_that_refuses_or_drops_the_socket_closes_the_browser(
         terminal.receive_bytes()
 
     assert closed.value.code == code
+
+
+@pytest.mark.parametrize(
+    "host",
+    [
+        f"{HOST}/other?",
+        f"{HOST}/api/v1/agents/alpha/console#",
+        f"alpha@{HOST}",
+        f"{HOST}?x=1",
+        f"{HOST}:port",
+        f"{HOST} ",
+        "[not-an-address]",
+        "",
+    ],
+)
+def test_a_host_that_is_no_host_never_reaches_the_api(upstream: Upstream, host: str) -> None:
+    client = client_for(upstream.port)
+
+    with (
+        client.websocket_connect(ATTACH, headers={"host": host, "origin": ORIGIN}) as terminal,
+        pytest.raises(WebSocketDisconnect) as closed,
+    ):
+        terminal.receive_bytes()
+
+    assert closed.value.code == 1008
+    assert upstream.paths == []
+
+
+@pytest.mark.parametrize("host", [HOST, f"{HOST}:8443", "127.0.0.1:8000", "[::1]:8000", "alpha_1"])
+def test_a_plain_host_keeps_the_path_of_the_socket(host: str) -> None:
+    settings = client_for(1).app.state.settings  # type: ignore[attr-defined]
+
+    assert upstream_uri(settings, host, ATTACH, "offset=7") == f"ws://{host}{ATTACH}?offset=7"
+
+
+def test_a_host_with_a_path_gets_no_uri() -> None:
+    settings = client_for(1).app.state.settings  # type: ignore[attr-defined]
+
+    with pytest.raises(InvalidURI):
+        upstream_uri(settings, f"{HOST}/other?", ATTACH, "")
 
 
 def test_an_api_that_cannot_be_reached_closes_the_browser_with_1011() -> None:

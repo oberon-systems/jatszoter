@@ -137,8 +137,10 @@ Fetch rules:
 
 - `https`, or `http` to a loopback address only;
 - no redirects;
+- no `Content-Encoding`: the API asks for `identity` and refuses anything
+  else, since the bundle is already a tar.gz;
 - at most `JATSZOTER_SCENARIO_BUNDLE_LIMIT_BYTES`, 10 MiB by default;
-- a 30 second timeout.
+- 30 seconds for the whole download.
 
 Bundle rules:
 

@@ -243,8 +243,9 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
 
 - A base image is downloaded once per digest and shared by every VM that
   uses it. It streams into a 0600 part file and is hashed on the way; a
-  wrong digest, a body over `JATSZOTER_AGENT_IMAGE_LIMIT_GIB` (default 20)
-  or any other failure removes the part file. The URL and every redirect
+  wrong digest, a body over `JATSZOTER_AGENT_IMAGE_LIMIT_GIB` (default 20),
+  a download past `JATSZOTER_AGENT_IMAGE_DOWNLOAD_MINUTES` (default 60) or
+  any other failure removes the part file. The URL and every redirect
   must use https unless they point to loopback, and must pass the address
   rule in [06](06-security.md#image-downloads).
 

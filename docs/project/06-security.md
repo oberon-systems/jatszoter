@@ -135,6 +135,10 @@ agent checks every address it connects to.
   rebinding does not get past the rule.
 - Redirects: followed under the same rules, up to ten hops. The agent sends
   no `Referer`, so a token in the image URL does not reach the next host.
+- Deadline: the whole download, redirects included, must finish within
+  `JATSZOTER_AGENT_IMAGE_DOWNLOAD_MINUTES`, 60 by default and at most 1440.
+  A slow server cannot hold the per-digest lock past it. At the default, a
+  20 GiB image needs about 48 Mbit/s, so raise it for a slower link.
 - Failures: the operator sees a fixed reason without the address. The
   address is in the agent's log.
 

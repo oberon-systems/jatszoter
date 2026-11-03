@@ -14,7 +14,8 @@ RUN useradd --system --create-home --home-dir /var/lib/jatszoter jatszoter
 
 COPY --from=build /install /usr/local
 # Fails the build when pyproject.toml names a dependency the lock lacks.
-RUN pip check
+# pip then goes: the runtime never installs, and its vendored copies only add advisories.
+RUN pip check && pip uninstall --yes --no-cache-dir pip
 
 USER jatszoter
 WORKDIR /var/lib/jatszoter

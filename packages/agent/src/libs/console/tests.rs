@@ -77,7 +77,7 @@ async fn accepted(listener: &TcpListener) -> Socket {
 
 async fn answer(socket: &mut Socket, offset: u64) {
     socket
-        .send(Message::Text(format!("{{\"offset\": {offset}}}")))
+        .send(Message::Text(format!("{{\"offset\": {offset}}}").into()))
         .await
         .unwrap();
 }
@@ -128,7 +128,10 @@ async fn typed(stream: &mut UnixStream, count: usize) -> Vec<u8> {
 }
 
 async fn keys(socket: &mut Socket, keys: &[u8]) {
-    socket.send(Message::Binary(keys.to_vec())).await.unwrap();
+    socket
+        .send(Message::Binary(keys.to_vec().into()))
+        .await
+        .unwrap();
 }
 
 async fn tell(socket: &mut Socket, text: &str) {

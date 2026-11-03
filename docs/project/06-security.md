@@ -16,6 +16,7 @@ operator has not taken control.
 - [Valkey](#valkey)
 - [Scenario secrecy](#scenario-secrecy)
 - [Web](#web)
+- [Error answers](#error-answers)
 - [Acceptance criteria](#acceptance-criteria)
 
 ## Model
@@ -201,9 +202,9 @@ The API checks every address a bundle URL resolves to, with the ranges of
 - Proxies: the API ignores proxy variables for bundle downloads, because a
   proxy would take the request past the check.
 - Failures: a refused address answers `bundle-fetch-refused`. A connection
-  failure or a status other than 200 answers `bundle-fetch-failed` with an
-  error id, so the answer does not map a network. The API log has the host
-  and the cause under that id, and never the rest of the URL.
+  failure and a status other than 200 both answer `bundle-fetch-failed`, so
+  the answer does not map a network. The API log has the host and the cause
+  under the answer's error id, and never the rest of the URL.
 
 ## Request bodies
 
@@ -298,9 +299,35 @@ The check script is guarded the same way:
   `/api/v1/deployments/{id}`: the attach socket, control, the checks and
   the task.
 
+## Error answers
+
+An error answer tells the caller what went wrong in a stable code, never in
+the words of a driver, a library or an exception. Those words name tables,
+columns, hosts and the caller's own input, so they stay in the server log.
+
+- Body: every error answer of `api`, and of `web` under `/api/`, is
+  `{"error": "<code>", "error_id": "<uuid4>"}` and nothing else. A 422
+  names the first failing top-level field, as `deployment-id-missing` or
+  `name-invalid`, and `body-invalid` for a body that does not parse.
+- Log: the same line holds the error id, the code, the status, the method,
+  the path with link tokens redacted, and the real message; a 500 also
+  holds the traceback. An operator finds the cause from the id a client
+  shows.
+- Database: a unique constraint answers 409 with the code of the model, such
+  as `user-name-taken` or `agent-already-registered`; the driver's message
+  goes to the log only.
+- Relay: `web` passes the code and the id of an API refusal on to a trainee
+  and drops the rest. A body the API did not shape, such as a bare 500, is
+  replaced with `web`'s own code and id, logged by `web`.
+- Text: `web` turns a code into a sentence of its own table
+  (`jatszoter_web/texts.py`) for a signed-in operator only. The login page
+  and the trainee page show `The request was refused` and the error id.
+
 ## Acceptance criteria
 
 - Each row of the link threat table has a test.
 - A trainee cookie gets 403 on every operator route and on another
   deployment.
 - A grep of logs and recordings after a full exam finds no token or link.
+- No error answer of `api` or `web` carries a `detail`, a driver or parser
+  message, or the input it was sent.

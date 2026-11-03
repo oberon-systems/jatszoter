@@ -294,7 +294,11 @@ differs from the current one.
 
 - Reload is the page itself for a `GET`, else the `Referer` when it names
   a page of `web`; without one only deployments is offered.
-- Paths under `/api/` keep FastAPI's JSON, which the trainee script reads.
+- Paths under `/api/` answer JSON with an error code and an error id only;
+  see [06](06-security.md#error-answers).
+- A refusal from the API shows a signed-in operator the sentence `web` keeps
+  for its code, with the error id. Anyone else sees `The request was
+  refused` and the id.
 
 ## API gaps
 

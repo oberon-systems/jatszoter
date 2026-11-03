@@ -3,7 +3,7 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
 use serde_json::{json, Value};
@@ -80,6 +80,16 @@ fn fake(root: &Path, deployment_id: &str, vm_id: Option<&str>, pid: Option<u32>)
 
 fn sleeper(arg0: &str) -> Child {
     Command::new("sleep").arg0(arg0).arg("60").spawn().unwrap()
+}
+
+/// A shell that waits on its stdin with `args` in its argv, standing in for QEMU or passt.
+fn holder(args: &[&str]) -> Child {
+    Command::new("sh")
+        .args(["-c", "read _", "sh"])
+        .args(args)
+        .stdin(Stdio::piped())
+        .spawn()
+        .unwrap()
 }
 
 fn reaped_pid() -> u32 {
@@ -345,7 +355,7 @@ async fn eject_seed_without_a_file_is_fine() {
 fn list_sees_a_live_vm_a_dead_one_and_an_orphan() {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path().join("vms");
-    let mut live = sleeper("jatszoter-vm-alpha");
+    let mut live = holder(&["-name", "vm-alpha"]);
     fake(&root, "alpha", Some("vm-alpha"), Some(live.id()));
     fake(&root, "beta", Some("vm-beta"), Some(reaped_pid()));
     fake(&root, "gamma", None, None);
@@ -380,7 +390,7 @@ fn list_of_a_missing_root_is_empty() {
 async fn destroy_kills_a_live_vm_and_removes_live_dead_and_orphan() {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path().join("vms");
-    let mut live = sleeper("jatszoter-vm-alpha");
+    let mut live = holder(&["-name", "vm-alpha"]);
     let dirs = [
         fake(&root, "alpha", Some("vm-alpha"), Some(live.id())),
         fake(&root, "beta", Some("vm-beta"), Some(reaped_pid())),
@@ -402,7 +412,7 @@ async fn destroy_kills_the_vm_passt_and_spares_an_unrelated_one() {
     let root = tmp.path().join("vms");
     let alpha = fake(&root, "alpha", Some("vm-alpha"), None);
     let beta = fake(&root, "beta", Some("vm-beta"), None);
-    let mut passt = sleeper(alpha.join("net.sock").to_str().unwrap());
+    let mut passt = holder(&["--socket", alpha.join("net.sock").to_str().unwrap()]);
     let mut unrelated = sleeper("passt");
     fs::write(alpha.join("passt.pid"), format!("{}\n", passt.id())).unwrap();
     fs::write(beta.join("passt.pid"), format!("{}\n", unrelated.id())).unwrap();
@@ -441,6 +451,24 @@ async fn a_pid_naming_an_unrelated_process_is_not_alive_and_never_killed() {
     let running = unrelated.try_wait().unwrap().is_none();
     unrelated.kill().unwrap();
     unrelated.wait().unwrap();
+
+    assert!(!found[0].alive);
+    assert!(running);
+    assert!(!dir.exists());
+}
+
+#[tokio::test]
+async fn a_process_that_only_mentions_the_vm_id_is_not_ours() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path().join("vms");
+    let mut near = holder(&["-name", "vm-alpha-2", "jatszoter-vm-alpha"]);
+    let dir = fake(&root, "alpha", Some("vm-alpha"), Some(near.id()));
+
+    let found = list(&root).unwrap();
+    destroy(&dir).await.unwrap();
+    let running = near.try_wait().unwrap().is_none();
+    near.kill().unwrap();
+    near.wait().unwrap();
 
     assert!(!found[0].alive);
     assert!(running);

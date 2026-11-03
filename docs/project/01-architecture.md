@@ -266,8 +266,8 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
 - A VM is created over its cached base image as a qcow2 overlay, with QEMU
   and `qemu-img` from `JATSZOTER_AGENT_QEMU` and `JATSZOTER_AGENT_QEMU_IMG`.
   A VM that fails to start leaves no directory and no process. A VM is alive
-  while the pid in `qemu.pid` runs a command line carrying its vm id, so a
-  reused pid is never taken for it. Destroy asks QEMU to quit over QMP, kills
+  while the pid in `qemu.pid` runs a command line with `-name <vm_id>`
+  exactly, so a reused pid is never taken for it. Destroy asks QEMU to quit over QMP, kills
   it if it does not, and removes the directory.
 - `created_at` in `vm.json` is the VM's creation time in unix seconds.
 - The agent packs the seed into `seed.iso` with `xorriso -as mkisofs`,

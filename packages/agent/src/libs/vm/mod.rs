@@ -434,7 +434,11 @@ async fn stop(dir: &Path, vm_id: &str, asked: bool) -> Result<(), AgentError> {
 
 fn stop_passt(dir: &Path) -> Result<(), AgentError> {
     let socket = dir.join(NET);
-    let Some(pid) = running(&dir.join(PASST_PID), socket.as_os_str().as_bytes()) else {
+    let Some(pid) = running(
+        &dir.join(PASST_PID),
+        "--socket",
+        socket.as_os_str().as_bytes(),
+    ) else {
         return Ok(());
     };
     match kill(pid, Signal::SIGKILL) {
@@ -462,18 +466,19 @@ pub fn read_record(dir: &Path) -> Option<Record> {
 
 /// The pid in `qemu.pid`, if that process still runs this VM: a reused pid is not ours.
 fn owner(dir: &Path, vm_id: &str) -> Option<Pid> {
-    running(&dir.join(PID_FILE), vm_id.as_bytes())
+    running(&dir.join(PID_FILE), "-name", vm_id.as_bytes())
 }
 
-fn running(pid_file: &Path, mark: &[u8]) -> Option<Pid> {
+/// The pid in `pid_file`, if that process has `flag` followed by exactly `value` in its argv.
+fn running(pid_file: &Path, flag: &str, value: &[u8]) -> Option<Pid> {
     let pid: i32 = fs::read_to_string(pid_file).ok()?.trim().parse().ok()?;
-    if pid <= 0 || mark.is_empty() {
+    if pid <= 0 || value.is_empty() {
         return None;
     }
     let cmdline = fs::read(format!("/proc/{pid}/cmdline")).ok()?;
-    cmdline
-        .windows(mark.len())
-        .any(|window| window == mark)
+    let args: Vec<&[u8]> = cmdline.split(|&byte| byte == 0).collect();
+    args.windows(2)
+        .any(|pair| pair[0] == flag.as_bytes() && pair[1] == value)
         .then_some(Pid::from_raw(pid))
 }
 

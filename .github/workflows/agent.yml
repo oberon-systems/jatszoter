@@ -33,17 +33,30 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test
         run: cargo test --workspace --locked
-      # The distro passt is too old (docs/project/09-guest-network.md); the runner drops the
-      # user namespace restriction instead of installing an AppArmor profile.
+      # Installs passt and its passt-local AppArmor profile as docs/project/09-guest-network.md
+      # does; TMPDIR sits in a directory the profile lets passt write.
       - name: Guest network
         env:
           PASST_TAG: 2026_10_02.cba3570
         run: |
-          git clone --quiet --depth 1 --branch "$PASST_TAG" https://passt.top/passt "$RUNNER_TEMP/passt"
-          test "$(git -C "$RUNNER_TEMP/passt" rev-parse --short=7 HEAD)" = "${PASST_TAG#*.}"
-          make -C "$RUNNER_TEMP/passt"
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          PATH="$RUNNER_TEMP/passt:$PATH" cargo test --workspace --locked netcheck -- --ignored
+          src=$RUNNER_TEMP/passt
+          git clone --quiet --depth 1 --branch "$PASST_TAG" https://passt.top/passt "$src"
+          test "$(git -C "$src" rev-parse --short=7 HEAD)" = "${PASST_TAG#*.}"
+          make -C "$src"
+          sudo install -m 0755 "$src/passt" "$src/passt.avx2" /usr/local/bin/
+          sed 's#/usr/bin/passt.avx2#/usr/local/bin/passt.avx2#' \
+              "$src/contrib/apparmor/abstractions/passt" |
+              sudo tee /etc/apparmor.d/abstractions/jatszoter-passt >/dev/null
+          sed -e 's#^profile passt /usr/bin/passt{,.avx2}#profile passt-local /usr/local/bin/passt{,.avx2}#' \
+              -e 's#include <abstractions/passt>#include <abstractions/jatszoter-passt>#' \
+              -e 's#^\( *\)/usr/bin/passt r,#\1/usr/local/bin/passt r,#' \
+              -e 's#^}#  owner @{HOME}/.cache/jatszoter/** rw,\n  owner /var/lib/jatszoter-agent/** rw,\n}#' \
+              "$src/contrib/apparmor/usr.bin.passt" |
+              sudo tee /etc/apparmor.d/usr.local.bin.passt >/dev/null
+          sudo apparmor_parser -r /etc/apparmor.d/usr.local.bin.passt
+          sudo grep -q passt-local /sys/kernel/security/apparmor/profiles
+          mkdir -p "$HOME/.cache/jatszoter/tmp"
+          TMPDIR=$HOME/.cache/jatszoter/tmp cargo test --workspace --locked netcheck -- --ignored
 
   version:
     if: startsWith(github.ref, 'refs/tags/agent-')

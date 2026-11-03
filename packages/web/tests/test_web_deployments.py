@@ -12,6 +12,7 @@ Answer = Callable[..., None]
 SignIn = Callable[..., Operator]
 
 HTMX = {"hx-request": "true"}
+ERROR_ID = "1b4e28ba-2fa1-41d2-883f-0016d3cca427"
 
 
 def posted(calls: list[httpx.Request]) -> httpx.Request:
@@ -70,16 +71,16 @@ def test_a_refused_list_shows_the_refusal(
     client: TestClient, sign_in: SignIn, answer: Answer
 ) -> None:
     sign_in()
-    answer("GET", "/api/v1/deployments", {"detail": "status is not valid"}, 422)
+    answer("GET", "/api/v1/deployments", {"error": "status-invalid", "error_id": ERROR_ID}, 422)
 
     page = client.get("/deployments")
     table = client.get("/deployments", headers={**HTMX, "hx-target": "deployments-table"})
 
     assert page.status_code == 422
-    assert "status is not valid (422)" in page.text
+    assert f"the status is not valid (error {ERROR_ID}) (422)" in page.text
     assert table.status_code == 422
     assert table.headers["hx-retarget"] == "#flashes"
-    assert "status is not valid (422)" in table.text
+    assert f"the status is not valid (error {ERROR_ID}) (422)" in table.text
 
 
 @pytest.mark.usefixtures("stand")
@@ -167,7 +168,7 @@ def test_a_refused_create_shows_the_refusal_next_to_its_field(
     client: TestClient, sign_in: SignIn, stand: dict[str, Any], answer: Answer
 ) -> None:
     who = sign_in()
-    answer("POST", "/api/v1/deployments", {"detail": "user beta is disabled"}, 409)
+    answer("POST", "/api/v1/deployments", {"error": "user-not-trainee", "error_id": ERROR_ID}, 422)
     form = {
         "csrf_token": who.csrf,
         "scenario_id": stand["scenario"]["id"],
@@ -176,9 +177,10 @@ def test_a_refused_create_shows_the_refusal_next_to_its_field(
 
     page = client.post("/deployments/new", data=form)
 
-    assert page.status_code == 409
-    assert '<span class="field-error">user beta is disabled</span>' in page.text
-    assert "user beta is disabled (409)" in page.text
+    shown = f"Unable to do the request: the user is not a trainee (error {ERROR_ID})"
+    assert page.status_code == 422
+    assert f'<span class="field-error">{shown}</span>' in page.text
+    assert f"{shown} (422)" in page.text
     assert "/s/" not in page.text
 
 
@@ -227,7 +229,7 @@ def test_a_refused_stop_comes_back_as_a_flash(
     answer(
         "POST",
         f"/api/v1/deployments/{deployment_id}/stop",
-        {"detail": "the deployment has ended"},
+        {"error": "deployment-wrong-status", "error_id": ERROR_ID},
         409,
     )
 
@@ -239,4 +241,4 @@ def test_a_refused_stop_comes_back_as_a_flash(
 
     assert stopped.status_code == 303
     assert stopped.headers["location"] == "/deployments"
-    assert "the deployment has ended (409)" in shown.text
+    assert f"not in a state that allows this (error {ERROR_ID}) (409)" in shown.text

@@ -3,20 +3,17 @@ import time
 from dataclasses import asdict, dataclass
 from http import HTTPStatus
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from fastapi import Request
-from fastapi.exception_handlers import (
-    http_exception_handler,
-    request_validation_exception_handler,
-)
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import Scope
 
+from jatszoter_web.answers import coded
 from jatszoter_web.api import ApiDown
 from jatszoter_web.cookies import (
     FLASH_COOKIE,
@@ -283,8 +280,10 @@ def failed_scope(scope: Scope) -> Response:
 
 
 async def http_error(request: Request, exc: Exception) -> Response:
-    if not isinstance(exc, StarletteHTTPException) or request.url.path.startswith("/api/"):
-        return await http_exception_handler(request, cast(StarletteHTTPException, exc))
+    if not isinstance(exc, StarletteHTTPException):
+        return server_error(request)
+    if request.url.path.startswith("/api/"):
+        return coded(request, exc.status_code, str(exc.detail))
     status = exc.status_code
     if status == 403:
         return failure(request, 403, "Request refused", UNCHANGED, EXPIRED, reload=True)
@@ -300,10 +299,10 @@ async def http_error(request: Request, exc: Exception) -> Response:
 
 
 async def invalid_request(request: Request, exc: Exception) -> Response:
-    if not isinstance(exc, RequestValidationError) or request.url.path.startswith("/api/"):
-        return await request_validation_exception_handler(
-            request, cast(RequestValidationError, exc)
-        )
+    if request.url.path.startswith("/api/"):
+        errors = exc.errors() if isinstance(exc, RequestValidationError) else []
+        logged = [(error.get("loc"), error.get("type")) for error in errors]
+        return coded(request, 422, repr(logged))
     return refused(request, 422, "the request is not valid")
 
 

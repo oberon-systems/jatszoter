@@ -4,17 +4,19 @@ import re
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket, status
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import Response
 from starlette.websockets import WebSocketDisconnect
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed, InvalidStatus, InvalidURI
 from websockets.typing import Origin
 
+from jatszoter_web.answers import coded
 from jatszoter_web.api import TIMEOUT_SECONDS, Api, ApiDown, failed
 from jatszoter_web.cookies import LINK_COOKIE
 from jatszoter_web.csrf import check_browser
 from jatszoter_web.pages import render
 from jatszoter_web.settings import Settings
+from jatszoter_web.texts import answered
 
 SEGMENT = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9_.-]*")
 HOST_HEADER = re.compile(r"(?:[A-Za-z0-9._-]+|\[[0-9A-Fa-f:.]+\])(?::[0-9]{1,5})?")
@@ -23,7 +25,6 @@ PASSED_BACK = ("content-type", "location", "cache-control", "referrer-policy")
 # What the browser gets when the API's socket ends without a code it could be given.
 DROPPED = 1011
 UNCODED = {1005: 1000, 1006: DROPPED}
-GATEWAY = {502: "the API cannot be reached", 504: "the API did not answer in time"}
 
 router = APIRouter()
 
@@ -54,7 +55,12 @@ async def relay(request: Request) -> Response:
             api.http.build_request(request.method, url, content=body, headers=headers)
         )
     except ApiDown as down:
-        return JSONResponse({"detail": GATEWAY[down.status]}, status_code=down.status)
+        return coded(request, down.status, down.message)
+    if answer.status_code >= 400:
+        # Rebuilt, so a body the API did not shape never reaches the trainee.
+        code, error_id = answered(answer)
+        logged = f"the API answered {answer.status_code}"
+        return coded(request, answer.status_code, logged, code if error_id else None, error_id)
     response = Response(answer.content, status_code=answer.status_code)
     for name in PASSED_BACK:
         if name in answer.headers:

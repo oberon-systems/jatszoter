@@ -15,6 +15,7 @@ SignIn = Callable[..., Operator]
 
 HTMX = {"hx-request": "true"}
 AT = 1760000000
+ERROR_ID = "1b4e28ba-2fa1-41d2-883f-0016d3cca427"
 VIEWER = {
     "id": "00000000-0000-4000-8000-0000000000b2",
     "name": "gamma",
@@ -249,7 +250,7 @@ def test_an_unknown_deployment_shows_the_refusal(client: TestClient, sign_in: Si
     page = client.get("/deployments/00000000-0000-4000-8000-0000000000ff")
 
     assert page.status_code == 404
-    assert "not found (404)" in page.text
+    assert "it is not known (error 00000000-0000-4000-8000-000000000404) (404)" in page.text
 
 
 def test_a_check_is_asked_for_once_and_the_bar_shows_it_pending(
@@ -280,7 +281,7 @@ def test_a_pending_check_refuses_another_as_its_board_says(
     client: TestClient, sign_in: SignIn, detail: dict[str, Any], answer: Answer
 ) -> None:
     who = sign_in()
-    refused = {"detail": f"deployment {detail['id']} has a pending check"}
+    refused = {"error": "check-pending", "error_id": ERROR_ID}
     answer("POST", f"/api/v1/deployments/{detail['id']}/checks", refused, 409)
 
     bar = client.post(
@@ -289,7 +290,7 @@ def test_a_pending_check_refuses_another_as_its_board_says(
 
     assert bar.status_code == 409
     assert bar.headers["hx-retarget"] == "#flashes"
-    assert "a check is already pending (409)" in bar.text
+    assert f"a check is already pending (error {ERROR_ID}) (409)" in bar.text
 
 
 def test_a_check_without_the_csrf_token_reaches_no_api_route(
@@ -333,7 +334,7 @@ def test_a_refused_control_shows_the_refusal(
     client: TestClient, sign_in: SignIn, detail: dict[str, Any], answer: Answer
 ) -> None:
     who = sign_in()
-    refused = {"detail": "deployment is STOPPING"}
+    refused = {"error": "deployment-wrong-status", "error_id": ERROR_ID}
     answer("POST", f"/api/v1/deployments/{detail['id']}/control", refused, 409)
 
     taken = client.post(
@@ -343,7 +344,7 @@ def test_a_refused_control_shows_the_refusal(
     )
 
     assert taken.status_code == 409
-    assert "deployment is STOPPING (409)" in taken.text
+    assert f"not in a state that allows this (error {ERROR_ID}) (409)" in taken.text
 
 
 def test_the_link_dialog_offers_the_enabled_users(
@@ -401,7 +402,7 @@ def test_a_second_trainee_link_is_refused_next_to_the_user(
     answer: Answer,
 ) -> None:
     who = sign_in()
-    refused = {"detail": f"deployment {detail['id']} holds a live trainee link"}
+    refused = {"error": "deployment-link-live", "error_id": ERROR_ID}
     answer("POST", f"/api/v1/deployments/{detail['id']}/links", refused, 409)
 
     dialog = client.post(
@@ -411,8 +412,9 @@ def test_a_second_trainee_link_is_refused_next_to_the_user(
     )
 
     assert dialog.status_code == 409
-    assert '<span class="field-error">deployment' in dialog.text
-    assert "holds a live trainee link (409)" in dialog.text
+    shown = f"the deployment already has a live trainee link (error {ERROR_ID})"
+    assert f'<span class="field-error">Unable to do the request: {shown}</span>' in dialog.text
+    assert f"{shown} (409)" in dialog.text
     assert "/s/" not in dialog.text
 
 
@@ -454,7 +456,7 @@ def test_a_refused_revoke_comes_back_as_a_flash(
     client: TestClient, sign_in: SignIn, detail: dict[str, Any], answer: Answer
 ) -> None:
     who = sign_in()
-    refused = {"detail": "link is not known"}
+    refused = {"error": "link-not-found", "error_id": ERROR_ID}
     answer("POST", f"/api/v1/links/{VIEWER_LINK['id']}/revoke", refused, 404)
     back = f"/deployments/{detail['id']}"
 
@@ -464,7 +466,7 @@ def test_a_refused_revoke_comes_back_as_a_flash(
     shown = client.get(back)
 
     assert revoked.headers["location"] == back
-    assert "link is not known (404)" in shown.text
+    assert f"the link is not known (error {ERROR_ID}) (404)" in shown.text
 
 
 def test_the_log_page_draws_the_log_read_only(
@@ -504,7 +506,7 @@ def test_an_unknown_log_returns_to_the_logs_with_a_flash(
 
     assert page.status_code == 303
     assert page.headers["location"] == "/logs"
-    assert "not found (404)" in shown.text
+    assert "it is not known (error 00000000-0000-4000-8000-000000000404) (404)" in shown.text
 
 
 def test_the_logs_list_offers_the_log_page(

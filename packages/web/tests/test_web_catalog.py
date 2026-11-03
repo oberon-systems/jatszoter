@@ -14,6 +14,7 @@ SignIn = Callable[..., Operator]
 
 HTMX = {"hx-request": "true"}
 BUNDLE_URL = "https://example.com/web-basics.tar.gz"
+ERROR_ID = "1b4e28ba-2fa1-41d2-883f-0016d3cca427"
 
 
 def posted(calls: list[httpx.Request]) -> list[httpx.Request]:
@@ -53,12 +54,12 @@ def test_a_refused_tab_shows_the_refusal(
     client: TestClient, sign_in: SignIn, answer: Answer
 ) -> None:
     sign_in()
-    answer("GET", "/api/v1/images", {"detail": "images are not listed"}, 422)
+    answer("GET", "/api/v1/images", {"error": "invalid-request", "error_id": ERROR_ID}, 422)
 
     page = client.get("/images")
 
     assert page.status_code == 422
-    assert "images are not listed (422)" in page.text
+    assert f"the request is not valid (error {ERROR_ID}) (422)" in page.text
 
 
 def test_the_register_dialogs_are_fragments(client: TestClient, sign_in: SignIn) -> None:
@@ -139,8 +140,7 @@ def test_a_refused_scenario_shows_the_refusal_next_to_its_field(
     client: TestClient, sign_in: SignIn, answer: Answer
 ) -> None:
     who = sign_in()
-    detail = [{"loc": ["body", "url"], "msg": "the url is not https"}]
-    answer("POST", "/api/v1/scenarios", {"detail": detail}, 422)
+    answer("POST", "/api/v1/scenarios", {"error": "url-invalid", "error_id": ERROR_ID}, 422)
 
     dialog = client.post(
         "/scenarios", data={"csrf_token": who.csrf, "url": "http://example.com/a"}, headers=HTMX
@@ -148,8 +148,9 @@ def test_a_refused_scenario_shows_the_refusal_next_to_its_field(
 
     assert dialog.status_code == 422
     assert dialog.text.lstrip().startswith("<dialog")
-    assert '<span class="field-error">the url is not https</span>' in dialog.text
-    assert "the url is not https (422)" in dialog.text
+    shown = f"Unable to do the request: the bundle URL is not valid (error {ERROR_ID})"
+    assert f'<span class="field-error">{shown}</span>' in dialog.text
+    assert f"{shown} (422)" in dialog.text
     assert 'value="http://example.com/a"' in dialog.text
 
 
@@ -184,7 +185,7 @@ def test_a_refused_image_keeps_the_dialog_open(
     client: TestClient, sign_in: SignIn, answer: Answer
 ) -> None:
     who = sign_in()
-    answer("POST", "/api/v1/images", {"detail": "image alpha-base is registered already"}, 409)
+    answer("POST", "/api/v1/images", {"error": "image-name-taken", "error_id": ERROR_ID}, 409)
 
     dialog = client.post(
         "/images", data={"csrf_token": who.csrf, "name": "alpha-base"}, headers=HTMX
@@ -192,5 +193,5 @@ def test_a_refused_image_keeps_the_dialog_open(
 
     assert dialog.status_code == 409
     assert dialog.text.lstrip().startswith("<dialog")
-    assert "image alpha-base is registered already (409)" in dialog.text
+    assert f"an image with this name already exists (error {ERROR_ID}) (409)" in dialog.text
     assert 'value="alpha-base"' in dialog.text

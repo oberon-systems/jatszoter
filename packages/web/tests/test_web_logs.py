@@ -11,6 +11,8 @@ Answer = Callable[..., None]
 Routes = dict[tuple[str, str], Callable[[httpx.Request], httpx.Response]]
 SignIn = Callable[..., Operator]
 
+ERROR_ID = "1b4e28ba-2fa1-41d2-883f-0016d3cca427"
+
 
 def test_each_deployment_offers_its_log_or_says_why_not(
     client: TestClient, sign_in: SignIn, stand: dict[str, Any], answer: Answer
@@ -45,12 +47,12 @@ def test_a_refused_list_shows_the_refusal(
     client: TestClient, sign_in: SignIn, answer: Answer
 ) -> None:
     sign_in()
-    answer("GET", "/api/v1/storage", {"detail": "storage is not listed"}, 422)
+    answer("GET", "/api/v1/storage", {"error": "invalid-request", "error_id": ERROR_ID}, 422)
 
     page = client.get("/logs")
 
     assert page.status_code == 422
-    assert "storage is not listed (422)" in page.text
+    assert f"the request is not valid (error {ERROR_ID}) (422)" in page.text
 
 
 def test_a_console_log_downloads_as_a_file(
@@ -76,11 +78,12 @@ def test_a_refused_download_comes_back_as_a_flash(
 ) -> None:
     sign_in()
     deployment_id = stand["deployment"]["id"]
-    answer("GET", f"/api/v1/deployments/{deployment_id}/console", {"detail": "no log"}, 404)
+    refused = {"error": "deployment-not-found", "error_id": ERROR_ID}
+    answer("GET", f"/api/v1/deployments/{deployment_id}/console", refused, 404)
 
     log = client.get(f"/deployments/{deployment_id}/console.log")
     shown = client.get("/logs")
 
     assert log.status_code == 303
     assert log.headers["location"] == "/logs"
-    assert "no log (404)" in shown.text
+    assert f"the deployment is not known (error {ERROR_ID}) (404)" in shown.text

@@ -1,4 +1,5 @@
 import logging
+import uuid
 from collections.abc import Callable
 
 import httpx
@@ -15,6 +16,7 @@ CHECKS = f"/api/v1/deployments/{DEPLOYMENT}/checks"
 TOKEN = "link-token-alpha"
 HOST = "web.example.com"
 ORIGIN = f"https://{HOST}"
+ERROR_ID = "1b4e28ba-2fa1-41d2-883f-0016d3cca427"
 
 
 @pytest.fixture
@@ -179,3 +181,39 @@ def test_an_api_that_is_down_answers_the_relay_with_a_gateway_status(
 
     assert response.status_code == status
     assert "api.example.com" not in response.text
+    assert set(response.json()) == {"error", "error_id"}
+    assert response.json()["error"] == ("api-unreachable" if status == 502 else "api-timeout")
+
+
+def test_a_refusal_from_the_api_keeps_its_code_and_id_and_nothing_else(
+    linked: TestClient, routes: Routes
+) -> None:
+    body = {"error": "check-pending", "error_id": ERROR_ID, "detail": "deployment alpha"}
+    routes[("GET", TASK)] = lambda _: httpx.Response(409, json=body)
+
+    response = linked.get(TASK)
+
+    assert response.status_code == 409
+    assert response.json() == {"error": "check-pending", "error_id": ERROR_ID}
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        httpx.Response(500, text="Traceback (most recent call last): alpha"),
+        httpx.Response(503, json={"detail": "the database at beta is down"}),
+    ],
+)
+def test_a_failure_the_api_did_not_shape_is_rebuilt_with_an_id_of_web(
+    linked: TestClient, routes: Routes, caplog: pytest.LogCaptureFixture, answer: httpx.Response
+) -> None:
+    routes[("GET", TASK)] = lambda _: answer
+    caplog.set_level(logging.WARNING, logger="jatszoter_web.answers")
+
+    response = linked.get(TASK)
+
+    assert response.status_code == answer.status_code
+    assert set(response.json()) == {"error", "error_id"}
+    assert response.json()["error"] == "internal-error"
+    assert "alpha" not in response.text and "beta" not in response.text
+    assert str(uuid.UUID(response.json()["error_id"])) in caplog.text

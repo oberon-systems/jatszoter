@@ -44,15 +44,6 @@ def signed_headers(operator: Operator, method: str, path: str, body: bytes) -> d
     }
 
 
-def message(response: httpx.Response) -> str:
-    """The API's own message for a refusal, or a stand-in when it sent none."""
-    try:
-        detail = response.json().get("detail")
-    except (ValueError, AttributeError):
-        detail = None
-    return detail if isinstance(detail, str) else "the request was refused"
-
-
 class Api:
     """The HTTP client `web` reaches the API with; it never follows a redirect."""
 

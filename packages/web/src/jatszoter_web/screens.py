@@ -5,9 +5,10 @@ import httpx
 from fastapi import Request
 from starlette.datastructures import FormData
 
-from jatszoter_web.api import failed, message
+from jatszoter_web.api import failed
 from jatszoter_web.pages import Flash, Refusal, refusal
 from jatszoter_web.session import Session, local
+from jatszoter_web.texts import answered, field_of, told
 
 STATUSES = (
     "PENDING",
@@ -65,24 +66,12 @@ def came_from(request: Request, fallback: str) -> str:
 def refused(
     response: httpx.Response, concerns: dict[str, str] | None = None
 ) -> tuple[Flash, dict[str, str]]:
-    """The flash of an API refusal, and its message by field: named, or by a `concerns` prefix."""
-    try:
-        detail = response.json().get("detail")
-    except (ValueError, AttributeError):
-        detail = None
-    errors: dict[str, str] = {}
-    if isinstance(detail, list):
-        for item in detail:
-            if isinstance(item, dict) and item.get("loc"):
-                errors.setdefault(str(item["loc"][-1]), str(item.get("msg", "")))
-        text = next(iter(errors.values()), "the request was refused")
-    else:
-        text = message(response)
-        for prefix, name in (concerns or {}).items():
-            if text.startswith(prefix):
-                errors[name] = text
-                break
-    return refusal(text, response.status_code), errors
+    """The flash of an API refusal for a signed-in operator, and its text by the form field
+    its code names: through `concerns`, or as `<field>-missing` / `<field>-invalid`."""
+    code, _ = answered(response)
+    text = told(response, operator=True)
+    field = (concerns or {}).get(code) or field_of(code)
+    return refusal(text, response.status_code), {field: text} if field else {}
 
 
 def described(deployment: Row, scenarios: dict[str, Row], users: dict[str, Row]) -> str:

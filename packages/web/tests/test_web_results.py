@@ -10,6 +10,7 @@ Answer = Callable[..., None]
 SignIn = Callable[..., Operator]
 
 HTMX = {"hx-request": "true"}
+ERROR_ID = "1b4e28ba-2fa1-41d2-883f-0016d3cca427"
 
 
 @pytest.fixture
@@ -78,7 +79,7 @@ def test_a_viewer_without_the_role_sees_not_allowed(
     client: TestClient, sign_in: SignIn, answer: Answer
 ) -> None:
     sign_in()
-    answer("GET", "/api/v1/checks", {"detail": "not allowed"}, 403)
+    answer("GET", "/api/v1/checks", {"error": "forbidden", "error_id": ERROR_ID}, 403)
 
     page = client.get("/results")
     table = client.get("/results", headers={**HTMX, "hx-target": "results-table"})
@@ -94,9 +95,9 @@ def test_a_refused_page_shows_the_refusal(
     client: TestClient, sign_in: SignIn, answer: Answer
 ) -> None:
     sign_in()
-    answer("GET", "/api/v1/checks", {"detail": "checks are not listed"}, 422)
+    answer("GET", "/api/v1/checks", {"error": "invalid-request", "error_id": ERROR_ID}, 422)
 
     page = client.get("/results")
 
     assert page.status_code == 422
-    assert "checks are not listed (422)" in page.text
+    assert f"the request is not valid (error {ERROR_ID}) (422)" in page.text

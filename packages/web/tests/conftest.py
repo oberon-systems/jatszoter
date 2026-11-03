@@ -47,7 +47,8 @@ def app(settings: Settings, routes: Routes, calls: list[httpx.Request]) -> FastA
         calls.append(request)
         handler = routes.get((request.method, request.url.path))
         if handler is None:
-            return httpx.Response(404, json={"detail": "not found"})
+            body = {"error": "not-found", "error_id": "00000000-0000-4000-8000-000000000404"}
+            return httpx.Response(404, json=body)
         return handler(request)
 
     return create_app(settings, httpx.MockTransport(handle))

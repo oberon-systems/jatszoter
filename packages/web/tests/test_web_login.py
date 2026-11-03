@@ -25,6 +25,7 @@ USER_ID = "00000000-0000-4000-8000-000000000002"
 KEY = "issued-key-alpha"
 PASSWORD = "Correct horse battery"
 DEVICE = "m1.9999999999.gamma.delta"
+ERROR_ID = "1b4e28ba-2fa1-41d2-883f-0016d3cca427"
 
 
 def issued(_: httpx.Request) -> httpx.Response:
@@ -37,7 +38,7 @@ def issued(_: httpx.Request) -> httpx.Response:
 def me(role: str) -> Callable[[httpx.Request], httpx.Response]:
     def answer(request: httpx.Request) -> httpx.Response:
         if request.headers.get("x-owner") != USER_ID:
-            return httpx.Response(401, json={"detail": "not authorized"})
+            return httpx.Response(401, json={"error": "not-authorized"})
         return httpx.Response(200, json={"id": USER_ID, "name": "alpha", "role": role})
 
     return answer
@@ -126,7 +127,7 @@ def test_a_foreign_next_page_is_dropped(
 def test_a_refused_login_says_why(
     client: TestClient, routes: Routes, browser_csrf: str, status: int, text: str
 ) -> None:
-    routes[LOGIN] = lambda _: httpx.Response(status, json={"detail": "not authorized"})
+    routes[LOGIN] = lambda _: httpx.Response(status, json={"error": "not-authorized"})
 
     response = client.post("/login", data=form(browser_csrf))
 
@@ -157,7 +158,7 @@ def test_a_first_login_sets_a_new_password(
 ) -> None:
     def login(request: httpx.Request) -> httpx.Response:
         if "new_password" not in json.loads(request.content):
-            return httpx.Response(403, json={"detail": "password change required"})
+            return httpx.Response(403, json={"error": "password-change-required"})
         return issued(request)
 
     routes[LOGIN] = login
@@ -194,13 +195,13 @@ def test_a_first_login_sets_a_new_password(
     assert SESSION_COOKIE in changed.cookies
 
 
-def test_a_refused_new_password_shows_the_api_message(
+def test_a_refused_new_password_shows_only_the_generic_refusal_and_its_id(
     client: TestClient, routes: Routes, browser_csrf: str
 ) -> None:
     def login(request: httpx.Request) -> httpx.Response:
         if "new_password" not in json.loads(request.content):
-            return httpx.Response(403, json={"detail": "password change required"})
-        return httpx.Response(422, json={"detail": "the new password is too short"})
+            return httpx.Response(403, json={"error": "password-change-required"})
+        return httpx.Response(422, json={"error": "password-weak", "error_id": ERROR_ID})
 
     routes[LOGIN] = login
     pending = hidden(client.post("/login", data=form(browser_csrf)).text, "pending")
@@ -216,7 +217,8 @@ def test_a_refused_new_password_shows_the_api_message(
     )
 
     assert response.status_code == 422
-    assert "the new password is too short (422)" in response.text
+    assert f"The request was refused (error {ERROR_ID}) (422)" in response.text
+    assert "12 characters (error" not in response.text
     assert hidden(response.text, "pending") == pending
 
 
@@ -238,7 +240,7 @@ def test_a_new_password_that_breaks_the_rule_never_reaches_the_api(
     repeat: str,
     shown: str,
 ) -> None:
-    routes[LOGIN] = lambda _: httpx.Response(403, json={"detail": "password change required"})
+    routes[LOGIN] = lambda _: httpx.Response(403, json={"error": "password-change-required"})
     asked = client.post("/login", data=form(browser_csrf))
     change = {
         "csrf_token": browser_csrf,

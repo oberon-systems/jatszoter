@@ -13,6 +13,7 @@ SignIn = Callable[..., Operator]
 
 HTMX = {"hx-request": "true"}
 PASSWORD = "Correct-horse-alpha"
+ERROR_ID = "1b4e28ba-2fa1-41d2-883f-0016d3cca427"
 
 
 def posted(calls: list[httpx.Request]) -> list[httpx.Request]:
@@ -56,12 +57,12 @@ def test_a_refused_list_shows_the_refusal(
     client: TestClient, sign_in: SignIn, answer: Answer
 ) -> None:
     sign_in()
-    answer("GET", "/api/v1/users", {"detail": "users are not listed"}, 422)
+    answer("GET", "/api/v1/users", {"error": "invalid-request", "error_id": ERROR_ID}, 422)
 
     page = client.get("/users")
 
     assert page.status_code == 422
-    assert "users are not listed (422)" in page.text
+    assert f"the request is not valid (error {ERROR_ID}) (422)" in page.text
 
 
 @pytest.mark.usefixtures("stand")
@@ -89,10 +90,10 @@ def test_a_new_user_lands_on_the_list(
 
 
 @pytest.mark.parametrize(
-    ("status", "detail", "field", "text"),
+    ("status", "code", "text"),
     [
-        (409, "name epsilon is taken", "name", "name epsilon is taken"),
-        (422, [{"loc": ["body", "role"], "msg": "role is not valid"}], "role", "role is not valid"),
+        (409, "user-name-taken", "Unable to do the request: a user with this name already exists"),
+        (422, "role-invalid", "Unable to do the request: the role is not valid"),
     ],
 )
 @pytest.mark.usefixtures("stand")
@@ -101,20 +102,20 @@ def test_a_refused_user_shows_the_refusal_next_to_its_field(
     sign_in: SignIn,
     answer: Answer,
     status: int,
-    detail: Any,
-    field: str,
+    code: str,
     text: str,
 ) -> None:
     who = sign_in()
-    answer("POST", "/api/v1/users", {"detail": detail}, status)
+    answer("POST", "/api/v1/users", {"error": code, "error_id": ERROR_ID}, status)
     form = {"csrf_token": who.csrf, "name": "epsilon", "role": "trainee"}
 
     dialog = client.post("/users", data=form, headers=HTMX)
 
     assert dialog.status_code == status
     assert dialog.text.lstrip().startswith("<dialog")
-    assert f'<span class="field-error">{text}</span>' in dialog.text
-    assert f"{text} ({status})" in dialog.text
+    shown = f"{text} (error {ERROR_ID})"
+    assert f'<span class="field-error">{shown}</span>' in dialog.text
+    assert f"{shown} ({status})" in dialog.text
     assert 'value="epsilon"' in dialog.text
 
 
@@ -174,15 +175,16 @@ def test_a_refused_password_shows_the_refusal_next_to_its_field(
 ) -> None:
     who = sign_in()
     user_id = stand["trainee"]["id"]
-    detail = "at least 16 characters"
-    answer("POST", f"/api/v1/users/{user_id}/password", {"detail": detail}, 422)
+    refused = {"error": "password-weak", "error_id": ERROR_ID}
+    answer("POST", f"/api/v1/users/{user_id}/password", refused, 422)
     form = {"csrf_token": who.csrf, "password": PASSWORD, "repeat_password": PASSWORD}
 
     dialog = client.post(f"/users/{user_id}/password", data=form, headers=HTMX)
 
     assert dialog.status_code == 422
-    assert f'<span class="field-error">{detail}</span>' in dialog.text
-    assert f"{detail} (422)" in dialog.text
+    shown = "Unable to do the request: the password needs at least 12 characters"
+    assert f'<span class="field-error">{shown}' in dialog.text
+    assert f"symbols (error {ERROR_ID}) (422)" in dialog.text
 
 
 def test_a_user_is_disabled_through_its_dialog(
@@ -212,8 +214,8 @@ def test_a_refused_state_change_comes_back_as_a_flash(
 ) -> None:
     who = sign_in()
     user_id = stand["trainee"]["id"]
-    detail = "the last operator cannot be disabled"
-    answer("POST", f"/api/v1/users/{user_id}/state", {"detail": detail}, 409)
+    refused = {"error": "last-operator", "error_id": ERROR_ID}
+    answer("POST", f"/api/v1/users/{user_id}/state", refused, 409)
 
     disabled = client.post(
         f"/users/{user_id}/state", data={"csrf_token": who.csrf, "state": "disabled"}
@@ -221,4 +223,4 @@ def test_a_refused_state_change_comes_back_as_a_flash(
     shown = client.get("/users")
 
     assert disabled.headers["location"] == "/users"
-    assert f"{detail} (409)" in shown.text
+    assert f"cannot be disabled (error {ERROR_ID}) (409)" in shown.text

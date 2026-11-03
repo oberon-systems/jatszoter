@@ -9,7 +9,7 @@ from fastapi.responses import RedirectResponse, Response
 from pydantic import BaseModel, ValidationError
 from starlette.datastructures import FormData
 
-from jatszoter_web.api import Api, ApiDown, failed, message
+from jatszoter_web.api import Api, ApiDown, failed
 from jatszoter_web.cookies import (
     DEVICE_COOKIE,
     SESSION_COOKIE,
@@ -23,13 +23,14 @@ from jatszoter_web.csrf import browser_token, check_browser
 from jatszoter_web.middleware import queue_cookie
 from jatszoter_web.pages import LANDING, Flash, error, refusal, render, templates
 from jatszoter_web.session import OperatorDep, PostedOperatorDep, local
+from jatszoter_web.texts import answered, told
 
 PENDING = "jatszoter_login"
 PENDING_SECONDS = 15 * 60
 
 WRONG = "wrong name or password"
 THROTTLED = "too many attempts, try again later"
-CHANGE_REQUIRED = "password change required"
+CHANGE_REQUIRED = "password-change-required"
 NOT_OPERATOR = Flash(
     "refusal",
     "Refused",
@@ -142,13 +143,14 @@ async def login(request: Request) -> Response:
         return page(request, {**context, "flashes": [refusal(WRONG, status)]}, status)
     if status == 429:
         return page(request, {**context, "flashes": [refusal(THROTTLED, status)]}, status)
-    if status == 403 and message(response) == CHANGE_REQUIRED:
+    if status == 403 and answered(response)[0] == CHANGE_REQUIRED:
         sealed = seal_pending(payload["name"], payload["password"], request)
         return page(request, {**context, "pending": sealed})
     if status >= 500:
         failure = failed(status)
         return page(request, {**context, "flashes": [error(failure.message)]}, failure.status)
-    return page(request, {**context, "flashes": [refusal(message(response), status)]}, status)
+    flash = refusal(told(response, operator=False), status)
+    return page(request, {**context, "flashes": [flash]}, status)
 
 
 async def expired(request: Request, status: int) -> Response:

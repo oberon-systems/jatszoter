@@ -14,8 +14,8 @@ router = APIRouter()
 
 TABLE = "users-table"
 # A name that is taken is the one conflict a new user meets.
-NEW_CONCERNS = {"": "name"}
-PASSWORD_CONCERNS = {"at least": "password"}
+NEW_CONCERNS = {"user-name-taken": "name"}
+PASSWORD_CONCERNS = {"password-weak": "password"}
 
 
 @router.get("/users")
@@ -55,8 +55,7 @@ async def create_user(request: Request, session: PostedOperatorDep) -> Response:
             request, "user_new.html", {**context, "flashes": [error(down.message)]}, down.status
         )
     if response.status_code != 201:
-        concerns = NEW_CONCERNS if response.status_code == 409 else None
-        flash, errors = refused(response, concerns)
+        flash, errors = refused(response, NEW_CONCERNS)
         context.update(errors=errors, flashes=[flash])
         return dialog(request, "user_new.html", context, response.status_code)
     name = response.json()["name"]

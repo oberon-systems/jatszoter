@@ -110,7 +110,8 @@
   async function detail(response) {
     try {
       const answer = await response.json();
-      return typeof answer.detail === "string" ? answer.detail : "the request was refused";
+      const id = typeof answer.error_id === "string" ? ` (error ${answer.error_id})` : "";
+      return `the request was refused${id}`;
     } catch {
       return "the request was refused";
     }
@@ -227,10 +228,7 @@
     } else if (response.status >= 500) {
       failed(response.status);
     } else {
-      let text = await detail(response);
-      if (text.endsWith("has a pending check")) {
-        text = "a check is already pending";
-      }
+      const text = await detail(response);
       flash("refusal", "Refused", `${text} (${response.status})`);
     }
   }

@@ -163,7 +163,7 @@ def test_a_credential_not_yet_due_is_not_refreshed(
 def test_an_api_refusal_signs_the_browser_out(
     client: TestClient, sign_in: SignIn, routes: Routes
 ) -> None:
-    routes[ME] = lambda _: httpx.Response(401, json={"detail": "not authorized"})
+    routes[ME] = lambda _: httpx.Response(401, json={"error": "not-authorized"})
     sign_in()
 
     fragment = client.get("/probe", headers=HTMX)
@@ -180,7 +180,7 @@ def test_an_api_refusal_signs_the_browser_out(
 def test_a_forbidden_call_shows_the_not_allowed_page(
     client: TestClient, sign_in: SignIn, routes: Routes
 ) -> None:
-    routes[ME] = lambda _: httpx.Response(403, json={"detail": "forbidden"})
+    routes[ME] = lambda _: httpx.Response(403, json={"error": "forbidden"})
     sign_in()
 
     response = client.get("/probe")
@@ -280,7 +280,7 @@ def test_the_shell_shows_the_navigation_and_the_operator(
     async def shell(session: OperatorDep) -> Any:
         await session.call("GET", "/api/v1/auth/me")
 
-    routes[ME] = lambda _: httpx.Response(403, json={"detail": "forbidden"})
+    routes[ME] = lambda _: httpx.Response(403, json={"error": "forbidden"})
     who = sign_in()
 
     page = client.get("/shell").text
@@ -313,7 +313,7 @@ def test_logout_ends_the_session_at_the_api(
 
 
 @pytest.mark.parametrize(
-    "answer", [httpx.Response(401, json={"detail": "not authorized"}), httpx.Response(500)]
+    "answer", [httpx.Response(401, json={"error": "not-authorized"}), httpx.Response(500)]
 )
 def test_logout_clears_the_cookie_whatever_the_api_answers(
     client: TestClient, sign_in: SignIn, routes: Routes, answer: httpx.Response

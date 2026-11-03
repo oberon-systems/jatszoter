@@ -7,7 +7,7 @@ import httpx
 from fastapi import APIRouter, Request, WebSocket, status
 from fastapi.responses import Response
 
-from jatszoter_web.api import ApiDown, message, signed_headers
+from jatszoter_web.api import ApiDown, signed_headers
 from jatszoter_web.cookies import SESSION_COOKIE, unseal_operator
 from jatszoter_web.csrf import foreign
 from jatszoter_web.pages import (
@@ -33,21 +33,25 @@ from jatszoter_web.screens import (
     swapped,
 )
 from jatszoter_web.session import OperatorDep, PostedOperatorDep, Session, local
+from jatszoter_web.texts import told
 
 router = APIRouter()
 
 LIVE = "deployment-live"
 CHECK_BAR = "check-bar"
-# The API names the reference it refuses first: `user ...`, or the deployment's live trainee link.
-LINK_CONCERNS = {"user": "user_id", "deployment": "user_id"}
+LINK_CONCERNS = {
+    code: "user_id"
+    for code in (
+        "user-not-enabled",
+        "user-not-found",
+        "deployment-link-live",
+        "deployment-wrong-status",
+    )
+}
 
 
 def check_refusal(response: httpx.Response) -> Flash:
-    """A refused check request, worded as its board words the pending one."""
-    text = message(response)
-    if text.endswith("has a pending check"):
-        text = "a check is already pending"
-    return refusal(text, response.status_code)
+    return refusal(told(response, operator=True), response.status_code)
 
 
 def turned_down(request: Request, back: str, flash: Flash, status_code: int) -> Response:

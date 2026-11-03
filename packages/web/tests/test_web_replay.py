@@ -31,6 +31,7 @@ RECORDING = {
     "duration_seconds": 3591.0,
 }
 CAST_API = f"/api/v1/recordings/{RECORDING['id']}.cast"
+ERROR_ID = "1b4e28ba-2fa1-41d2-883f-0016d3cca427"
 CAST = b"\n".join(
     (
         b'{"version": 2, "width": 80, "height": 24, "timestamp": 1760000120}',
@@ -172,7 +173,7 @@ def test_a_recording_whose_file_is_gone_is_not_found(
     client: TestClient, sign_in: SignIn, recorded: str, answer: Answer
 ) -> None:
     sign_in()
-    answer("GET", CAST_API, {"detail": "recording has no file"}, 404)
+    answer("GET", CAST_API, {"error": "recording-without-file", "error_id": ERROR_ID}, 404)
 
     page = client.get(recorded)
     cast = client.get(f"{recorded}.cast")

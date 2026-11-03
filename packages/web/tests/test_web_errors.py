@@ -66,11 +66,12 @@ def test_an_unknown_page_shows_not_found_to_a_signed_out_browser(client: TestCli
     assert "Go to deployments" not in response.text
 
 
-def test_a_path_under_the_api_keeps_its_json(client: TestClient) -> None:
+def test_a_path_under_the_api_answers_a_code_and_an_id(client: TestClient) -> None:
     response = client.get("/api/v1/agents")
 
     assert response.status_code == 404
-    assert response.json() == {"detail": "Not Found"}
+    assert set(response.json()) == {"error", "error_id"}
+    assert response.json()["error"] == "not-found"
 
 
 def test_a_wrong_method_shows_the_refusal(client: TestClient) -> None:
@@ -188,7 +189,8 @@ def test_a_malformed_link_shows_the_link_ended_card(
 def test_a_refused_link_shows_the_link_ended_card(
     client: TestClient, routes: Routes, status: int
 ) -> None:
-    routes[("GET", f"/s/{TOKEN}")] = lambda _: httpx.Response(status, json={"detail": "gone"})
+    body = {"error": "gone", "error_id": "1b4e28ba-2fa1-41d2-883f-0016d3cca427"}
+    routes[("GET", f"/s/{TOKEN}")] = lambda _: httpx.Response(status, json=body)
 
     response = client.get(f"/s/{TOKEN}")
 

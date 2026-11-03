@@ -22,12 +22,11 @@ from jatszoter_web.session import OperatorDep, PostedOperatorDep, Session, local
 router = APIRouter()
 
 TABLE = "deployments-table"
-# The API names the reference it refuses first: `agent ...`, `user ...`, `scenario ...`.
 CONCERNS = {
-    "scenario": "scenario_id",
-    "image": "scenario_id",
-    "user": "trainee_id",
-    "agent": "agent_id",
+    "scenario-not-found": "scenario_id",
+    "image-not-registered": "scenario_id",
+    "user-not-trainee": "trainee_id",
+    "agent-not-enabled": "agent_id",
 }
 
 

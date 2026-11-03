@@ -12,6 +12,7 @@ Answer = Callable[..., None]
 SignIn = Callable[..., Operator]
 
 HTMX = {"hx-request": "true"}
+ERROR_ID = "1b4e28ba-2fa1-41d2-883f-0016d3cca427"
 
 
 def test_the_page_lists_registrations_and_agents(
@@ -57,12 +58,12 @@ def test_a_refused_list_shows_the_refusal(
     client: TestClient, sign_in: SignIn, answer: Answer
 ) -> None:
     sign_in()
-    answer("GET", "/api/v1/agents", {"detail": "agents are not listed"}, 422)
+    answer("GET", "/api/v1/agents", {"error": "invalid-request", "error_id": ERROR_ID}, 422)
 
     page = client.get("/agents")
 
     assert page.status_code == 422
-    assert "agents are not listed (422)" in page.text
+    assert f"the request is not valid (error {ERROR_ID}) (422)" in page.text
 
 
 def test_the_disable_dialog_names_the_agent(
@@ -119,7 +120,8 @@ def test_a_refused_state_change_comes_back_as_a_flash(
 ) -> None:
     who = sign_in()
     agent_id = stand["registration"]["id"]
-    answer("POST", f"/api/v1/agents/{agent_id}/state", {"detail": "agent not found"}, 404)
+    refused = {"error": "agent-not-found", "error_id": ERROR_ID}
+    answer("POST", f"/api/v1/agents/{agent_id}/state", refused, 404)
 
     switched = client.post(
         f"/agents/{agent_id}/state", data={"csrf_token": who.csrf, "state": "disabled"}
@@ -127,4 +129,4 @@ def test_a_refused_state_change_comes_back_as_a_flash(
     shown = client.get("/agents")
 
     assert switched.status_code == 303
-    assert "agent not found (404)" in shown.text
+    assert f"the agent is not known (error {ERROR_ID}) (404)" in shown.text

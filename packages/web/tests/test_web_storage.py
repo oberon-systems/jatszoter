@@ -11,6 +11,7 @@ SignIn = Callable[..., Operator]
 
 HTMX = {"hx-request": "true"}
 ENDED = "00000000-0000-4000-8000-0000000000d2"
+ERROR_ID = "1b4e28ba-2fa1-41d2-883f-0016d3cca427"
 
 
 @pytest.fixture
@@ -72,12 +73,12 @@ def test_a_refused_page_shows_the_refusal(
     client: TestClient, sign_in: SignIn, answer: Answer
 ) -> None:
     sign_in()
-    answer("GET", "/api/v1/storage", {"detail": "storage is not listed"}, 422)
+    answer("GET", "/api/v1/storage", {"error": "invalid-request", "error_id": ERROR_ID}, 422)
 
     page = client.get("/storage")
 
     assert page.status_code == 422
-    assert "storage is not listed (422)" in page.text
+    assert f"the request is not valid (error {ERROR_ID}) (422)" in page.text
 
 
 @pytest.mark.usefixtures("ended")
@@ -113,11 +114,11 @@ def test_a_refused_purge_comes_back_as_a_flash(
     client: TestClient, sign_in: SignIn, answer: Answer
 ) -> None:
     who = sign_in()
-    detail = "the deployment is still running"
-    answer("POST", f"/api/v1/deployments/{ENDED}/purge", {"detail": detail}, 409)
+    refused = {"error": "deployment-wrong-status", "error_id": ERROR_ID}
+    answer("POST", f"/api/v1/deployments/{ENDED}/purge", refused, 409)
 
     purged = client.post(f"/storage/{ENDED}/purge", data={"csrf_token": who.csrf})
     shown = client.get("/storage")
 
     assert purged.status_code == 303
-    assert f"{detail} (409)" in shown.text
+    assert f"not in a state that allows this (error {ERROR_ID}) (409)" in shown.text

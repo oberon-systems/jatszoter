@@ -235,6 +235,21 @@ def test_the_operator_terminal_is_the_signed_api_socket(upstream: Upstream) -> N
     assert "cookie" not in sent and "origin" not in sent
 
 
+def test_the_operator_terminal_signs_the_offset_it_resumes_from(upstream: Upstream) -> None:
+    client = client_for(upstream.port)
+
+    with client.websocket_connect(
+        f"{OPERATOR_ATTACH}?offset=7",
+        headers={"host": HOST, "origin": ORIGIN, "cookie": session_cookie()},
+    ) as terminal:
+        assert terminal.receive_text() == '{"offset": 0}'
+
+    sent = upstream.headers[0]
+    assert upstream.paths[0] == f"{ATTACH}?offset=7"
+    timestamp = int(sent["x-timestamp"])
+    assert sent["x-signature"] == signature(KEY, "GET", f"{ATTACH}?offset=7", b"", timestamp)
+
+
 @pytest.mark.parametrize(
     "case",
     ["no session", "lapsed", "foreign origin", "no origin"],

@@ -62,6 +62,28 @@ def test_a_signed_call_carries_the_session_credential(
     assert who.key not in response.text
 
 
+def test_a_signed_call_signs_its_query(
+    app: FastAPI,
+    client: TestClient,
+    sign_in: SignIn,
+    routes: Routes,
+    calls: list[httpx.Request],
+    signed_by: Callable[[httpx.Request, str], bool],
+) -> None:
+    @app.get("/probe-query")
+    async def probe(session: OperatorDep) -> Any:
+        return (await session.call("GET", "/api/v1/users", params={"role": "trainee"})).json()
+
+    routes[("GET", "/api/v1/users")] = lambda _: httpx.Response(200, json=[])
+    who = sign_in()
+
+    assert client.get("/probe-query").status_code == 200
+    assert calls[0].url.query == b"role=trainee"
+    assert signed_by(calls[0], who.key)
+    unqueried = httpx.Request("GET", calls[0].url.copy_with(query=None), headers=calls[0].headers)
+    assert not signed_by(unqueried, who.key)
+
+
 @pytest.mark.usefixtures("probed")
 def test_no_session_lands_on_the_login_page(client: TestClient, calls: list[httpx.Request]) -> None:
     page = client.get("/probe?view=all")

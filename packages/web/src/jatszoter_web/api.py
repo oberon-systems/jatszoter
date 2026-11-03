@@ -29,7 +29,7 @@ def failed(code: int) -> ApiDown:
 
 
 def signature(key: str, method: str, path: str, body: bytes, timestamp: int) -> str:
-    """HMAC-SHA256 of `ts\\nMETHOD\\npath\\nsha256(body)`, the way the API checks it."""
+    """HMAC-SHA256 of `ts\\nMETHOD\\npath[?query]\\nsha256(body)`, the way the API checks it."""
     message = "\n".join((str(timestamp), method.upper(), path, hashlib.sha256(body).hexdigest()))
     return hmac.new(key.encode(), message.encode(), hashlib.sha256).hexdigest()
 
@@ -91,7 +91,10 @@ class Api:
             request = self.http.build_request(method, path, content=body, params=params)
             if payload is not None:
                 request.headers["content-type"] = "application/json"
-        request.headers.update(signed_headers(operator, method, request.url.path, body))
+        target = request.url.path
+        if request.url.query:
+            target += "?" + request.url.query.decode("ascii")
+        request.headers.update(signed_headers(operator, method, target, body))
         return await self.send(request)
 
     async def aclose(self) -> None:

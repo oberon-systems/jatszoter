@@ -243,4 +243,6 @@ async def operator_socket(websocket: WebSocket, deployment_id: uuid.UUID) -> Non
     path = f"/api/v1/deployments/{deployment_id}/attach"
     # The API sees the path under the base path of its URL, and checks the signature on that.
     prefix = urlsplit(websocket.app.state.settings.api_base).path.rstrip("/")
-    await bridge(websocket, path, signed_headers(operator, "GET", prefix + path, b""), None)
+    query = websocket.url.query
+    target = prefix + path + (f"?{query}" if query else "")
+    await bridge(websocket, path, signed_headers(operator, "GET", target, b""), None)

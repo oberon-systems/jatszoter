@@ -11,6 +11,7 @@ from starlette.datastructures import FormData
 
 from jatszoter_web.api import Api, ApiDown, failed, message
 from jatszoter_web.cookies import (
+    DEVICE_COOKIE,
     SESSION_COOKIE,
     Operator,
     new_token,
@@ -125,8 +126,13 @@ async def login(request: Request) -> Response:
     else:
         payload = {"name": field(form, "name"), "password": field(form, "password")}
         context["name"] = payload["name"]
+    device = request.cookies.get(DEVICE_COOKIE)
+    if device:
+        payload["device"] = device
+    # The API counts failures per browser address; it trusts this header from web's address only.
+    forwarded = {"x-forwarded-for": request.client.host} if request.client is not None else {}
     try:
-        response = await api.anonymous("POST", "/api/v1/auth/login", payload)
+        response = await api.anonymous("POST", "/api/v1/auth/login", payload, forwarded)
         if response.status_code == 200:
             return await logged_in(request, response, next_page, context)
     except ApiDown as down:
@@ -201,6 +207,9 @@ async def logged_in(
     operator = operator.model_copy(update={"name": str(user.get("name", ""))})
     kid: str = request.app.state.settings.cookie_kid
     queue_cookie(request, SESSION_COOKIE, seal_operator(operator, request.app.state.keys, kid))
+    device = answer.get("device")
+    if isinstance(device, str) and device:
+        queue_cookie(request, DEVICE_COOKIE, device)
     return RedirectResponse(next_page or LANDING, status_code=303)
 
 

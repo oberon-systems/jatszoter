@@ -12,6 +12,8 @@ SESSION_COOKIE = "jatszoter_session"
 CSRF_COOKIE = "jatszoter_csrf"
 LINK_COOKIE = "jatszoter_link"
 FLASH_COOKIE = "jatszoter_flash"
+DEVICE_COOKIE = "jatszoter_device"
+DEVICE_SECONDS = 90 * 24 * 60 * 60
 NONCE_BYTES = 12
 
 
@@ -65,8 +67,11 @@ def unseal_operator(value: str | None, keys: dict[str, bytes]) -> Operator | Non
 
 
 def set_cookie_header(name: str, value: str | None) -> str:
-    """A `Set-Cookie` value, HttpOnly, Secure, SameSite=Strict on `/`; None clears the cookie."""
+    """A `Set-Cookie` value, HttpOnly, Secure, SameSite=Strict on `/`; None clears the cookie.
+    The device cookie outlives the browser session; every other one ends with it."""
     parts = [f"{name}={value or ''}", "Path=/", "HttpOnly", "Secure", "SameSite=Strict"]
     if value is None:
         parts += ["Max-Age=0", "expires=Thu, 01 Jan 1970 00:00:00 GMT"]
+    elif name == DEVICE_COOKIE:
+        parts.append(f"Max-Age={DEVICE_SECONDS}")
     return "; ".join(parts)

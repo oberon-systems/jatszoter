@@ -8,7 +8,13 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from jatszoter_web.cookies import CSRF_COOKIE, SESSION_COOKIE, unseal_operator
+from jatszoter_web.cookies import (
+    CSRF_COOKIE,
+    DEVICE_COOKIE,
+    DEVICE_SECONDS,
+    SESSION_COOKIE,
+    unseal_operator,
+)
 
 Routes = dict[tuple[str, str], Callable[[httpx.Request], httpx.Response]]
 
@@ -18,12 +24,14 @@ LOGOUT = ("POST", "/api/v1/auth/logout")
 USER_ID = "00000000-0000-4000-8000-000000000002"
 KEY = "issued-key-alpha"
 PASSWORD = "Correct horse battery"
+DEVICE = "m1.9999999999.gamma.delta"
 
 
 def issued(_: httpx.Request) -> httpx.Response:
     expires_at = int(time.time()) + 3600
     credential = {"credential": f"m1:1:{expires_at}", "expires_at": expires_at, "key": KEY}
-    return httpx.Response(200, json={"user_id": USER_ID, "credential": credential})
+    answer = {"user_id": USER_ID, "credential": credential, "device": DEVICE}
+    return httpx.Response(200, json=answer)
 
 
 def me(role: str) -> Callable[[httpx.Request], httpx.Response]:
@@ -83,6 +91,22 @@ def test_an_operator_logs_in(
     assert operator.csrf != browser_csrf
 
 
+def test_an_operator_login_keeps_a_device_cookie_that_the_next_login_sends(
+    client: TestClient, routes: Routes, calls: list[httpx.Request], browser_csrf: str
+) -> None:
+    routes[LOGIN] = issued
+    routes[ME] = me("operator")
+
+    response = client.post("/login", data=form(browser_csrf))
+    client.post("/login", data=form(browser_csrf))
+
+    [device] = [c for c in response.headers.get_list("set-cookie") if c.startswith(DEVICE_COOKIE)]
+    assert device.startswith(f"{DEVICE_COOKIE}={DEVICE};")
+    assert f"Max-Age={DEVICE_SECONDS}" in device and "HttpOnly" in device and "Secure" in device
+    assert calls[0].headers["x-forwarded-for"] == "testclient"
+    assert json.loads(calls[2].content)["device"] == DEVICE
+
+
 @pytest.mark.parametrize("next_page", ["https://beta.example.com/", "//beta.example.com", "x"])
 def test_a_foreign_next_page_is_dropped(
     client: TestClient, routes: Routes, browser_csrf: str, next_page: str
@@ -125,6 +149,7 @@ def test_a_user_who_is_not_an_operator_is_logged_out(
     assert "This account is not an operator&#39;s and was logged out." in response.text
     assert [f"{call.method} {call.url.path}" for call in calls][-1] == "POST /api/v1/auth/logout"
     assert SESSION_COOKIE not in response.cookies
+    assert DEVICE_COOKIE not in response.cookies
 
 
 def test_a_first_login_sets_a_new_password(

@@ -70,10 +70,17 @@ class Api:
         except httpx.TransportError:
             raise ApiDown(502, UNREACHABLE) from None
 
-    async def anonymous(self, method: str, path: str, payload: Any = None) -> httpx.Response:
+    async def anonymous(
+        self,
+        method: str,
+        path: str,
+        payload: Any = None,
+        headers: dict[str, str] | None = None,
+    ) -> httpx.Response:
         body = b"" if payload is None else json.dumps(payload).encode()
-        headers = {"content-type": "application/json"} if payload is not None else {}
-        return await self.send(self.http.build_request(method, path, content=body, headers=headers))
+        sent = {"content-type": "application/json"} if payload is not None else {}
+        sent.update(headers or {})
+        return await self.send(self.http.build_request(method, path, content=body, headers=sent))
 
     async def signed(
         self,

@@ -5,7 +5,7 @@ from urllib.parse import urlsplit
 
 from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
 from sqlmodel import Session
-from starlette.datastructures import Headers
+from starlette.datastructures import URL, Headers
 
 from jatszoter_api.db import get_session
 from jatszoter_api.models import Agent, Credential, Link, Role, State, User
@@ -39,6 +39,11 @@ def _owner(x_owner: str) -> uuid.UUID:
         return uuid.UUID(x_owner)
     except ValueError:
         raise unauthorized() from None
+
+
+def _target(url: URL) -> str:
+    """What a request signs as its path: the path, and `?query` as sent when there is one."""
+    return f"{url.path}?{url.query}" if url.query else url.path
 
 
 def _signed[T: SecretOwner](
@@ -81,7 +86,7 @@ def require_agent(
         Agent,
         agent_id,
         request.method,
-        request.url.path,
+        _target(request.url),
         session,
         settings.master_keys,
         body,
@@ -106,7 +111,7 @@ def require_user(
         User,
         _owner(x_owner),
         request.method,
-        request.url.path,
+        _target(request.url),
         session,
         settings.master_keys,
         body,
@@ -132,7 +137,7 @@ def socket_agent(
         Agent,
         agent_id,
         "GET",
-        websocket.url.path,
+        _target(websocket.url),
         session,
         keys,
         b"",
@@ -149,7 +154,7 @@ def socket_operator(websocket: WebSocket, session: Session, keys: dict[str, str]
         User,
         _owner(headers.get("x-owner", "")),
         "GET",
-        websocket.url.path,
+        _target(websocket.url),
         session,
         keys,
         b"",
@@ -213,7 +218,7 @@ def require_deployment_party(
             User,
             _owner(headers.get("x-owner", "")),
             request.method,
-            request.url.path,
+            _target(request.url),
             session,
             settings.master_keys,
             body,

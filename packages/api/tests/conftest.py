@@ -47,7 +47,8 @@ class Signed:
         request = self.client.build_request(method, path, **content)
         timestamp = str(int(time.time()))
         body_hash = hashlib.sha256(request.read()).hexdigest()
-        message = "\n".join((timestamp, method, request.url.path, body_hash))
+        target = request.url.raw_path.decode("ascii")
+        message = "\n".join((timestamp, method, target, body_hash))
         request.headers["X-Owner"] = self.id
         request.headers["X-Credential"] = self.credential
         request.headers["X-Timestamp"] = timestamp

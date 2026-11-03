@@ -94,7 +94,7 @@ class Shipper:
 
 def watch(viewer: Any, deployment_id: uuid.UUID, query: str = "") -> WebSocketTestSession:
     path = f"{DEPLOYMENTS}/{deployment_id}/attach"
-    signed = headers(path, viewer.credential, viewer.key, **{"X-Owner": viewer.id})
+    signed = headers(path + query, viewer.credential, viewer.key, **{"X-Owner": viewer.id})
     session: WebSocketTestSession = viewer.client.websocket_connect(path + query, headers=signed)
     return session
 

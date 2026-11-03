@@ -43,7 +43,7 @@ class Credential:
     def sign(
         self, keys: dict[str, str], method: str, path: str, body: bytes, timestamp: int
     ) -> str | None:
-        """HMAC-SHA256 of `ts\\nMETHOD\\npath\\nsha256(body)`; the owner signs the same way."""
+        """HMAC-SHA256 of `ts\\nMETHOD\\npath[?query]\\nsha256(body)`, as the owner signs it."""
         key = self.key(keys)
         if key is None:
             return None

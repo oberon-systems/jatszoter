@@ -330,6 +330,15 @@ def test_a_request_signed_for_something_else_is_refused(
     assert operator.call("GET", PROBE, **change).status_code == 401
 
 
+def test_the_query_is_part_of_the_signature(client: TestClient, session: Session) -> None:
+    add_user(session)
+    operator = logged_in(client)
+    queried = f"{PROBE}?role=trainee"
+
+    assert operator.call("GET", queried, signed_path=PROBE).status_code == 401
+    assert operator.call("GET", queried).status_code == 200
+
+
 @pytest.mark.parametrize("owner", ["", "alpha", "00000000-0000-4000-8000-000000000000"])
 def test_a_request_for_another_owner_is_refused(
     client: TestClient, session: Session, owner: str

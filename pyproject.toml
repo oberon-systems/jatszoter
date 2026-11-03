@@ -27,6 +27,13 @@ plugins = ["pydantic.mypy"]
 mypy_path = "packages/api/src:packages/web/src"
 explicit_package_bases = true
 
+[tool.pymarkdown]
+plugins.md013.enabled = false
+plugins.md033.enabled = false
+plugins.md041.enabled = false
+# Changelogs repeat section names under each release.
+plugins.md024.siblings_only = true
+
 [tool.pytest.ini_options]
 testpaths = ["packages"]
 addopts = "--import-mode=importlib"

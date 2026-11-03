@@ -19,7 +19,7 @@ use tokio_tungstenite::tungstenite::Message;
 use url::Url;
 
 use crate::libs::agent::{Auth, Signer};
-use crate::libs::api::{sign, unix_now};
+use crate::libs::api::{sign, target as signed_target, unix_now};
 use crate::libs::error::AgentError;
 use crate::libs::qga::Qga;
 use crate::libs::vm;
@@ -176,7 +176,7 @@ fn request(url: &Url, signer: &Signer, deployment_id: &str) -> Result<Request, A
         &signer.credential.key,
         &timestamp,
         "GET",
-        target.path(),
+        &signed_target(&target),
         &[],
     )?;
     let mut request = format!("ws{rest}").into_client_request().map_err(failed)?;

@@ -5,8 +5,8 @@ use wiremock::matchers::{any, body_json, method, path};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
 use super::{
-    mac, sign, Api, CheckResult, CheckStatus, Claim, Desired, Event, HttpApi, ImageRef, Lease,
-    Limits, Moved, Posted, Resources, ScenarioRef, Script, Seed, Signed, Status, Timeouts,
+    mac, sign, target, Api, CheckResult, CheckStatus, Claim, Desired, Event, HttpApi, ImageRef,
+    Lease, Limits, Moved, Posted, Resources, ScenarioRef, Script, Seed, Signed, Status, Timeouts,
     CONSOLE_LIMIT,
 };
 use crate::libs::error::AgentError;
@@ -39,7 +39,7 @@ fn signed_by(key: &'static str, credential: &'static str) -> impl Fn(&Request) -
             key,
             &timestamp,
             request.method.as_str(),
-            request.url.path(),
+            &target(&request.url),
             &request.body,
         )
         .unwrap();
@@ -710,6 +710,24 @@ fn the_debug_of_a_script_and_of_a_result_shows_no_content() {
     assert!(shown.starts_with("Script { .. } CheckResult"), "{shown}");
     assert!(shown.contains("Failed"), "{shown}");
     assert!(!shown.contains("secret"));
+}
+
+#[test]
+fn the_signed_target_carries_the_query_only_when_there_is_one() {
+    let base = "https://api.example.com/api/v1/agents/gamma/deployments";
+
+    assert_eq!(
+        target(&Url::parse(base).unwrap()),
+        "/api/v1/agents/gamma/deployments"
+    );
+    assert_eq!(
+        target(&Url::parse(&format!("{base}?")).unwrap()),
+        "/api/v1/agents/gamma/deployments"
+    );
+    assert_eq!(
+        target(&Url::parse(&format!("{base}?state=ready&limit=2")).unwrap()),
+        "/api/v1/agents/gamma/deployments?state=ready&limit=2"
+    );
 }
 
 #[test]

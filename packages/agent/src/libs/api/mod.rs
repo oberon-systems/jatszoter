@@ -327,7 +327,7 @@ impl HttpApi {
             &credential.key,
             &timestamp,
             method.as_str(),
-            url.path(),
+            &target(&url),
             &body,
         )?;
         Ok(self
@@ -568,7 +568,15 @@ fn mac(key: &[u8]) -> Result<HmacSha256, AgentError> {
     HmacSha256::new_from_slice(key).map_err(|err| AgentError::Api(err.to_string()))
 }
 
-/// HMAC-SHA256 of `ts\nMETHOD\npath\nsha256(body)` under the credential's key, as in 06.
+/// What a request signs as its path: the path, and `?query` as sent when there is one.
+pub fn target(url: &Url) -> String {
+    match url.query() {
+        Some(query) if !query.is_empty() => format!("{}?{query}", url.path()),
+        _ => url.path().to_owned(),
+    }
+}
+
+/// HMAC-SHA256 of `ts\nMETHOD\npath[?query]\nsha256(body)` under the credential's key, as in 06.
 pub fn sign(
     key: &str,
     timestamp: &str,

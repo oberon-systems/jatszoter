@@ -6,23 +6,10 @@ from typing import Annotated, Any
 
 import httpx
 from fastapi import Depends, FastAPI, Request
-from fastapi.responses import JSONResponse
 from pydantic import AfterValidator, Field
 from sqlmodel import Session
 
 from jatszoter_api.db import get_session
-from jatszoter_api.errors import (
-    ConflictError,
-    ForbiddenError,
-    InvalidBundleError,
-    InvalidPasswordError,
-    InvalidReferenceError,
-    InvalidTransitionError,
-    NotAuthorizedError,
-    NotFoundError,
-    ThrottledError,
-    TooLargeError,
-)
 from jatszoter_api.models import Check, Recording
 from jatszoter_api.models.recording import live
 from jatszoter_api.settings import Settings, app_settings
@@ -31,23 +18,6 @@ log = logging.getLogger(__name__)
 
 SessionDep = Annotated[Session, Depends(get_session)]
 SettingsDep = Annotated[Settings, Depends(app_settings)]
-
-_ERROR_STATUS: dict[type[Exception], int] = {
-    NotAuthorizedError: 401,
-    ForbiddenError: 403,
-    NotFoundError: 404,
-    ConflictError: 409,
-    InvalidTransitionError: 409,
-    TooLargeError: 413,
-    InvalidBundleError: 422,
-    InvalidPasswordError: 422,
-    InvalidReferenceError: 422,
-    ThrottledError: 429,
-}
-
-
-def domain_error_handler(_: Request, exc: Exception) -> JSONResponse:
-    return JSONResponse({"detail": str(exc)}, status_code=_ERROR_STATUS.get(type(exc), 400))
 
 
 def recorded(

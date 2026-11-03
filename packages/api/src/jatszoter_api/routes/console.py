@@ -129,13 +129,17 @@ def _shipping(
     """How far the log is held, once the agent may ship this deployment's console."""
     agent = socket_agent(agent_id, websocket, session, settings.master_keys)
     if agent.lease is None:
-        raise ConflictError(f"agent {agent.id} holds no live lease")
+        raise ConflictError(f"agent {agent.id} holds no live lease", code="agent-without-lease")
     try:
         deployment = Deployment(session=session).load(id=deployment_id, agent_id=agent.id)
     except IndexError:
-        raise NotFoundError(f"deployment {deployment_id} is not known") from None
+        raise NotFoundError(
+            f"deployment {deployment_id} is not known", code="deployment-not-found"
+        ) from None
     if deployment.status not in SHIPPING:
-        raise ConflictError(f"deployment {deployment_id} is {deployment.status}")
+        raise ConflictError(
+            f"deployment {deployment_id} is {deployment.status}", code="deployment-wrong-status"
+        )
     return deployment.console.held(_filer_url(settings))
 
 
@@ -227,11 +231,15 @@ def _watching(
     try:
         deployment = Deployment(session=session).load(id=deployment_id)
     except IndexError:
-        raise NotFoundError(f"deployment {deployment_id} is not known") from None
+        raise NotFoundError(
+            f"deployment {deployment_id} is not known", code="deployment-not-found"
+        ) from None
     if link is None:
         return None, role
     if deployment.status is not DeploymentStatus.READY:
-        raise ConflictError(f"deployment {deployment_id} is {deployment.status}")
+        raise ConflictError(
+            f"deployment {deployment_id} is {deployment.status}", code="deployment-wrong-status"
+        )
     if role is Role.TRAINEE:
         _resumed(link, deployment.console, _filer_url(settings))
     return link.id, role
@@ -338,9 +346,13 @@ def control(
     try:
         deployment = Deployment(session=session).load(id=deployment_id)
     except IndexError:
-        raise NotFoundError(f"deployment {deployment_id} is not known") from None
+        raise NotFoundError(
+            f"deployment {deployment_id} is not known", code="deployment-not-found"
+        ) from None
     if deployment.status is not DeploymentStatus.READY:
-        raise ConflictError(f"deployment {deployment_id} is {deployment.status}")
+        raise ConflictError(
+            f"deployment {deployment_id} is {deployment.status}", code="deployment-wrong-status"
+        )
     changed = deployment.console.control() is not body.holder
     deployment.console.give(body.holder)
     if changed:

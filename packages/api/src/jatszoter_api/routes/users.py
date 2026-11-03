@@ -39,7 +39,7 @@ def _user(session: SessionDep, user_id: uuid.UUID) -> User:
     try:
         return User(session=session).load(id=user_id)
     except IndexError:
-        raise NotFoundError(f"user {user_id} is not known") from None
+        raise NotFoundError(f"user {user_id} is not known", code="user-not-found") from None
 
 
 @router.post("", status_code=201)

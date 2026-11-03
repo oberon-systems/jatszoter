@@ -106,7 +106,9 @@ def _deployment(session: SessionDep, deployment_id: uuid.UUID) -> Deployment:
     try:
         return Deployment(session=session).load(id=deployment_id)
     except IndexError:
-        raise NotFoundError(f"deployment {deployment_id} is not known") from None
+        raise NotFoundError(
+            f"deployment {deployment_id} is not known", code="deployment-not-found"
+        ) from None
 
 
 def _owner(session: SessionDep, user_id: uuid.UUID) -> User:
@@ -116,7 +118,9 @@ def _owner(session: SessionDep, user_id: uuid.UUID) -> User:
     except IndexError:
         user = None
     if user is None or user.state is not State.ENABLED:
-        raise InvalidReferenceError(f"user {user_id} is not an enabled user")
+        raise InvalidReferenceError(
+            f"user {user_id} is not an enabled user", code="user-not-enabled"
+        )
     return user
 
 
@@ -138,21 +142,29 @@ def create(body: DeploymentIn, session: SessionDep, settings: SettingsDep) -> De
     try:
         scenario = Scenario(session=session).load(id=body.scenario_id)
     except IndexError:
-        raise NotFoundError(f"scenario {body.scenario_id} is not known") from None
+        raise NotFoundError(
+            f"scenario {body.scenario_id} is not known", code="scenario-not-found"
+        ) from None
     try:
         image = scenario.image
     except IndexError:
-        raise ConflictError(f"image {scenario.document['image']} is not registered") from None
+        raise ConflictError(
+            f"image {scenario.document['image']} is not registered", code="image-not-registered"
+        ) from None
     if body.agent_id is not None:
         try:
             agent = Agent(session=session).load(id=body.agent_id)
         except IndexError:
             agent = None
         if agent is None or agent.state is not State.ENABLED:
-            raise InvalidReferenceError(f"agent {body.agent_id} is not an enabled agent")
+            raise InvalidReferenceError(
+                f"agent {body.agent_id} is not an enabled agent", code="agent-not-enabled"
+            )
     trainee = _owner(session, body.trainee_id)
     if trainee.role is not Role.TRAINEE:
-        raise InvalidReferenceError(f"user {body.trainee_id} is not a trainee")
+        raise InvalidReferenceError(
+            f"user {body.trainee_id} is not a trainee", code="user-not-trainee"
+        )
     resources = scenario.document.get("resources", {})
     timeouts = scenario.document.get("timeouts", {})
     deployment = Deployment(
@@ -214,10 +226,14 @@ def stop(session: SessionDep, settings: SettingsDep, deployment_id: uuid.UUID) -
 def issue(body: LinkIn, session: SessionDep, deployment_id: uuid.UUID) -> LinkIssued:
     deployment = _deployment(session, deployment_id)
     if deployment.status in TERMINAL:
-        raise ConflictError(f"deployment {deployment.id} is {deployment.status}")
+        raise ConflictError(
+            f"deployment {deployment.id} is {deployment.status}", code="deployment-wrong-status"
+        )
     user = _owner(session, body.user_id)
     if user.role is Role.TRAINEE and _holds_trainee(session, deployment):
-        raise ConflictError(f"deployment {deployment.id} holds a live trainee link")
+        raise ConflictError(
+            f"deployment {deployment.id} holds a live trainee link", code="deployment-link-live"
+        )
     link = Link(session=session, deployment_id=deployment.id, user_id=user.id)
     link.save()
     return LinkIssued(**link_out(session, link).model_dump(), token=cast(str, link.token))

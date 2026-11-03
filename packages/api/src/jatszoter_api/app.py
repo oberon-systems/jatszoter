@@ -1,5 +1,4 @@
 import logging
-import re
 from pathlib import Path
 
 from alembic import command
@@ -7,8 +6,8 @@ from alembic.config import Config
 from fastapi import APIRouter, FastAPI
 from sqlmodel import Session, create_engine
 
+from jatszoter_api.answers import HANDLERS, LINK_PATH
 from jatszoter_api.console_hub import ConsoleHub
-from jatszoter_api.errors import DomainError
 from jatszoter_api.middleware import BODY_LIMIT, BodyLimit
 from jatszoter_api.models import Role, State, User
 from jatszoter_api.models._cache import Cached
@@ -21,7 +20,6 @@ from jatszoter_api.routes import (
     console_router,
     deployment_party_router,
     deployments_router,
-    domain_error_handler,
     images_router,
     links_router,
     open_router,
@@ -33,8 +31,6 @@ from jatszoter_api.routes import (
 from jatszoter_api.settings import Settings
 
 MIGRATIONS = Path(__file__).parent / "migrations"
-
-LINK_PATH = re.compile(r"/s/[^/?#\s]+")
 
 log = logging.getLogger(__name__)
 
@@ -90,7 +86,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             admin.save()
             log.warning("no operator existed: created user admin, due for a password change")
-    app.add_exception_handler(DomainError, domain_error_handler)
+    for error, handler in HANDLERS.items():
+        app.add_exception_handler(error, handler)
     upload = settings.scenario_bundle_limit_bytes + BODY_LIMIT
     app.add_middleware(BodyLimit, wider={("POST", "/api/v1/scenarios"): upload})
 

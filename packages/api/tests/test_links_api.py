@@ -357,7 +357,9 @@ def test_an_unknown_revoked_or_disabled_link_gets_the_same_404_and_no_cookie(
     ]
 
     assert [response.status_code for response in refusals] == [404, 404, 404]
-    assert len({response.content for response in refusals}) == 1
+    # Each answer has its own error id; nothing else may tell the three apart.
+    assert [sorted(response.json()) for response in refusals] == [["error", "error_id"]] * 3
+    assert [response.json()["error"] for response in refusals] == ["not-found"] * 3
     assert not any("set-cookie" in response.headers for response in refusals)
     assert [link.opened_at for link in Link._load(session)] == [None, None]
 

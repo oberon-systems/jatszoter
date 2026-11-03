@@ -110,10 +110,13 @@ def test_a_malformed_registration_is_refused(client: TestClient, body: dict[str,
     assert client.post("/api/v1/agents/register", json=body).status_code == 422
 
 
-def test_a_registered_agent_waits_for_the_operator(client: TestClient) -> None:
+def test_a_registered_agent_waits_for_the_operator(client: TestClient, refused: Any) -> None:
     code = register(client)
 
-    assert claim(client, code).status_code == 409
+    response = claim(client, code)
+
+    assert response.status_code == 409
+    refused(response, "agent-waits-for-operator", "waits for an operator")
 
 
 def test_an_approved_agent_claims_once_in_a_signed_response(
@@ -228,7 +231,7 @@ def test_a_refreshed_credential_signs(client: TestClient, session: Session) -> N
 
 @pytest.mark.parametrize("state", [State.ENABLED, State.DISABLED])
 def test_a_stored_id_cannot_register_again(
-    client: TestClient, session: Session, state: State
+    client: TestClient, session: Session, refused: Any, state: State
 ) -> None:
     agent = enroll(client, session)
     stored = Agent(session=session).load(id=uuid.UUID(agent.id))
@@ -238,7 +241,25 @@ def test_a_stored_id_cannot_register_again(
     response = client.post("/api/v1/agents/register", json={"name": "gamma", "agent_id": agent.id})
 
     assert response.status_code == 409
-    assert response.json() == {"detail": KNOWN_ID}
+    refused(response, "agent-already-registered", KNOWN_ID)
+
+
+def test_a_conflict_the_database_finds_answers_a_code_and_logs_the_driver(
+    session: Session, settings: Settings, monkeypatch: pytest.MonkeyPatch, refused: Any
+) -> None:
+    auto = settings.model_copy(update={"auto_register_agents": True})
+    agent_id = str(uuid.uuid4())
+    body = {"name": "alpha", "agent_id": agent_id}
+
+    with TestClient(create_app(auto)) as client:
+        assert client.post("/api/v1/agents/register", json=body).status_code == 201
+        # The lookup misses, as in a race, so the insert itself collides.
+        monkeypatch.setattr(Agent, "_load", classmethod(lambda *_, **__: []))
+        response = client.post("/api/v1/agents/register", json=body)
+
+    assert response.status_code == 409
+    assert "agents" not in response.text
+    refused(response, "agent-already-registered", "UNIQUE constraint failed: agents.id")
 
 
 def test_a_waiting_id_cannot_register_again(operator: Any) -> None:
@@ -293,7 +314,7 @@ def test_the_app_enables_agents_at_once_when_its_settings_say_so(
 
 
 def test_a_burst_of_registrations_from_one_address_gets_429(
-    session: Session, settings: Settings
+    session: Session, settings: Settings, refused: Any
 ) -> None:
     limited = settings.model_copy(update={"agent_register_per_address": 3})
 
@@ -303,7 +324,7 @@ def test_a_burst_of_registrations_from_one_address_gets_429(
         response = client.post("/api/v1/agents/register", json={"name": "beta"})
 
     assert response.status_code == 429
-    assert response.json() == {"detail": REGISTER_THROTTLED}
+    refused(response, "register-throttled", REGISTER_THROTTLED)
 
 
 @pytest.fixture

@@ -25,7 +25,7 @@ AgentDep = Annotated[Agent, Depends(require_agent)]
 def leased(agent: AgentDep) -> Agent:
     """The signed agent, refused with 409 unless its lease is live."""
     if agent.lease is None:
-        raise ConflictError(f"agent {agent.id} holds no live lease")
+        raise ConflictError(f"agent {agent.id} holds no live lease", code="agent-without-lease")
     return agent
 
 
@@ -208,7 +208,9 @@ def _held(session: Session, agent: Agent, deployment_id: uuid.UUID) -> Deploymen
     try:
         return Deployment(session=session).load(id=deployment_id, agent_id=agent.id)
     except IndexError:
-        raise NotFoundError(f"deployment {deployment_id} is not known") from None
+        raise NotFoundError(
+            f"deployment {deployment_id} is not known", code="deployment-not-found"
+        ) from None
 
 
 def _pending(
@@ -219,11 +221,14 @@ def _pending(
     try:
         check = Check(session=session).load(id=check_id, deployment_id=deployment.id)
     except IndexError:
-        raise NotFoundError(f"check {check_id} is not known") from None
+        raise NotFoundError(f"check {check_id} is not known", code="check-not-found") from None
     if deployment.status is not DeploymentStatus.READY:
-        raise ConflictError(f"deployment {deployment_id} is {deployment.status}, not READY")
+        raise ConflictError(
+            f"deployment {deployment_id} is {deployment.status}, not READY",
+            code="deployment-wrong-status",
+        )
     if check.status is not CheckStatus.PENDING:
-        raise ConflictError(f"check {check_id} is {check.status}")
+        raise ConflictError(f"check {check_id} is {check.status}", code="check-wrong-status")
     return deployment, check
 
 
@@ -313,7 +318,10 @@ def seed(
 ) -> SeedOut:
     deployment = _held(session, agent, deployment_id)
     if deployment.status is not DeploymentStatus.STARTING:
-        raise ConflictError(f"deployment {deployment_id} is {deployment.status}, not STARTING")
+        raise ConflictError(
+            f"deployment {deployment_id} is {deployment.status}, not STARTING",
+            code="deployment-wrong-status",
+        )
     rendered = deployment.seed(
         stored_bundle(deployment, settings).files,
         settings.default_trainee_user,
@@ -353,7 +361,7 @@ def result(
 ) -> ResultOut:
     _, check = _pending(session, agent, deployment_id, check_id)
     if not check.settle(CheckStatus(body.status), body.exit_code, body.message, body.detail):
-        raise ConflictError(f"check {check_id} is {check.status}")
+        raise ConflictError(f"check {check_id} is {check.status}", code="check-wrong-status")
     mark(check)
     return ResultOut(id=check.id, status=check.status)
 
@@ -379,7 +387,7 @@ def switch(
         if body.state is State.ENABLED:
             approved = Agent(session=session, id=agent_id).approve()
         if approved is None:
-            raise NotFoundError(f"agent {agent_id} is not known") from None
+            raise NotFoundError(f"agent {agent_id} is not known", code="agent-not-found") from None
         return agent_out(approved)
     filer_url = None if settings.seaweed_url is None else str(settings.seaweed_url)
     return agent_out(agent.switch(body.state, filer_url, settings.recording_limit_bytes))

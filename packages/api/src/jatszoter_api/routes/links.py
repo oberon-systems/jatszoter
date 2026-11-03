@@ -66,7 +66,7 @@ def revoke(
     try:
         link = Link(session=session).load(id=link_id)
     except IndexError:
-        raise NotFoundError(f"link {link_id} is not known") from None
+        raise NotFoundError(f"link {link_id} is not known", code="link-not-found") from None
     link.revoke()
     request.app.state.console_hub.revoke(link.id)
     try:

@@ -51,7 +51,7 @@ def login(body: LoginIn, request: Request, session: SessionDep, settings: Settin
     if body.new_password is not None:
         user.change_password(body.password, body.new_password)
     elif not user.password_changed:
-        raise ForbiddenError("password change required")
+        raise ForbiddenError("password change required", code="password-change-required")
     issued = user.issue(CREDENTIAL_SECONDS, settings.master_kid, settings.master_keys)
     device = user.device_token(settings.master_kid, settings.master_keys)
     return LoginOut(user_id=user.id, credential=credential_out(*issued), device=device)

@@ -1,7 +1,6 @@
 import asyncio
 import gzip
 import os
-import re
 import tarfile
 import time
 import tracemalloc
@@ -188,13 +187,21 @@ def test_the_same_version_with_changed_content_conflicts(
 
 
 @pytest.mark.parametrize(
-    ("change", "message"),
+    ("change", "code", "message"),
     [
-        ({"extra": [member("nginx-502/link", tarfile.SYMTYPE)]}, "not a regular file"),
-        ({"extra": [member("../x")]}, "'\\.\\.'"),
-        ({"extra": [member("other/x")]}, "more than one top directory"),
-        ({"changes": {"break.sh": None}}, "steps.break names 'break.sh'"),
-        ({"changes": {"scenario.yaml": b"id: nginx-502\n"}}, "scenario.yaml at \\$: "),
+        (
+            {"extra": [member("nginx-502/link", tarfile.SYMTYPE)]},
+            "bundle-member-not-file",
+            "not a regular file",
+        ),
+        ({"extra": [member("../x")]}, "bundle-member-climbs-out", "'\\.\\.'"),
+        ({"extra": [member("other/x")]}, "bundle-layout-invalid", "more than one top directory"),
+        ({"changes": {"break.sh": None}}, "bundle-file-missing", "steps.break names 'break.sh'"),
+        (
+            {"changes": {"scenario.yaml": b"id: nginx-502\n"}},
+            "scenario-invalid",
+            "scenario.yaml at \\$: ",
+        ),
     ],
 )
 def test_an_invalid_bundle_is_refused_and_leaves_no_trace(
@@ -202,25 +209,27 @@ def test_an_invalid_bundle_is_refused_and_leaves_no_trace(
     pack: Pack,
     tmp_path: Path,
     session: Session,
+    refused: Any,
     change: dict[str, Any],
+    code: str,
     message: str,
 ) -> None:
     response = upload(operator, pack(**change))
 
     assert response.status_code == 422
-    assert re.search(message, response.json()["detail"])
+    refused(response, code, message)
     assert_nothing_kept(tmp_path, session)
 
 
 def test_an_unknown_image_is_refused(
-    operator: Any, pack: Pack, tmp_path: Path, session: Session
+    operator: Any, pack: Pack, tmp_path: Path, session: Session, refused: Any
 ) -> None:
     document = DOCUMENT.read_text().replace("image: rocky-9", "image: alpha")
 
     response = upload(operator, pack(changes={"scenario.yaml": document.encode()}))
 
     assert response.status_code == 422
-    assert response.json()["detail"] == "image alpha is not registered"
+    refused(response, "image-not-registered", "image alpha is not registered")
     assert_nothing_kept(tmp_path, session)
 
 
@@ -260,14 +269,14 @@ def test_a_bundle_over_the_small_body_limit_still_uploads(operator: Any, pack: P
 
 
 def test_a_body_past_the_upload_limit_is_refused_by_size(
-    operator: Any, settings: Settings, tmp_path: Path, session: Session
+    operator: Any, settings: Settings, tmp_path: Path, session: Session, refused: Any
 ) -> None:
     bundle = bytes(settings.scenario_bundle_limit_bytes + BODY_LIMIT + 1)
 
     response = upload(operator, bundle)
 
     assert response.status_code == 413
-    assert response.json() == {"detail": "the request body is too large"}
+    refused(response, "too-large", "the request body is too large")
     assert_nothing_kept(tmp_path, session)
 
 
@@ -284,6 +293,7 @@ def test_an_encoded_download_is_refused(
     served: dict[str, httpx.Response],
     tmp_path: Path,
     session: Session,
+    refused: Any,
     encoding: str,
 ) -> None:
     served[BUNDLE_URL] = sent(pack(), **{"Content-Encoding": encoding})
@@ -291,7 +301,7 @@ def test_an_encoded_download_is_refused(
     response = fetch(operator)
 
     assert response.status_code == 422
-    assert "Content-Encoding" in response.json()["detail"]
+    refused(response, "bundle-url-encoded", "Content-Encoding")
     assert_nothing_kept(tmp_path, session)
 
 
@@ -338,7 +348,12 @@ def test_a_slow_server_is_cut_off_at_the_deadline(
 
 
 def test_a_redirect_is_not_followed(
-    operator: Any, pack: Pack, served: dict[str, httpx.Response], tmp_path: Path, session: Session
+    operator: Any,
+    pack: Pack,
+    served: dict[str, httpx.Response],
+    tmp_path: Path,
+    session: Session,
+    refused: Any,
 ) -> None:
     target = "https://example.com/moved.tar.gz"
     served[BUNDLE_URL] = httpx.Response(302, headers={"Location": target})
@@ -347,7 +362,7 @@ def test_a_redirect_is_not_followed(
     response = fetch(operator)
 
     assert response.status_code == 422
-    assert "redirects" in response.json()["detail"]
+    refused(response, "bundle-url-redirects", "redirects")
     assert_nothing_kept(tmp_path, session)
 
 
@@ -379,11 +394,13 @@ def test_a_url_the_api_may_not_fetch_is_refused(
         "http://127.0.0.1:1/x",
     ],
 )
-def test_an_internal_address_is_refused_before_any_connection(operator: Any, url: str) -> None:
+def test_an_internal_address_is_refused_before_any_connection(
+    operator: Any, refused: Any, url: str
+) -> None:
     response = fetch(operator, url)
 
     assert response.status_code == 422
-    assert response.json()["detail"] == ADDRESS_REFUSED
+    refused(response, "bundle-fetch-refused", ADDRESS_REFUSED)
 
 
 async def _status_503(_: httpx.Request) -> httpx.Response:
@@ -406,22 +423,19 @@ async def _connect_error(_: httpx.Request) -> httpx.Response:
         (_connect_error, "ConnectError"),
     ],
 )
-def test_every_failure_looks_the_same_and_the_log_tells_them_apart(
-    caplog: pytest.LogCaptureFixture, handler: Callable[..., Any], cause: str
+def test_every_failure_answers_one_code_and_the_log_tells_them_apart(
+    handler: Callable[..., Any], cause: str
 ) -> None:
     transport = httpx.MockTransport(handler)
 
     with pytest.raises(InvalidBundleError) as refused:
         asyncio.run(_fetch(f"{BUNDLE_URL}?token=beta", transport, 1024))
 
-    found = re.fullmatch(
-        r"bundle-fetch-failed: see the API log for error ([0-9a-f]{12})", str(refused.value)
-    )
-    assert found is not None
-    assert found.group(1) in caplog.text
-    assert cause in caplog.text
-    assert "example.com" in caplog.text
-    assert "token" not in caplog.text
+    logged = str(refused.value)
+    assert refused.value.code == "bundle-fetch-failed"
+    assert cause in logged
+    assert "example.com" in logged
+    assert "token" not in logged
 
 
 def test_a_proxy_from_the_environment_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -121,7 +121,9 @@ class Deployment(Base, table=True):
     def purge(self, filer_url: str | None) -> None:
         """Delete the console log and the recordings of an ended deployment, files and rows."""
         if self.status not in TERMINAL:
-            raise ConflictError(f"deployment {self.id} is {self.status}")
+            raise ConflictError(
+                f"deployment {self.id} is {self.status}", code="deployment-wrong-status"
+            )
         File(self.console.path, filer_url=filer_url).delete()
         for recording in self.recordings:
             recording.drop(filer_url)
@@ -136,10 +138,12 @@ class Deployment(Base, table=True):
         ones it settled on the way."""
         self._session.refresh(self, with_for_update=True)
         if self.status is not DeploymentStatus.READY:
-            raise ConflictError(f"deployment {self.id} is {self.status}")
+            raise ConflictError(
+                f"deployment {self.id} is {self.status}", code="deployment-wrong-status"
+            )
         settled = self.expire_checks()
         if self.pending is not None:
-            raise ConflictError(f"deployment {self.id} has a pending check")
+            raise ConflictError(f"deployment {self.id} has a pending check", code="check-pending")
         check.save()
         self._checks = None
         return settled
@@ -195,7 +199,8 @@ class Deployment(Base, table=True):
             if self.status is target and owned:
                 return
             raise InvalidTransitionError(
-                f"deployment {self.id} is {self.status}, expected {expected}"
+                f"deployment {self.id} is {self.status}, expected {expected}",
+                code="deployment-wrong-status",
             )
         now = int(time.time())
         self.status = target

@@ -1,4 +1,4 @@
-from typing import Any, Self
+from typing import Any, ClassVar, Self
 
 from pydantic import PrivateAttr
 from sqlmodel import JSON, Column, Field, Session, UniqueConstraint
@@ -11,6 +11,7 @@ from jatszoter_api.models.image import Image
 class Scenario(Base, table=True):
     __tablename__ = "scenarios"
     __table_args__ = (UniqueConstraint("slug", "version"),)
+    CONFLICT: ClassVar[str] = "scenario-version-taken"
 
     slug: str
     version: int

@@ -4,7 +4,7 @@ import ipaddress
 import secrets
 import time
 from enum import StrEnum
-from typing import Any, Self
+from typing import Any, ClassVar, Self
 
 from pydantic import PrivateAttr
 from sqlmodel import Field, Session
@@ -97,6 +97,7 @@ def _device_mac(master: str, user_id: str, expires_at: str, nonce: str) -> str:
 
 class User(SecretOwner, table=True):
     __tablename__ = "users"
+    CONFLICT: ClassVar[str] = "user-name-taken"
 
     name: str = Field(unique=True)
     role: Role
@@ -129,7 +130,7 @@ class User(SecretOwner, table=True):
                 (_hashed_key(self.name), NAME_FAILURES),
             ]
         if any(self._count(key) >= limit for key, limit in counters):
-            raise ThrottledError("too many attempts")
+            raise ThrottledError("too many attempts", code="login-throttled")
         if not self.check_password(password) or self.state is not State.ENABLED:
             for key, _ in counters:
                 self._increment(key, LOGIN_WINDOW_SECONDS)
@@ -181,7 +182,9 @@ class User(SecretOwner, table=True):
         if state is State.DISABLED and self.role is Role.OPERATOR and self.state is State.ENABLED:
             enabled = User._load(self._session, role=Role.OPERATOR, state=State.ENABLED)
             if len(enabled) <= 1:
-                raise ConflictError("cannot disable the last enabled operator")
+                raise ConflictError(
+                    "cannot disable the last enabled operator", code="last-operator"
+                )
         self.state = state
         self.save()
         return self
@@ -189,7 +192,7 @@ class User(SecretOwner, table=True):
     def reset_password(self, password: str) -> None:
         """Set a one-time password, which the next login must change, and end every credential."""
         if weak(password):
-            raise InvalidPasswordError(WEAK)
+            raise InvalidPasswordError(WEAK, code="password-weak")
         self.password = _hashed(password)
         self.password_changed = 0
         self._end_credentials()
@@ -199,9 +202,9 @@ class User(SecretOwner, table=True):
     def change_password(self, old: str, new: str) -> None:
         """Replace the password and mark it changed, refusing a weak or unchanged one."""
         if weak(new):
-            raise InvalidPasswordError(WEAK)
+            raise InvalidPasswordError(WEAK, code="password-weak")
         if new == old:
-            raise InvalidPasswordError(UNCHANGED)
+            raise InvalidPasswordError(UNCHANGED, code="password-unchanged")
         self.password = _hashed(new)
         self.password_changed = int(time.time())
         self.save()

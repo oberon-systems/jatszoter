@@ -1,6 +1,7 @@
 import asyncio
 import uuid
 from collections.abc import Iterator
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -86,7 +87,7 @@ def test_a_socket_passes_untouched() -> None:
     assert seen == [receive]
 
 
-def test_an_unsigned_large_body_is_refused_by_size(api: TestClient) -> None:
+def test_an_unsigned_large_body_is_refused_by_size(api: TestClient, refused: Any) -> None:
     response = api.post(
         f"/api/v1/agents/{uuid.uuid4()}/heartbeat",
         content=b"{" + b" " * LARGE,
@@ -94,7 +95,7 @@ def test_an_unsigned_large_body_is_refused_by_size(api: TestClient) -> None:
     )
 
     assert response.status_code == 413
-    assert response.json() == {"detail": "the request body is too large"}
+    refused(response, "too-large", "the request body is too large")
 
 
 def test_a_large_anonymous_registration_is_refused_without_an_echo(api: TestClient) -> None:

@@ -59,7 +59,8 @@ class Console(Cached):
             return held, b""
         if held >= limit_bytes:
             raise TooLargeError(
-                f"console of deployment {self.deployment_id} is at its {limit_bytes} byte limit"
+                f"console of deployment {self.deployment_id} is at its {limit_bytes} byte limit",
+                code="console-full",
             )
         new = new[: limit_bytes - held]
         File(self.path, new, filer_url).append()

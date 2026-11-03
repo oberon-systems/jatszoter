@@ -45,13 +45,14 @@ def test_the_list_filters_by_role_newest_first(operator: Any, session: Session) 
     assert operator.request("GET", USERS, params={"role": "root"}).status_code == 422
 
 
-def test_a_duplicate_name_conflicts(operator: Any, session: Session) -> None:
+def test_a_duplicate_name_conflicts(operator: Any, session: Session, refused: Any) -> None:
     body = {"name": "beta", "role": "trainee"}
     assert operator.request("POST", USERS, json=body).status_code == 201
 
     response = operator.request("POST", USERS, json={**body, "role": "viewer"})
 
     assert response.status_code == 409
+    refused(response, "user-name-taken", "UNIQUE constraint failed: users.name")
     assert len(User._load(session, name="beta")) == 1
 
 
@@ -120,7 +121,9 @@ def test_a_user_is_disabled_and_enabled_again(
     assert revoked == [link.id]
 
 
-def test_the_last_enabled_operator_stays_enabled(operator: Any, session: Session) -> None:
+def test_the_last_enabled_operator_stays_enabled(
+    operator: Any, session: Session, refused: Any
+) -> None:
     admin = User(session=session).load(name="admin")
     assert operator.request(
         "POST", f"{USERS}/{admin.id}/state", json={"state": "disabled"}
@@ -129,7 +132,7 @@ def test_the_last_enabled_operator_stays_enabled(operator: Any, session: Session
     response = operator.request("POST", f"{USERS}/{operator.id}/state", json={"state": "disabled"})
 
     assert response.status_code == 409
-    assert response.json()["detail"] == "cannot disable the last enabled operator"
+    refused(response, "last-operator", "cannot disable the last enabled operator")
     session.expire_all()
     assert User(session=session).load(name="alpha").state is State.ENABLED
 
@@ -153,7 +156,7 @@ def test_an_unknown_user_is_not_found(operator: Any) -> None:
 
 
 def test_a_one_time_password_must_be_changed_at_the_next_login(
-    operator: Any, api: TestClient, session: Session
+    operator: Any, api: TestClient, session: Session, refused: Any
 ) -> None:
     user = stored(session)
 
@@ -162,9 +165,9 @@ def test_a_one_time_password_must_be_changed_at_the_next_login(
     )
 
     assert response.status_code == 204
-    refused = login(api, "beta", "One time password")
-    assert refused.status_code == 403
-    assert refused.json()["detail"] == "password change required"
+    first = login(api, "beta", "One time password")
+    assert first.status_code == 403
+    refused(first, "password-change-required")
     assert login(api, "beta", "One time password", new_password="Staple of the paddock").is_success
 
 

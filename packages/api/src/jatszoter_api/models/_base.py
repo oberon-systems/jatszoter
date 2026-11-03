@@ -2,7 +2,7 @@ import time
 import uuid
 from collections.abc import Callable
 from enum import StrEnum
-from typing import Any, Self
+from typing import Any, ClassVar, Self
 
 from pydantic import PrivateAttr
 from sqlalchemy.exc import IntegrityError
@@ -25,6 +25,8 @@ class State(StrEnum):
 class Base(SQLModel, Cached):
     """`X(session=session, **fields)._save()` stores a row; `X._load(session, **key)` reads rows."""
 
+    # The code a caller is told when a row collides with a stored one.
+    CONFLICT: ClassVar[str] = "conflict"
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     created_at: int = Field(default_factory=lambda: int(time.time()))
     _session: Session = PrivateAttr()
@@ -48,7 +50,7 @@ class Base(SQLModel, Cached):
         except IntegrityError as error:
             self._session.rollback()
             if known := DB_ERRORS.get(_code(error.orig)):
-                raise known(str(error.orig)) from error
+                raise known(str(error.orig), code=self.CONFLICT) from error
             raise
 
     def _get(self, key: str, load: Callable[[], Any] | None = None, ttl: int = 10) -> Any | None:

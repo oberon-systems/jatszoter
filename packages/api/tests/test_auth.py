@@ -143,11 +143,11 @@ def test_the_app_logs_the_admin_once_and_never_its_password(
     assert stored.password not in caplog.text
 
 
-def test_the_first_login_demands_a_new_password(client: TestClient) -> None:
+def test_the_first_login_demands_a_new_password(client: TestClient, refused: Any) -> None:
     response = login(client, "admin", "admin")
 
     assert response.status_code == 403
-    assert response.json() == {"detail": "password change required"}
+    refused(response, "password-change-required")
 
 
 def test_a_changed_password_gives_a_credential_operator_routes_accept(
@@ -180,7 +180,7 @@ def test_a_refresh_promotes_the_generation(client: TestClient, session: Session)
 
 
 def test_a_wrong_password_and_an_unknown_user_answer_alike(
-    client: TestClient, session: Session
+    client: TestClient, session: Session, refused: Any
 ) -> None:
     add_user(session)
 
@@ -188,7 +188,8 @@ def test_a_wrong_password_and_an_unknown_user_answer_alike(
     unknown = login(client, "beta", PASSWORD)
 
     assert wrong.status_code == unknown.status_code == 401
-    assert wrong.json() == unknown.json() == {"detail": "not authorized"}
+    refused(wrong, "not-authorized")
+    refused(unknown, "not-authorized")
 
 
 def test_too_many_failures_are_throttled_even_with_the_right_password(
@@ -341,23 +342,28 @@ def test_a_request_for_another_owner_is_refused(
 
 
 @pytest.mark.parametrize(
-    ("new_password", "detail"),
+    ("new_password", "code", "logged"),
     [
-        ("Sh0rt!", WEAK),
-        ("onlylowercaseletters", WEAK),
-        ("Lettersonlyhere", WEAK),
-        (PASSWORD, UNCHANGED),
+        ("Sh0rt!", "password-weak", WEAK),
+        ("onlylowercaseletters", "password-weak", WEAK),
+        ("Lettersonlyhere", "password-weak", WEAK),
+        (PASSWORD, "password-unchanged", UNCHANGED),
     ],
 )
 def test_a_weak_new_password_is_refused(
-    client: TestClient, session: Session, new_password: str, detail: str
+    client: TestClient,
+    session: Session,
+    refused: Any,
+    new_password: str,
+    code: str,
+    logged: str,
 ) -> None:
     add_user(session, changed=False)
 
     response = login(client, "alpha", PASSWORD, new_password=new_password)
 
     assert response.status_code == 422
-    assert response.json()["detail"] == detail
+    refused(response, code, logged)
     assert login(client, "alpha", PASSWORD).status_code == 403
 
 

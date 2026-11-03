@@ -1,4 +1,4 @@
-from typing import Any, Self
+from typing import Any, ClassVar, Self
 
 from sqlmodel import Field, Session
 
@@ -7,6 +7,7 @@ from jatszoter_api.models._base import Base
 
 class Image(Base, table=True):
     __tablename__ = "images"
+    CONFLICT: ClassVar[str] = "image-name-taken"
 
     name: str = Field(unique=True)
     url: str

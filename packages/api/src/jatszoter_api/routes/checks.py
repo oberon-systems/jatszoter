@@ -41,7 +41,9 @@ def _deployment(session: SessionDep, deployment_id: uuid.UUID) -> Deployment:
     try:
         return Deployment(session=session).load(id=deployment_id)
     except IndexError:
-        raise NotFoundError(f"deployment {deployment_id} is not known") from None
+        raise NotFoundError(
+            f"deployment {deployment_id} is not known", code="deployment-not-found"
+        ) from None
 
 
 # No router dependency: each route takes the party, a signed operator or a link.
@@ -61,7 +63,7 @@ def request(
 ) -> dict[str, Any]:
     deployment = _deployment(session, deployment_id)
     if party.user.role is Role.VIEWER:
-        raise ForbiddenError("a viewer requests no check")
+        raise ForbiddenError("a viewer requests no check", code="viewer-cannot-check")
     check = Check(
         session=session,
         deployment_id=deployment.id,
@@ -98,5 +100,5 @@ def show(
     try:
         check = Check(session=session).load(id=check_id, deployment_id=deployment.id)
     except IndexError:
-        raise NotFoundError(f"check {check_id} is not known") from None
+        raise NotFoundError(f"check {check_id} is not known", code="check-not-found") from None
     return check_out(check, party)

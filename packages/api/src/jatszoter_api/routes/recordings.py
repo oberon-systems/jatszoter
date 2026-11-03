@@ -18,7 +18,9 @@ def download(session: SessionDep, settings: SettingsDep, recording_id: str) -> R
     try:
         recording = Recording(session=session).load(id=uuid.UUID(recording_id))
     except (ValueError, IndexError):
-        raise NotFoundError(f"recording {recording_id} is not known") from None
+        raise NotFoundError(
+            f"recording {recording_id} is not known", code="recording-not-found"
+        ) from None
     filer_url = None if settings.seaweed_url is None else str(settings.seaweed_url)
     stored = File(recording.path, filer_url=filer_url)
     try:
@@ -26,7 +28,9 @@ def download(session: SessionDep, settings: SettingsDep, recording_id: str) -> R
     except httpx.HTTPStatusError as error:
         if error.response.status_code != 404:
             raise
-        raise NotFoundError(f"recording {recording.id} has no file") from None
+        raise NotFoundError(
+            f"recording {recording.id} has no file", code="recording-without-file"
+        ) from None
     return Response(
         stored.data, media_type="application/x-asciicast", headers={"Cache-Control": "no-store"}
     )

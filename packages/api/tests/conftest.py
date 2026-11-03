@@ -1,9 +1,12 @@
 import hashlib
 import hmac
 import io
+import logging
+import re
 import secrets
 import tarfile
 import time
+import uuid
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -28,6 +31,7 @@ PASSWORD = "Correct horse battery"
 
 Member = tuple[tarfile.TarInfo, bytes]
 Pack = Callable[..., bytes]
+Refused = Callable[..., str]
 
 
 class Signed:
@@ -52,6 +56,26 @@ class Signed:
         ).hexdigest()
         response: httpx.Response = self.client.send(request)
         return response
+
+
+@pytest.fixture
+def refused(caplog: pytest.LogCaptureFixture) -> Refused:
+    """Check that an error answer is `code` and an id alone, and that the one log line under
+    that id names the code and matches `logged`; returns the id."""
+    caplog.set_level(logging.WARNING, logger="jatszoter_api.answers")
+
+    def check(response: httpx.Response, code: str, logged: str = "") -> str:
+        body = response.json()
+        assert set(body) == {"error", "error_id"}
+        assert body["error"] == code
+        error_id = str(uuid.UUID(body["error_id"]))
+        lines = [record.getMessage() for record in caplog.records]
+        [line] = [line for line in lines if error_id in line]
+        assert f" {code} " in line
+        assert re.search(logged, line)
+        return error_id
+
+    return check
 
 
 @pytest.fixture

@@ -33,7 +33,9 @@ class _NoAliases(yaml.SafeLoader):
 
     def compose_node(self, parent: Any, index: Any) -> Any:
         if self.check_event(yaml.AliasEvent):
-            raise InvalidBundleError(f"{DOCUMENT} uses a YAML alias; write the value out")
+            raise InvalidBundleError(
+                f"{DOCUMENT} uses a YAML alias; write the value out", code="scenario-yaml-alias"
+            )
         return super().compose_node(parent, index)
 
 
@@ -49,20 +51,30 @@ def _unpacked(data: bytes, limit: int) -> bytes:
     try:
         raw = inflater.decompress(data, limit + 1)
     except zlib.error:
-        raise InvalidBundleError("the bundle is not a tar.gz archive") from None
+        raise InvalidBundleError(
+            "the bundle is not a tar.gz archive", code="bundle-not-tar-gz"
+        ) from None
     if len(raw) > limit:
-        raise TooLargeError(f"the bundle unpacks to more than {limit} bytes")
+        raise TooLargeError(
+            f"the bundle unpacks to more than {limit} bytes", code="bundle-too-large"
+        )
     if not inflater.eof or inflater.unused_data:
-        raise InvalidBundleError("the bundle is not a single complete gzip stream")
+        raise InvalidBundleError(
+            "the bundle is not a single complete gzip stream", code="bundle-not-tar-gz"
+        )
     return raw
 
 
 def _parts(name: str) -> tuple[str, ...]:
     if name.startswith("/"):
-        raise InvalidBundleError(f"member {name!r} has an absolute name")
+        raise InvalidBundleError(
+            f"member {name!r} has an absolute name", code="bundle-member-absolute"
+        )
     parts = tuple(part for part in name.split("/") if part not in ("", "."))
     if ".." in parts:
-        raise InvalidBundleError(f"member {name!r} climbs out with '..'")
+        raise InvalidBundleError(
+            f"member {name!r} climbs out with '..'", code="bundle-member-climbs-out"
+        )
     return parts
 
 
@@ -80,19 +92,32 @@ def _members(raw: bytes) -> tuple[dict[tuple[str, ...], bytes], set[tuple[str, .
                         directories.add(parts)
                     continue
                 if not member.isreg():
-                    raise InvalidBundleError(f"member {member.name!r} is not a regular file")
+                    raise InvalidBundleError(
+                        f"member {member.name!r} is not a regular file",
+                        code="bundle-member-not-file",
+                    )
                 if not parts or parts in files:
-                    raise InvalidBundleError(f"member {member.name!r} is repeated or unnamed")
+                    raise InvalidBundleError(
+                        f"member {member.name!r} is repeated or unnamed",
+                        code="bundle-member-repeated",
+                    )
                 # tarfile fills the holes of a sparse member with NUL up to the size in its header.
                 if member.issparse():
-                    raise InvalidBundleError(f"member {member.name!r} is a sparse file")
+                    raise InvalidBundleError(
+                        f"member {member.name!r} is a sparse file", code="bundle-member-sparse"
+                    )
                 if not 0 <= member.size <= room:
-                    raise InvalidBundleError(f"member {member.name!r} declares more than is left")
+                    raise InvalidBundleError(
+                        f"member {member.name!r} declares more than is left",
+                        code="bundle-too-large",
+                    )
                 room -= member.size
                 content = tar.extractfile(member)
                 files[parts] = content.read() if content is not None else b""
     except tarfile.TarError:
-        raise InvalidBundleError("the bundle is not a tar.gz archive") from None
+        raise InvalidBundleError(
+            "the bundle is not a tar.gz archive", code="bundle-not-tar-gz"
+        ) from None
     return files, directories
 
 
@@ -103,21 +128,29 @@ def _layout(
     tops = {parts[0] for parts in files if len(parts) > 1} | {parts[0] for parts in directories}
     if any(len(parts) == 1 for parts in files):
         if tops:
-            raise InvalidBundleError("files sit both at the root and under a directory")
+            raise InvalidBundleError(
+                "files sit both at the root and under a directory", code="bundle-layout-invalid"
+            )
         return None, {parts[0]: content for parts, content in files.items()}
     if len(tops) != 1:
-        raise InvalidBundleError("the bundle holds more than one top directory or no files")
+        raise InvalidBundleError(
+            "the bundle holds more than one top directory or no files", code="bundle-layout-invalid"
+        )
     return tops.pop(), {"/".join(parts[1:]): content for parts, content in files.items()}
 
 
 def _loaded(content: bytes) -> Any:
     if len(content) > DOCUMENT_LIMIT:
-        raise TooLargeError(f"{DOCUMENT} is larger than {DOCUMENT_LIMIT} bytes")
+        raise TooLargeError(
+            f"{DOCUMENT} is larger than {DOCUMENT_LIMIT} bytes", code="scenario-too-large"
+        )
     try:
         return _NoAliases(content).get_single_data()
     # The constructors raise ValueError on a bad date or a huge integer, and deep nesting recurses.
     except (yaml.YAMLError, RecursionError, ValueError):
-        raise InvalidBundleError(f"{DOCUMENT} is not valid YAML") from None
+        raise InvalidBundleError(
+            f"{DOCUMENT} is not valid YAML", code="scenario-not-yaml"
+        ) from None
 
 
 def _named(document: dict[str, Any]) -> list[tuple[str, str]]:
@@ -138,18 +171,25 @@ def _digest(files: dict[str, bytes]) -> str:
 def read(data: bytes, limit: int) -> Bundle:
     """Check a tar.gz bundle of at most `limit` bytes; raise with what is wrong."""
     if len(data) > limit:
-        raise TooLargeError(f"the bundle is larger than {limit} bytes")
+        raise TooLargeError(f"the bundle is larger than {limit} bytes", code="bundle-too-large")
     top, files = _layout(*_members(_unpacked(data, UNPACKED_FACTOR * limit)))
     if DOCUMENT not in files:
-        raise InvalidBundleError(f"the bundle has no {DOCUMENT}")
+        raise InvalidBundleError(f"the bundle has no {DOCUMENT}", code="scenario-missing")
     document = _loaded(files[DOCUMENT])
     error = best_match(_validator().iter_errors(document))
     if error is not None:
         rule = f"{error.validator} {error.validator_value}"
-        raise InvalidBundleError(f"{DOCUMENT} at {error.json_path}: {rule}")
+        raise InvalidBundleError(
+            f"{DOCUMENT} at {error.json_path}: {rule}", code="scenario-invalid"
+        )
     if top is not None and top != document["id"]:
-        raise InvalidBundleError(f"the top directory {top!r} is not named like the id")
+        raise InvalidBundleError(
+            f"the top directory {top!r} is not named like the id", code="bundle-directory-misnamed"
+        )
     for field, name in _named(document):
         if name not in files:
-            raise InvalidBundleError(f"{field} names {name!r}, which the bundle does not hold")
+            raise InvalidBundleError(
+                f"{field} names {name!r}, which the bundle does not hold",
+                code="bundle-file-missing",
+            )
     return Bundle(document=document, digest=_digest(files), files=files)

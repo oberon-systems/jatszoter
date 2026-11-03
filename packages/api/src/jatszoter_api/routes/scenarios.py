@@ -1,6 +1,4 @@
 import asyncio
-import logging
-import secrets
 import uuid
 from typing import Annotated
 
@@ -20,10 +18,8 @@ from jatszoter_api.routes.agents import StrictModel
 from jatszoter_api.routes.deps import FetchUrl, SessionDep, SettingsDep
 from jatszoter_api.settings import Settings, app_settings
 
-log = logging.getLogger(__name__)
-
 FETCH_DEADLINE = 30.0
-ADDRESS_REFUSED = "bundle-fetch-refused: the bundle URL names an address the API may not fetch"
+ADDRESS_REFUSED = "the bundle URL names an address the API may not fetch"
 
 
 class UrlIn(StrictModel):
@@ -55,9 +51,10 @@ def fetch_transport(settings: SettingsDep) -> httpx.AsyncBaseTransport:
 
 def _failed(url: str, cause: str) -> InvalidBundleError:
     """The one answer to a failed fetch: a status and an exception must not map a network."""
-    error_id = secrets.token_hex(6)
-    log.warning("bundle fetch %s from %s failed: %s", error_id, httpx.URL(url).host, cause)
-    return InvalidBundleError(f"bundle-fetch-failed: see the API log for error {error_id}")
+    host = httpx.URL(url).host
+    return InvalidBundleError(
+        f"bundle fetch from {host} failed: {cause}", code="bundle-fetch-failed"
+    )
 
 
 async def _fetch(url: str, transport: httpx.AsyncBaseTransport, limit: int) -> bytes:
@@ -78,24 +75,31 @@ async def _fetch(url: str, transport: httpx.AsyncBaseTransport, limit: int) -> b
             client.stream("GET", url) as response,
         ):
             if response.is_redirect:
-                raise InvalidBundleError("the bundle URL redirects; name the target instead")
+                raise InvalidBundleError(
+                    "the bundle URL redirects; name the target instead", code="bundle-url-redirects"
+                )
             if response.status_code != 200:
                 raise _failed(url, f"status {response.status_code}")
             if response.headers.get("content-encoding", "identity").lower() != "identity":
-                raise InvalidBundleError("the bundle URL answered with a Content-Encoding")
+                raise InvalidBundleError(
+                    "the bundle URL answered with a Content-Encoding", code="bundle-url-encoded"
+                )
             data = bytearray()
             # Not aiter_bytes: it inflates a whole chunk before the limit sees it.
             async for chunk in response.aiter_raw():
                 data += chunk
                 if len(data) > limit:
-                    raise TooLargeError(f"the bundle is larger than {limit} bytes")
+                    raise TooLargeError(
+                        f"the bundle is larger than {limit} bytes", code="bundle-too-large"
+                    )
             return bytes(data)
     except TimeoutError:
         raise InvalidBundleError(
-            f"the bundle URL did not finish within {FETCH_DEADLINE:.0f} seconds"
+            f"the bundle URL did not finish within {FETCH_DEADLINE:.0f} seconds",
+            code="bundle-fetch-timeout",
         ) from None
     except RefusedAddress:
-        raise InvalidBundleError(ADDRESS_REFUSED) from None
+        raise InvalidBundleError(ADDRESS_REFUSED, code="bundle-fetch-refused") from None
     except httpx.HTTPError as error:
         raise _failed(url, type(error).__name__) from None
 
@@ -111,10 +115,12 @@ async def _submitted(
         form = await request.form(max_files=1, max_fields=0)
         bundle = form.get("bundle")
         if not isinstance(bundle, UploadFile):
-            raise InvalidBundleError("the multipart form carries no bundle file")
+            raise InvalidBundleError(
+                "the multipart form carries no bundle file", code="bundle-file-missing"
+            )
         data = await bundle.read(limit + 1)
         if len(data) > limit:
-            raise TooLargeError(f"the bundle is larger than {limit} bytes")
+            raise TooLargeError(f"the bundle is larger than {limit} bytes", code="bundle-too-large")
         return data
     try:
         url = UrlIn.model_validate_json(await request.body()).url
@@ -138,7 +144,9 @@ def create(
     try:
         Image(session=session).load(name=image)
     except IndexError:
-        raise InvalidBundleError(f"image {image} is not registered") from None
+        raise InvalidBundleError(
+            f"image {image} is not registered", code="image-not-registered"
+        ) from None
     scenario = Scenario(
         session=session,
         slug=checked.document["id"],

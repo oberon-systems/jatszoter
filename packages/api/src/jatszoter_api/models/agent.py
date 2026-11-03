@@ -2,7 +2,7 @@ import hashlib
 import secrets
 import time
 import uuid
-from typing import Any, Self, cast
+from typing import Any, ClassVar, Self, cast
 
 from pydantic import PrivateAttr
 from sqlmodel import JSON, Column, Field, Session, SQLModel
@@ -51,6 +51,7 @@ def _digest(code: str) -> str:
 
 class Agent(SecretOwner, table=True):
     __tablename__ = "agents"
+    CONFLICT: ClassVar[str] = "agent-already-registered"
 
     name: str
     labels: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
@@ -152,20 +153,20 @@ class Agent(SecretOwner, table=True):
         from_address = Cached._increment(self, f"register:addr:{address}", window)
         overall = Cached._increment(self, "register:all", window)
         if from_address > per_address or overall > total:
-            raise ThrottledError(REGISTER_THROTTLED)
+            raise ThrottledError(REGISTER_THROTTLED, code="register-throttled")
 
     def claim_code(self, auto_register: bool, pending_limit: int) -> str:
         """Queue the unsaved agent for an operator, or enable it at once when agents register
         themselves; returns its one-time code. An id stored or waiting is refused, never rebound."""
         if self._load(self._session, id=self.id):
-            raise ConflictError(KNOWN_ID)
+            raise ConflictError(KNOWN_ID, code="agent-already-registered")
         code = secrets.token_urlsafe(32)
         if auto_register:
             self.state = State.ENABLED
             self.save()
         else:
             if self._waiting() >= pending_limit:
-                raise ThrottledError(PENDING_FULL)
+                raise ThrottledError(PENDING_FULL, code="registrations-full")
             now = int(time.time())
             pending = {
                 "name": self.name,
@@ -175,7 +176,7 @@ class Agent(SecretOwner, table=True):
             }
             key = f"registration:{self.id}"
             if not Cached._add(self, key, pending, REGISTRATION_SECONDS):
-                raise ConflictError(KNOWN_ID)
+                raise ConflictError(KNOWN_ID, code="agent-already-registered")
             self._client().zadd(REGISTRATIONS, {str(self.id): now})
         Cached._set(self, f"claim:{_digest(code)}", self.id, CLAIM_SECONDS)
         return code
@@ -243,7 +244,9 @@ class Agent(SecretOwner, table=True):
         if agent_id is None:
             return None
         if Cached()._get(f"registration:{agent_id}") is not None:
-            raise InvalidTransitionError(f"agent {agent_id} waits for an operator")
+            raise InvalidTransitionError(
+                f"agent {agent_id} waits for an operator", code="agent-waits-for-operator"
+            )
         return self.load(id=uuid.UUID(agent_id))
 
     def redeem(self, code: str) -> bool:

@@ -81,8 +81,10 @@ operator has not taken control.
   for a user), `kid`, `generation`, `expires_at` - plus `X-Timestamp` and
   `X-Signature`:
   the HMAC-SHA256 of the timestamp, method, path and sha256 of the body, one
-  per line. The signing key is never stored: it is the HMAC of `owner id :
-  generation : expires_at` under the master key named by `kid`, so the API
+  per line. A request with a query signs `path?query`, the query exactly as
+  sent, so no parameter can be changed under a valid signature. The signing
+  key is never stored: it is the HMAC of `owner id : generation :
+  expires_at` under the master key named by `kid`, so the API
   derives it again on every request, and an altered credential yields a
   different key and a signature that does not match. The master keys live in
   `JATSZOTER_MASTER_KEYS`, the one issuing new credentials in

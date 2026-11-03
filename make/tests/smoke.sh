@@ -68,7 +68,7 @@ kept_lease() {
         [ "$(printf '%s\n' "$ids" | sort -u | wc -l)" -eq 1 ]
 }
 
-# An operator request: hex HMAC-SHA256 of `ts\nMETHOD\npath\nsha256(body)` under the key.
+# An operator request: hex HMAC-SHA256 of `ts\nMETHOD\npath[?query]\nsha256(body)` under the key.
 signed() {
     local method="$1" path="$2" body="${3:-}" ts hash signature
     ts="$(date +%s)"

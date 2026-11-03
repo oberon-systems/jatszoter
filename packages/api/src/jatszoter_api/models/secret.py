@@ -61,6 +61,9 @@ class Secret(Base, table=True):
     generation: int = 0
     pending_generation: int | None = None
 
+    def __init__(self, session: Session, **data: Any) -> None:
+        super().__init__(session, **data)
+
     def load(self, **key: Any) -> Self:
         return self._load(self._session, **key)[0]
 

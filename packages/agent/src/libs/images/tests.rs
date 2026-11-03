@@ -3,7 +3,7 @@ use std::net::{IpAddr, TcpListener};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, UNIX_EPOCH};
 
 use ipnet::IpNet;
 use reqwest::dns::Resolve;
@@ -48,6 +48,7 @@ fn cache_within(dir: &TempDir, limit: u64, deadline: Duration) -> ImageCache {
     ImageCache::new(
         &images(dir),
         limit,
+        1 << 20,
         deadline,
         &nets(&["127.0.0.1/32"]),
         false,
@@ -70,6 +71,39 @@ fn names(dir: &Path) -> Vec<String> {
         .collect();
     names.sort();
     names
+}
+
+fn capped(dir: &TempDir, cap: u64) -> ImageCache {
+    ImageCache::new(
+        &images(dir),
+        1024,
+        cap,
+        DEADLINE,
+        &nets(&["127.0.0.1/32"]),
+        false,
+    )
+    .unwrap()
+}
+
+async fn serve_at(server: &MockServer, name: &str, body: &[u8], calls: u64) -> Url {
+    Mock::given(method("GET"))
+        .and(path(format!("/{name}")))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(body))
+        .expect(calls)
+        .mount(server)
+        .await;
+    Url::parse(&format!("{}/{name}", server.uri())).unwrap()
+}
+
+fn cached(body: &[u8]) -> String {
+    format!("{}.qcow2", digest(body))
+}
+
+fn age(dir: &TempDir, body: &[u8], seconds: u64) {
+    fs::File::open(images(dir).join(cached(body)))
+        .unwrap()
+        .set_modified(UNIX_EPOCH + Duration::from_secs(seconds))
+        .unwrap();
 }
 
 async fn serve(server: &MockServer, response: ResponseTemplate, calls: u64) {
@@ -260,7 +294,7 @@ async fn a_first_url_outside_the_rule_makes_no_request() {
     let server = MockServer::start().await;
     serve(&server, ResponseTemplate::new(200).set_body_bytes(BODY), 0).await;
     let dir = TempDir::new().unwrap();
-    let strict = ImageCache::new(&images(&dir), 1024, DEADLINE, &[], false).unwrap();
+    let strict = ImageCache::new(&images(&dir), 1024, 1 << 20, DEADLINE, &[], false).unwrap();
 
     let err = strict
         .ensure(&url(&server), &digest(BODY))
@@ -416,4 +450,55 @@ fn stale_part_files_vanish_on_new() {
     cache(&dir, 1024);
 
     assert_eq!(names(&images(&dir)), [kept]);
+}
+
+const ALPHA: &[u8] = b"alpha base image";
+const BETA: &[u8] = b"beta  base image";
+const GAMMA: &[u8] = b"gamma base image";
+
+#[tokio::test]
+async fn the_least_recently_used_image_is_evicted_to_stay_under_the_cap() {
+    let server = MockServer::start().await;
+    let alpha = serve_at(&server, "alpha.qcow2", ALPHA, 1).await;
+    let beta = serve_at(&server, "beta.qcow2", BETA, 1).await;
+    let gamma = serve_at(&server, "gamma.qcow2", GAMMA, 1).await;
+    let dir = TempDir::new().unwrap();
+    let cache = capped(&dir, 2 * ALPHA.len() as u64);
+
+    cache.ensure(&alpha, &digest(ALPHA)).await.unwrap();
+    cache.ensure(&beta, &digest(BETA)).await.unwrap();
+    age(&dir, ALPHA, 1);
+    age(&dir, BETA, 2);
+    cache.ensure(&alpha, &digest(ALPHA)).await.unwrap();
+    cache.ensure(&gamma, &digest(GAMMA)).await.unwrap();
+
+    let mut expected = [cached(ALPHA), cached(GAMMA)];
+    expected.sort();
+    assert_eq!(names(&images(&dir)), expected);
+    let modified = fs::metadata(images(&dir).join(cached(ALPHA)))
+        .unwrap()
+        .modified()
+        .unwrap();
+    assert!(modified > UNIX_EPOCH + Duration::from_secs(2));
+}
+
+#[tokio::test]
+async fn a_wanted_image_is_kept_and_a_download_that_cannot_fit_is_refused() {
+    let server = MockServer::start().await;
+    let alpha = serve_at(&server, "alpha.qcow2", ALPHA, 1).await;
+    let beta = serve_at(&server, "beta.qcow2", BETA, 2).await;
+    let dir = TempDir::new().unwrap();
+    let cache = capped(&dir, ALPHA.len() as u64);
+
+    cache.ensure(&alpha, &digest(ALPHA)).await.unwrap();
+    cache.keep([digest(ALPHA)]);
+    let err = cache.ensure(&beta, &digest(BETA)).await.unwrap_err();
+
+    assert!(err.to_string().contains("image cache is full"), "{err}");
+    assert_eq!(names(&images(&dir)), [cached(ALPHA)]);
+
+    cache.keep([]);
+    cache.ensure(&beta, &digest(BETA)).await.unwrap();
+
+    assert_eq!(names(&images(&dir)), [cached(BETA)]);
 }

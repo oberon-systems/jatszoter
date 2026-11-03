@@ -101,6 +101,27 @@ fn the_image_download_is_strict_by_default() {
 }
 
 #[test]
+fn the_image_cache_holds_at_least_one_image() {
+    let parse = |limit, cache| {
+        Config::parse(
+            RawConfig {
+                image_limit_gib: limit,
+                image_cache_gib: cache,
+                ..raw()
+            },
+            None,
+            Some("/home/alpha".into()),
+        )
+    };
+
+    assert_eq!(parse(None, None).unwrap().image_cache_bytes, 100 << 30);
+    assert_eq!(parse(Some(200), None).unwrap().image_cache_bytes, 200 << 30);
+    assert_eq!(parse(None, Some(20)).unwrap().image_cache_bytes, 20 << 30);
+    assert!(parse(None, Some(19)).is_err());
+    assert!(parse(None, Some(16385)).is_err());
+}
+
+#[test]
 fn the_image_download_deadline_is_bounded() {
     let parse = |minutes| {
         Config::parse(

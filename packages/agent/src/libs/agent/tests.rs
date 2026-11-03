@@ -161,6 +161,7 @@ fn agent(dir: &TempDir, api: FakeApi, state: State) -> Agent<FakeApi, CountingRu
         capacity: 2,
         state_dir: dir.path().to_path_buf(),
         image_limit_bytes: 1 << 30,
+        image_cache_bytes: 4 << 30,
         image_download_deadline: std::time::Duration::from_secs(60),
         image_internal_cidrs: Vec::new(),
         image_use_proxy: false,

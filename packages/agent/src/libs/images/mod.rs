@@ -1,9 +1,10 @@
-use std::collections::HashMap;
-use std::fs;
+use std::collections::{HashMap, HashSet};
+use std::fs::{self, File};
+use std::io::ErrorKind;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use ipnet::IpNet;
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
@@ -19,6 +20,7 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const READ_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_REDIRECTS: usize = 10;
 const PART: &str = ".part-";
+const SUFFIX: &str = ".qcow2";
 const SCHEME_REFUSED: &str = "URL must use https unless it points to loopback";
 const ADDRESS_REFUSED: &str =
     "address is neither public nor in JATSZOTER_AGENT_IMAGE_INTERNAL_CIDRS";
@@ -111,9 +113,20 @@ fn download_error(digest: &str, err: reqwest::Error) -> AgentError {
     err.without_url().into()
 }
 
+struct Cached {
+    path: PathBuf,
+    digest: String,
+    size: u64,
+    used: SystemTime,
+}
+
 pub struct ImageCache {
     dir: PathBuf,
     limit: u64,
+    cap: u64,
+    wanted: Mutex<HashSet<String>>,
+    // Bytes promised to downloads in flight, whose part files the scan leaves out.
+    reserved: Mutex<u64>,
     deadline: Duration,
     client: Client,
     rule: AddressRule,
@@ -124,6 +137,7 @@ impl ImageCache {
     pub fn new(
         dir: &Path,
         limit_bytes: u64,
+        cap_bytes: u64,
         deadline: Duration,
         internal_cidrs: &[IpNet],
         use_proxy: bool,
@@ -166,11 +180,22 @@ impl ImageCache {
         Ok(Self {
             dir: dir.to_owned(),
             limit: limit_bytes,
+            cap: cap_bytes,
+            wanted: Mutex::default(),
+            reserved: Mutex::default(),
             deadline,
             client: builder.build()?,
             rule,
             locks: Mutex::default(),
         })
+    }
+
+    /// The digests the deployments of this agent use; eviction never takes one of them.
+    pub fn keep(&self, digests: impl IntoIterator<Item = String>) {
+        *self
+            .wanted
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = digests.into_iter().collect();
     }
 
     pub async fn ensure(&self, url: &Url, digest: &str) -> Result<PathBuf, AgentError> {
@@ -185,7 +210,7 @@ impl ImageCache {
         if !self.rule.allows_url(url) {
             return Err(AgentError::Image(format!("{digest}: {ADDRESS_REFUSED}")));
         }
-        let path = self.dir.join(format!("{digest}.qcow2"));
+        let path = self.dir.join(format!("{digest}{SUFFIX}"));
         let lock = Arc::clone(
             self.locks
                 .lock()
@@ -198,6 +223,11 @@ impl ImageCache {
             .await
             .is_ok_and(|meta| meta.is_file())
         {
+            if let Err(err) =
+                File::open(&path).and_then(|file| file.set_modified(SystemTime::now()))
+            {
+                tracing::warn!(%digest, error = %err, "marking a cached image as used failed");
+            }
             return Ok(path);
         }
         let deadline = self.deadline;
@@ -229,9 +259,11 @@ impl ImageCache {
             .map_err(|err| download_error(digest, err))?;
         let limit = self.limit;
         let over_limit = || AgentError::Image(format!("{digest}: larger than {limit} bytes"));
-        if response.content_length().is_some_and(|len| len > limit) {
+        let length = response.content_length();
+        if length.is_some_and(|len| len > limit) {
             return Err(over_limit());
         }
+        let _room = self.make_room(digest, length.unwrap_or(limit))?;
         let mut hasher = Sha256::new();
         let mut size: u64 = 0;
         while let Some(chunk) = response
@@ -252,6 +284,88 @@ impl ImageCache {
         }
         part.persist(path).map_err(|err| err.error)?;
         Ok(())
+    }
+
+    fn make_room(&self, digest: &str, need: u64) -> Result<Room<'_>, AgentError> {
+        let mut reserved = self
+            .reserved
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let wanted = self
+            .wanted
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        let cached = self.cached()?;
+        let mut used: u64 = cached.iter().map(|image| image.size).sum();
+        for image in cached
+            .iter()
+            .filter(|image| !wanted.contains(&image.digest))
+        {
+            if used + *reserved + need <= self.cap {
+                break;
+            }
+            fs::remove_file(&image.path).or_else(|err| match err.kind() {
+                ErrorKind::NotFound => Ok(()),
+                _ => Err(err),
+            })?;
+            tracing::info!(digest = %image.digest, size = image.size, "evicted an unused image");
+            used -= image.size;
+        }
+        if used + *reserved + need > self.cap {
+            let cap = self.cap;
+            return Err(AgentError::Image(format!(
+                "{digest}: the image cache is full: {need} more bytes do not fit in {cap}, \
+                 {used} held by images deployments use and {reserved} by downloads",
+                reserved = *reserved
+            )));
+        }
+        *reserved += need;
+        Ok(Room {
+            cache: self,
+            bytes: need,
+        })
+    }
+
+    /// Completed images, least recently used first.
+    fn cached(&self) -> Result<Vec<Cached>, AgentError> {
+        let mut cached = Vec::new();
+        for entry in fs::read_dir(&self.dir)? {
+            let entry = entry?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let Some(digest) = name.strip_suffix(SUFFIX).filter(|stem| valid_digest(stem)) else {
+                continue;
+            };
+            let meta = match entry.metadata() {
+                Err(err) if err.kind() == ErrorKind::NotFound => continue,
+                other => other?,
+            };
+            if meta.is_file() {
+                cached.push(Cached {
+                    path: entry.path(),
+                    digest: digest.to_owned(),
+                    size: meta.len(),
+                    used: meta.modified()?,
+                });
+            }
+        }
+        cached.sort_by_key(|image| image.used);
+        Ok(cached)
+    }
+}
+
+struct Room<'a> {
+    cache: &'a ImageCache,
+    bytes: u64,
+}
+
+impl Drop for Room<'_> {
+    fn drop(&mut self) {
+        *self
+            .cache
+            .reserved
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) -= self.bytes;
     }
 }
 

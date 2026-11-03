@@ -252,6 +252,12 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
   any other failure removes the part file. The URL and every redirect
   must use https unless they point to loopback, and must pass the address
   rule in [06](06-security.md#image-downloads).
+- The cache holds at most `JATSZOTER_AGENT_IMAGE_CACHE_GIB` (default 100,
+  at least `JATSZOTER_AGENT_IMAGE_LIMIT_GIB`). Before a download it reserves
+  the image's `Content-Length`, or the per-image limit when the server sends
+  none, and evicts the least recently used images that no deployment of the
+  agent names. When the images in use leave no room, the
+  download fails with "the image cache is full".
 
 - QEMU is daemonized with a pid file, so a VM outlives an agent restart and
   reconciliation adopts it. It runs with KVM when `/dev/kvm` is usable and

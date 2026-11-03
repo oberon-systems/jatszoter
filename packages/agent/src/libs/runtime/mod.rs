@@ -85,6 +85,7 @@ impl QemuRuntime {
                 images: ImageCache::new(
                     &config.state_dir.join("images"),
                     config.image_limit_bytes,
+                    config.image_cache_bytes,
                     config.image_download_deadline,
                     &config.image_internal_cidrs,
                     config.image_use_proxy,
@@ -259,6 +260,9 @@ impl Runtime for QemuRuntime {
                 return;
             }
         };
+        self.shared
+            .images
+            .keep(desired.iter().map(|item| item.image.digest.clone()));
         self.keep_consoles(auth, &desired, &on_disk);
         self.keep_checks(auth, &desired);
         let mut aborted = self.abort_stopping(&desired);

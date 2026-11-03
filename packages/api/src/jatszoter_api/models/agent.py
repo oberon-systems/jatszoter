@@ -7,7 +7,7 @@ from typing import Any, Self, cast
 from pydantic import PrivateAttr
 from sqlmodel import JSON, Column, Field, Session, SQLModel
 
-from jatszoter_api.errors import ConflictError, InvalidTransitionError
+from jatszoter_api.errors import ConflictError, InvalidTransitionError, ThrottledError
 from jatszoter_api.lifecycle import TERMINAL, Actor, DeploymentStatus
 from jatszoter_api.models._base import State
 from jatszoter_api.models._cache import Cached
@@ -20,6 +20,9 @@ CLAIM_SECONDS = 24 * 60 * 60
 REGISTRATION_SECONDS = CLAIM_SECONDS + 60
 REGISTRATIONS = "registrations"
 KNOWN_ID = "the agent id is already known"
+REGISTER_WINDOW_SECONDS = 10 * 60
+REGISTER_THROTTLED = "too many registrations"
+PENDING_FULL = "too many registrations wait for an operator"
 RUNNING = (
     DeploymentStatus.STARTING,
     DeploymentStatus.BOOTSTRAPPING,
@@ -143,7 +146,15 @@ class Agent(SecretOwner, table=True):
             if row.status not in TERMINAL and row.vm_id
         ]
 
-    def claim_code(self, auto_register: bool) -> str:
+    def admit(self, address: str, per_address: int, total: int) -> None:
+        """Count one registration from `address`; refused with 429 over either limit."""
+        window = REGISTER_WINDOW_SECONDS
+        from_address = Cached._increment(self, f"register:addr:{address}", window)
+        overall = Cached._increment(self, "register:all", window)
+        if from_address > per_address or overall > total:
+            raise ThrottledError(REGISTER_THROTTLED)
+
+    def claim_code(self, auto_register: bool, pending_limit: int) -> str:
         """Queue the unsaved agent for an operator, or enable it at once when agents register
         themselves; returns its one-time code. An id stored or waiting is refused, never rebound."""
         if self._load(self._session, id=self.id):
@@ -153,6 +164,8 @@ class Agent(SecretOwner, table=True):
             self.state = State.ENABLED
             self.save()
         else:
+            if self._waiting() >= pending_limit:
+                raise ThrottledError(PENDING_FULL)
             now = int(time.time())
             pending = {
                 "name": self.name,
@@ -181,7 +194,7 @@ class Agent(SecretOwner, table=True):
     def registrations(self) -> list[Registration]:
         """Agents waiting for an operator, oldest first; lapsed ones leave the index."""
         client = self._client()
-        client.zremrangebyscore(REGISTRATIONS, "-inf", int(time.time()) - CLAIM_SECONDS)
+        self._waiting()
         waiting = []
         for raw in cast(list[bytes], client.zrange(REGISTRATIONS, 0, -1)):
             pending: dict[str, Any] | None = Cached()._get(f"registration:{raw.decode()}")
@@ -197,6 +210,12 @@ class Agent(SecretOwner, table=True):
                 )
             )
         return waiting
+
+    def _waiting(self) -> int:
+        """How many registrations the index holds once the lapsed ones left it."""
+        client = self._client()
+        client.zremrangebyscore(REGISTRATIONS, "-inf", int(time.time()) - CLAIM_SECONDS)
+        return cast(int, client.zcard(REGISTRATIONS))
 
     def switch(
         self, state: State, filer_url: str | None = None, limit_bytes: int | None = None

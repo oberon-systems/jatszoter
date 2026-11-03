@@ -160,6 +160,15 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
   in Valkey.
 - An agent id never rebinds: a registration naming a stored or waiting id is
   refused with 409, before any key is written.
+- Registration is limited per client address and in total, 10 and 60
+  within 10 minutes by default (`JATSZOTER_AGENT_REGISTER_PER_ADDRESS`,
+  `JATSZOTER_AGENT_REGISTER_TOTAL`); a call over either gets 429 with
+  `too many registrations`. The address is the TCP peer, so behind a reverse
+  proxy every agent shares one.
+- At most `JATSZOTER_AGENT_PENDING_LIMIT` registrations, 100 by default,
+  wait for an operator; one more gets 429 with `too many registrations wait
+  for an operator`, before any key is written. An agent that gets 429 keeps
+  its id and tries again on its next cycle.
 - An agent the API refuses, disabled or with a dead credential, registers
   again under its own id, gets that 409, forgets the id and registers as a
   new agent for an operator to approve. The old row stays, and a deployment

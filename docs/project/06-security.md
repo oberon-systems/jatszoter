@@ -45,6 +45,11 @@ operator has not taken control.
   kept with the hash. An unknown user and a wrong password get the same 401. Ten failures
   for one name within 15 minutes get 429 until the window passes; the
   counter lives in Valkey.
+- **Open registration** - `POST /api/v1/agents/register` is anonymous, so
+  it is rate limited per client address and in total and caps the
+  registrations waiting for an operator, see
+  [01](01-architecture.md#agent-protocol). A flood can keep real agents out for
+  one window; they retry on their own.
 - **Auto registration** - `JATSZOTER_AUTO_REGISTER_AGENTS=true` stores every
   registering agent `enabled` without an operator. It is off by default and
   belongs on a smoke stand, never on an API others can reach.

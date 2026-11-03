@@ -4,7 +4,7 @@ import uuid
 from typing import Annotated, Literal, Self
 
 import httpx
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 from sqlmodel import Session
 
@@ -244,10 +244,15 @@ def stored_bundle(deployment: Deployment, settings: Settings) -> bundles.Bundle:
 
 
 @router.post("/register", status_code=201)
-def register(body: RegisterIn, session: SessionDep, settings: SettingsDep) -> RegisterOut:
+def register(
+    body: RegisterIn, request: Request, session: SessionDep, settings: SettingsDep
+) -> RegisterOut:
     known = {"id": body.agent_id} if body.agent_id is not None else {}
     agent = Agent(session=session, name=body.name, labels=list(body.labels), **known)
-    return RegisterOut(claim_code=agent.claim_code(settings.auto_register_agents))
+    address = request.client.host if request.client is not None else "unknown"
+    agent.admit(address, settings.agent_register_per_address, settings.agent_register_total)
+    code = agent.claim_code(settings.auto_register_agents, settings.agent_pending_limit)
+    return RegisterOut(claim_code=code)
 
 
 @router.post("/claim")

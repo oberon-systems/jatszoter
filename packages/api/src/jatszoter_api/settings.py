@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     master_keys: dict[str, str] = {}
     master_kid: str = ""
     auto_register_agents: bool = False
+    agent_register_per_address: PositiveInt = 10
+    agent_register_total: PositiveInt = 60
+    agent_pending_limit: PositiveInt = 100
     scenario_bundle_limit_bytes: int = 10 * 1024 * 1024
     scenario_fetch_internal_cidrs: Annotated[list[IPvAnyNetwork], NoDecode] = []
     console_tail_bytes: PositiveInt = 8 * 1024 * 1024

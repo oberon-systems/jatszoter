@@ -28,7 +28,7 @@ from jatszoter_api.models import (
     State,
 )
 from jatszoter_api.models._cache import Cached
-from jatszoter_api.models.agent import KNOWN_ID, LEASE_SECONDS
+from jatszoter_api.models.agent import KNOWN_ID, LEASE_SECONDS, REGISTER_THROTTLED
 from jatszoter_api.settings import Settings
 
 LIMIT = 1024 * 1024
@@ -290,6 +290,20 @@ def test_the_app_enables_agents_at_once_when_its_settings_say_so(
         code = register(client)
 
         assert claim(client, code).status_code == 200
+
+
+def test_a_burst_of_registrations_from_one_address_gets_429(
+    session: Session, settings: Settings
+) -> None:
+    limited = settings.model_copy(update={"agent_register_per_address": 3})
+
+    with TestClient(create_app(limited)) as client:
+        for host in range(3):
+            register(client, f"alpha-{host}")
+        response = client.post("/api/v1/agents/register", json={"name": "beta"})
+
+    assert response.status_code == 429
+    assert response.json() == {"detail": REGISTER_THROTTLED}
 
 
 @pytest.fixture

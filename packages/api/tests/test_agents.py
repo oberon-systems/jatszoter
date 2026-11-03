@@ -5,11 +5,17 @@ from typing import Any, cast
 import pytest
 from sqlmodel import Session, select
 
-from jatszoter_api.errors import ConflictError, InvalidTransitionError
+from jatszoter_api.errors import ConflictError, InvalidTransitionError, ThrottledError
 from jatszoter_api.lifecycle import DeploymentStatus
 from jatszoter_api.models import Agent, Deployment, Link, Recording, State
 from jatszoter_api.models._cache import Cached
-from jatszoter_api.models.agent import KNOWN_ID, LEASE_SECONDS, _digest
+from jatszoter_api.models.agent import (
+    KNOWN_ID,
+    LEASE_SECONDS,
+    PENDING_FULL,
+    REGISTER_THROTTLED,
+    _digest,
+)
 
 FIELDS: dict[str, Any] = {
     "scenario_id": uuid.uuid4(),
@@ -22,13 +28,14 @@ FIELDS: dict[str, Any] = {
     "check_seconds": 30,
     "session_minutes": 60,
 }
+PENDING_LIMIT = 100
 
 
 def pending(
     session: Session, name: str = "alpha", auto_register: bool = False
 ) -> tuple[uuid.UUID, str]:
     agent = Agent(session=session, name=name, labels=["beta"])
-    return agent.id, agent.claim_code(auto_register)
+    return agent.id, agent.claim_code(auto_register, PENDING_LIMIT)
 
 
 def approved(session: Session, name: str = "alpha") -> Agent:
@@ -104,7 +111,7 @@ def test_a_stored_id_is_refused_and_writes_no_key(session: Session, auto_registe
     again = Agent(session=session, id=agent.id, name="gamma", labels=[])
 
     with pytest.raises(ConflictError, match=KNOWN_ID):
-        again.claim_code(auto_register)
+        again.claim_code(auto_register, PENDING_LIMIT)
 
     assert claim_keys() == keys
     assert not Cached._client().exists(f"registration:{agent.id}")
@@ -118,7 +125,7 @@ def test_a_waiting_id_is_refused_and_keeps_the_first_registration(session: Sessi
     again = Agent(session=session, id=agent_id, name="gamma", labels=[])
 
     with pytest.raises(ConflictError, match=KNOWN_ID):
-        again.claim_code(False)
+        again.claim_code(False, PENDING_LIMIT)
 
     assert claim_keys() == keys
     [waiting] = Agent(session=session).registrations()
@@ -132,7 +139,7 @@ def test_a_waiting_id_is_refused_and_keeps_the_first_registration(session: Sessi
 def test_an_id_nobody_knows_may_be_chosen_by_the_agent(session: Session) -> None:
     chosen = uuid.uuid4()
 
-    Agent(session=session, id=chosen, name="alpha", labels=[]).claim_code(False)
+    Agent(session=session, id=chosen, name="alpha", labels=[]).claim_code(False, PENDING_LIMIT)
 
     [waiting] = Agent(session=session).registrations()
     assert waiting.id == chosen
@@ -157,6 +164,60 @@ def test_self_registering_agents_are_enabled_at_once(session: Session) -> None:
     assert claimed is not None
     assert claimed.id == agent_id
     assert claimed.state is State.ENABLED
+
+
+def test_registrations_over_the_address_limit_are_throttled(session: Session) -> None:
+    agent = Agent(session=session, name="alpha", labels=[])
+    for _ in range(3):
+        agent.admit("192.0.2.1", 3, 60)
+
+    with pytest.raises(ThrottledError, match=REGISTER_THROTTLED):
+        agent.admit("192.0.2.1", 3, 60)
+    agent.admit("192.0.2.2", 3, 60)
+
+
+def test_registrations_over_the_total_limit_are_throttled_from_any_address(
+    session: Session,
+) -> None:
+    agent = Agent(session=session, name="alpha", labels=[])
+    for host in range(1, 4):
+        agent.admit(f"192.0.2.{host}", 10, 3)
+
+    with pytest.raises(ThrottledError, match=REGISTER_THROTTLED):
+        agent.admit("192.0.2.4", 10, 3)
+
+
+def test_a_full_pending_list_refuses_and_writes_no_key(session: Session) -> None:
+    for name in ("alpha", "beta"):
+        Agent(session=session, name=name, labels=[]).claim_code(False, 2)
+    keys = claim_keys()
+    extra = Agent(session=session, name="gamma", labels=[])
+
+    with pytest.raises(ThrottledError, match=PENDING_FULL):
+        extra.claim_code(False, 2)
+
+    assert claim_keys() == keys
+    assert not Cached._client().exists(f"registration:{extra.id}")
+    assert len(Agent(session=session).registrations()) == 2
+
+
+def test_lapsed_registrations_leave_room_in_the_pending_list(session: Session) -> None:
+    agent_id, _ = pending(session)
+    Cached._client().zadd("registrations", {str(agent_id): 0})
+
+    Agent(session=session, name="beta", labels=[]).claim_code(False, 1)
+
+    [waiting] = Agent(session=session).registrations()
+    assert waiting.name == "beta"
+
+
+def test_self_registering_agents_ignore_the_pending_limit(session: Session) -> None:
+    pending(session)
+    agent = Agent(session=session, name="beta", labels=[])
+
+    agent.claim_code(True, 1)
+
+    assert Agent(session=session).load(id=agent.id).state is State.ENABLED
 
 
 def test_an_unknown_code_claims_nothing(session: Session) -> None:

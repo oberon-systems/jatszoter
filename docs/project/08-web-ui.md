@@ -21,6 +21,8 @@ every board and every page of the Web UI is built from.
 
 - A browser talks to `web` alone. `web` talks to the API at
   `JATSZOTER_WEB_API_URL`, and no reverse proxy is needed on any stand.
+  Production serves TLS from nginx in front of both, see
+  [10](10-reverse-proxy.md).
 - `web` keeps no store and reads no database. Everything it shows comes
   from the API; the operator's credential lives in an encrypted cookie.
 - The UI is never an authorization boundary: the API authorizes every
@@ -94,7 +96,9 @@ unless a screen says otherwise. `Missing API` names the routes of
 ### Login
 
 - Route: `/login`. Who: anyone.
-- API calls: `POST /api/v1/auth/login`, then `GET /api/v1/auth/me`.
+- API calls: `POST /api/v1/auth/login` with the browser's address in
+  `X-Forwarded-For` and the `jatszoter_device` token when the browser has
+  one, then `GET /api/v1/auth/me`.
 - Actions: log in with name and password. When the API answers 403
   `password change required`, the page asks for a new password twice and
   sends it as `new_password`. The [password rule](#password-rule) is
@@ -356,6 +360,11 @@ never reaches JavaScript.
   since another tab may have refreshed the cookie meanwhile, and a page
   like a lapsed credential. A 403 shows a page that says the action is not
   allowed.
+- Device: after an operator logs in, `web` keeps the API's device token
+  in the `jatszoter_device` cookie, HttpOnly, Secure, SameSite=Strict,
+  `Path=/`, `Max-Age` 90 days, and sends it with every later login from
+  that browser, so failures from elsewhere do not lock it out; see
+  [06](06-security.md#credentials). Logout leaves it.
 - Flash: the message a redirect leaves for the next page rides in the
   `jatszoter_flash` cookie, sealed like the session cookie with its own name
   as associated data and with the same attributes. The next full page shows

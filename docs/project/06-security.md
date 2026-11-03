@@ -42,9 +42,31 @@ operator has not taken control.
 - **Passwords** - at least 12 characters and three of four classes:
   lowercase, uppercase, digits, other characters, see
   [08](08-web-ui.md#password-rule). Stored as scrypt hashes, the parameters
-  kept with the hash. An unknown user and a wrong password get the same 401. Ten failures
-  for one name within 15 minutes get 429 until the window passes; the
-  counter lives in Valkey.
+  kept with the hash. An unknown user and a wrong password get the same 401.
+- **Login throttling** - failures are counted in Valkey within a 15-minute
+  window, and a login over a limit gets 429, the right password included:
+  - a browser with a valid device token: 10 failures for that token, and
+    nothing else is counted or checked;
+  - any other client: 10 failures for its address, an IPv6 one by its
+    /64, and 100 for the name, so failures from many addresses lock the
+    name for every browser without a device token.
+
+  A success clears the counters it was checked against.
+- **Device token** - every successful login answers one,
+  `<kid>.<expires_at>.<nonce>.<mac>`, valid 90 days: the HMAC-SHA256 of
+  `device:<user id>:<expires_at>:<nonce>` under the master key named by
+  `kid`. The API stores none and derives the HMAC again on each login, so
+  a token of another user, an altered or an expired one counts as none.
+  It grants nothing beyond its own counter, so neither logout nor a new
+  password ends it; retiring the master key does. `web` keeps it in the
+  `jatszoter_device` cookie, see [08](08-web-ui.md#operator-session).
+- **Client address** - `web` logs in on the browser's behalf and sends its
+  address in `X-Forwarded-For`. The API takes that header only from a peer
+  in uvicorn's `FORWARDED_ALLOW_IPS`, `127.0.0.1` by default; a deployment
+  where `web` reaches the API from another address sets it to `web`'s, see
+  [10](10-reverse-proxy.md#trust-the-proxy).
+  Otherwise every browser counts as `web`'s address and the address limit
+  acts as a second limit per name.
 - **Open registration** - `POST /api/v1/agents/register` is anonymous, so
   it is rate limited per client address and in total and caps the
   registrations waiting for an operator, see
@@ -199,7 +221,7 @@ body is cut at the same limit.
   limits.
 
 No stand needs a reverse proxy. A deployment that adds one should set the
-same limits there.
+same limits there, see [10](10-reverse-proxy.md#configure-nginx).
 
 ## Images
 

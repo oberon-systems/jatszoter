@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import ipaddress
 import secrets
 import time
 from enum import StrEnum
@@ -27,7 +28,9 @@ WEAK = (
 )
 UNCHANGED = "must differ from the current password"
 LOGIN_FAILURES = 10
+NAME_FAILURES = 100
 LOGIN_WINDOW_SECONDS = 15 * 60
+DEVICE_SECONDS = 90 * 24 * 60 * 60
 ADMIN = "admin"
 # Checked against for an unknown name, so it costs one scrypt like a real user.
 _DECOY = f"scrypt${SCRYPT_N}${SCRYPT_R}${SCRYPT_P}${'00' * 16}${'00' * 32}"
@@ -69,9 +72,27 @@ def _hashed(plain: str) -> str:
     return f"scrypt${SCRYPT_N}${SCRYPT_R}${SCRYPT_P}${salt.hex()}${digest.hex()}"
 
 
-def _login_key(name: str) -> str:
-    """The key of a name's failure counter, hashed so no name lands in the cache."""
-    return f"login:{hashlib.sha256(name.encode()).hexdigest()}"
+def _hashed_key(*parts: str) -> str:
+    """A failure counter's key, hashed so no name, address or token lands in the cache."""
+    return ":".join(["login", *(hashlib.sha256(part.encode()).hexdigest() for part in parts)])
+
+
+def _client(address: str) -> str:
+    """The address a client is counted by: an IPv6 one by its /64, a mapped IPv4 one as IPv4."""
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return address
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped is not None:
+            return str(ip.ipv4_mapped)
+        return str(ipaddress.IPv6Network((ip, 64), strict=False))
+    return str(ip)
+
+
+def _device_mac(master: str, user_id: str, expires_at: str, nonce: str) -> str:
+    message = f"device:{user_id}:{expires_at}:{nonce}".encode()
+    return hmac.new(master.encode(), message, hashlib.sha256).hexdigest()
 
 
 class User(SecretOwner, table=True):
@@ -96,15 +117,45 @@ class User(SecretOwner, table=True):
             self._links = Link._load(self._session, user_id=self.id)
         return self._links
 
-    def login(self, password: str) -> None:
-        """Check `password` and the state of this user; failures per name are throttled."""
-        key = _login_key(self.name)
-        if self._count(key) >= LOGIN_FAILURES:
+    def login(self, password: str, client: str, device: str | None, keys: dict[str, str]) -> None:
+        """Check `password` and the state of this user. Failures are throttled per device for
+        a valid device token, otherwise per client address and, higher, per name."""
+        nonce = self._device(device, keys) if device else None
+        if nonce is not None:
+            counters = [(_hashed_key(self.name, "device", nonce), LOGIN_FAILURES)]
+        else:
+            counters = [
+                (_hashed_key(self.name, "client", _client(client)), LOGIN_FAILURES),
+                (_hashed_key(self.name), NAME_FAILURES),
+            ]
+        if any(self._count(key) >= limit for key, limit in counters):
             raise ThrottledError("too many attempts")
         if not self.check_password(password) or self.state is not State.ENABLED:
-            self._increment(key, LOGIN_WINDOW_SECONDS)
+            for key, _ in counters:
+                self._increment(key, LOGIN_WINDOW_SECONDS)
             raise NotAuthorizedError("not authorized")
-        Cached._delete(self, key)
+        for key, _ in counters:
+            Cached._delete(self, key)
+
+    def device_token(self, kid: str, keys: dict[str, str]) -> str:
+        """`kid.expires_at.nonce.mac`: what marks a browser this user logged in from."""
+        expires_at = str(int(time.time()) + DEVICE_SECONDS)
+        nonce = secrets.token_urlsafe(16)
+        mac = _device_mac(keys[kid], str(self.id), expires_at, nonce)
+        return ".".join((kid, expires_at, nonce, mac))
+
+    def _device(self, token: str, keys: dict[str, str]) -> str | None:
+        """The nonce of a live device token issued to this user; None for any other token."""
+        parts = token.rsplit(".", 3)
+        if len(parts) != 4 or parts[0] not in keys:
+            return None
+        if not (parts[1].isascii() and parts[1].isdigit()):
+            return None
+        kid, expires_at, nonce, mac = parts
+        if int(expires_at) <= time.time():
+            return None
+        expected = _device_mac(keys[kid], str(self.id), expires_at, nonce)
+        return nonce if hmac.compare_digest(mac.encode(), expected.encode()) else None
 
     def _end_credentials(self) -> None:
         """Move past every generation issued so far; `save` stores it, then the cache must go."""

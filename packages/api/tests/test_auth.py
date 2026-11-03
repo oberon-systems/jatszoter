@@ -2,11 +2,11 @@ import hashlib
 import hmac
 import logging
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Annotated, Any
 
 import pytest
-from fastapi import Depends
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 from httpx import Response
 from sqlmodel import Session
@@ -14,8 +14,9 @@ from sqlmodel import Session
 from jatszoter_api.app import create_app
 from jatszoter_api.auth import require_operator
 from jatszoter_api.models import Role, State, User
+from jatszoter_api.models import user as user_model
 from jatszoter_api.models.secret import SIGNATURE_WINDOW_SECONDS
-from jatszoter_api.models.user import LOGIN_FAILURES, UNCHANGED, WEAK
+from jatszoter_api.models.user import LOGIN_FAILURES, UNCHANGED, WEAK, _device_mac
 from jatszoter_api.settings import Settings
 
 PASSWORD = "Correct horse battery"
@@ -24,15 +25,26 @@ PROBE = "/api/v1/probe"
 
 
 @pytest.fixture
-def client(session: Session, settings: Settings) -> Iterator[TestClient]:
+def app(session: Session, settings: Settings) -> FastAPI:
     app = create_app(settings)
 
     @app.get(PROBE)
     def probe(user: Annotated[User, Depends(require_operator)]) -> dict[str, str]:
         return {"name": user.name}
 
+    return app
+
+
+@pytest.fixture
+def client(app: FastAPI) -> Iterator[TestClient]:
     with TestClient(app) as client:
         yield client
+
+
+@pytest.fixture
+def from_address(app: FastAPI) -> Callable[[str], TestClient]:
+    """A client of the same app whose requests come from `address`."""
+    return lambda address: TestClient(app, client=(address, 50000))
 
 
 def add_user(
@@ -199,6 +211,88 @@ def test_a_success_clears_the_failures(client: TestClient, session: Session) -> 
         login(client, "alpha", "not the password")
 
     assert login(client, "alpha", PASSWORD).status_code == 200
+
+
+def fail(client: TestClient, times: int = LOGIN_FAILURES, **extra: str) -> None:
+    for _ in range(times):
+        assert login(client, "alpha", "not the password", **extra).status_code == 401
+
+
+def test_failures_from_one_address_leave_the_name_open_to_another(
+    session: Session, from_address: Callable[[str], TestClient]
+) -> None:
+    add_user(session)
+    attacker = from_address("192.0.2.1")
+    fail(attacker)
+
+    assert login(attacker, "alpha", PASSWORD).status_code == 429
+    assert login(from_address("192.0.2.2"), "alpha", PASSWORD).status_code == 200
+
+
+def test_failures_from_many_addresses_lock_the_name_but_not_a_known_device(
+    session: Session,
+    from_address: Callable[[str], TestClient],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    add_user(session)
+    device = login(from_address("192.0.2.9"), "alpha", PASSWORD).json()["device"]
+    monkeypatch.setattr(user_model, "NAME_FAILURES", 3)
+    for host in range(1, 4):
+        fail(from_address(f"192.0.2.{host}"), 1)
+
+    fresh = from_address("192.0.2.10")
+    assert login(fresh, "alpha", PASSWORD).status_code == 429
+    assert login(fresh, "alpha", PASSWORD, device=device).status_code == 200
+
+
+def test_a_device_has_a_limit_of_its_own(
+    session: Session, from_address: Callable[[str], TestClient]
+) -> None:
+    add_user(session)
+    browser = from_address("192.0.2.1")
+    device = login(browser, "alpha", PASSWORD).json()["device"]
+    fail(browser, device=device)
+
+    assert login(browser, "alpha", PASSWORD, device=device).status_code == 429
+    assert login(browser, "alpha", PASSWORD).status_code == 200
+
+
+def tokens(user: User, other: str, keys: dict[str, str]) -> list[str]:
+    """Another user's, an expired, a forged, an unknown kid's and malformed device tokens."""
+    kid, master = next(iter(keys.items()))
+    lapsed = str(int(time.time()) - 1)
+    live = "9999999999"
+    return [
+        other,
+        ".".join((kid, lapsed, "gamma", _device_mac(master, str(user.id), lapsed, "gamma"))),
+        ".".join((kid, live, "delta", _device_mac(master, str(user.id), live, "gamma"))),
+        ".".join(("omega", live, "gamma", _device_mac(master, str(user.id), live, "gamma"))),
+        f"{kid}.\u00b2\u00b2.gamma.delta",
+        "gamma",
+    ]
+
+
+def test_a_token_not_issued_to_the_user_counts_as_none(
+    session: Session, settings: Settings, from_address: Callable[[str], TestClient]
+) -> None:
+    user = add_user(session)
+    add_user(session, "beta")
+    other = login(from_address("192.0.2.100"), "beta", PASSWORD).json()["device"]
+
+    for host, token in enumerate(tokens(user, other, settings.master_keys), start=1):
+        client = from_address(f"192.0.2.{host}")
+        fail(client, device=token)
+        assert login(client, "alpha", PASSWORD, device=token).status_code == 429, token
+
+
+def test_ipv6_addresses_count_by_their_64(
+    session: Session, from_address: Callable[[str], TestClient]
+) -> None:
+    add_user(session)
+    fail(from_address("2001:db8::1"))
+
+    assert login(from_address("2001:db8::2"), "alpha", PASSWORD).status_code == 429
+    assert login(from_address("2001:db8:0:1::1"), "alpha", PASSWORD).status_code == 200
 
 
 def test_a_disabled_user_is_refused(client: TestClient, session: Session) -> None:

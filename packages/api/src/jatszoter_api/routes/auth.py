@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from jatszoter_api.auth import require_user
@@ -20,11 +20,13 @@ class LoginIn(StrictModel):
     name: Annotated[str, Field(min_length=1, max_length=64)]
     password: Password
     new_password: Password | None = None
+    device: str | None = None
 
 
 class LoginOut(BaseModel):
     user_id: uuid.UUID
     credential: CredentialOut
+    device: str
 
 
 class MeOut(BaseModel):
@@ -37,20 +39,22 @@ router = APIRouter(prefix="/auth")
 
 
 @router.post("/login")
-def login(body: LoginIn, session: SessionDep, settings: SettingsDep) -> LoginOut:
+def login(body: LoginIn, request: Request, session: SessionDep, settings: SettingsDep) -> LoginOut:
     """Trade a name and password for a credential, changing the password when asked or due."""
     try:
         user = User(session=session).load(name=body.name)
     except IndexError:
         # A stand-in without a password: it fails like a wrong password and costs one scrypt.
         user = User(session=session, name=body.name)
-    user.login(body.password)
+    client = request.client.host if request.client is not None else "unknown"
+    user.login(body.password, client, body.device, settings.master_keys)
     if body.new_password is not None:
         user.change_password(body.password, body.new_password)
     elif not user.password_changed:
         raise ForbiddenError("password change required")
     issued = user.issue(CREDENTIAL_SECONDS, settings.master_kid, settings.master_keys)
-    return LoginOut(user_id=user.id, credential=credential_out(*issued))
+    device = user.device_token(settings.master_kid, settings.master_keys)
+    return LoginOut(user_id=user.id, credential=credential_out(*issued), device=device)
 
 
 @router.post("/credential")

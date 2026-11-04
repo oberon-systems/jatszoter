@@ -5,9 +5,9 @@ use wiremock::matchers::{any, body_json, method, path};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
 use super::{
-    mac, sign, target, Api, CheckResult, CheckStatus, Claim, Desired, Event, HttpApi, ImageRef,
-    Lease, Limits, Moved, Posted, Resources, ScenarioRef, Script, Seed, Signed, Status, Timeouts,
-    CONSOLE_LIMIT,
+    mac, nonce, sign, target, Api, CheckResult, CheckStatus, Claim, Desired, Event, HttpApi,
+    ImageRef, Lease, Limits, Moved, Posted, Resources, ScenarioRef, Script, Seed, Signed, Status,
+    Timeouts, CONSOLE_LIMIT,
 };
 use crate::libs::error::AgentError;
 use crate::libs::state::Credential;
@@ -35,15 +35,19 @@ fn signed_by(key: &'static str, credential: &'static str) -> impl Fn(&Request) -
                 .to_owned()
         };
         let timestamp = header("X-Timestamp");
+        let nonce = header("X-Nonce");
         let expected = sign(
             key,
             &timestamp,
+            &nonce,
             request.method.as_str(),
             &target(&request.url),
             &request.body,
         )
         .unwrap();
-        header("X-Credential") == credential && header("X-Signature") == expected
+        nonce.len() == 32
+            && header("X-Credential") == credential
+            && header("X-Signature") == expected
     }
 }
 
@@ -736,6 +740,7 @@ fn the_signature_matches_the_api_format() {
     let signature = sign(
         "beta",
         "1790000000",
+        "00112233445566778899aabbccddeeff",
         "POST",
         "/api/v1/agents/gamma/heartbeat",
         b"{}",
@@ -744,6 +749,15 @@ fn the_signature_matches_the_api_format() {
 
     assert_eq!(
         signature,
-        "f197ffba046b1ba165b8e9ca6feb06a8639ea1824762b44730b1b13a5bec717e"
+        "d00cb955baf8d70c3b44e32cba0f01efc2f15ab974d82dfccda2d5ed9c60286b"
     );
+}
+
+#[test]
+fn every_nonce_is_32_lowercase_hex_and_new() {
+    let first = nonce().unwrap();
+
+    assert_eq!(first.len(), 32);
+    assert!(first.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')));
+    assert_ne!(first, nonce().unwrap());
 }

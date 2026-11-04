@@ -206,14 +206,14 @@ fn stty(cols: u64, rows: u64) -> Value {
     clippy::result_large_err,
     reason = "the library fixes the callback's error type"
 )]
-async fn the_upgrade_carries_the_three_headers_and_the_signature_verifies() {
+async fn the_upgrade_carries_the_four_headers_and_the_signature_verifies() {
     let (_dir, path) = log(b"");
     let (listener, shipping) = dialled(&path).await;
     let (stream, _) = listener.accept().await.unwrap();
     let mut seen = Vec::new();
     let mut socket = accept_hdr_async(stream, |request: &Request, response: Response| {
         seen.push(request.uri().path().to_owned());
-        for name in ["X-Credential", "X-Timestamp", "X-Signature"] {
+        for name in ["X-Credential", "X-Timestamp", "X-Nonce", "X-Signature"] {
             let value = request.headers().get(name).unwrap().to_str().unwrap();
             seen.push(value.to_owned());
         }
@@ -224,12 +224,12 @@ async fn the_upgrade_carries_the_three_headers_and_the_signature_verifies() {
     close(&mut socket, 1000).await;
 
     assert!(!shipping.await.unwrap().unwrap());
-    let [path, credential, timestamp, signature] = seen.try_into().unwrap();
+    let [path, credential, timestamp, nonce, signature] = seen.try_into().unwrap();
     assert_eq!(path, "/api/v1/agents/alpha/deployments/gamma/console");
     assert_eq!(credential, "current:1:1790000000");
     assert_eq!(
         signature,
-        sign("beta", &timestamp, "GET", &path, &[]).unwrap()
+        sign("beta", &timestamp, &nonce, "GET", &path, &[]).unwrap()
     );
 }
 

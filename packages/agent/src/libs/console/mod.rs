@@ -19,7 +19,7 @@ use tokio_tungstenite::tungstenite::Message;
 use url::Url;
 
 use crate::libs::agent::{Auth, Signer};
-use crate::libs::api::{sign, target as signed_target, unix_now};
+use crate::libs::api::{nonce, sign, target as signed_target, unix_now};
 use crate::libs::error::AgentError;
 use crate::libs::qga::Qga;
 use crate::libs::vm;
@@ -172,9 +172,11 @@ fn request(url: &Url, signer: &Signer, deployment_id: &str) -> Result<Request, A
         .strip_prefix("http")
         .ok_or_else(|| failed("the API URL is not http or https"))?;
     let timestamp = unix_now().to_string();
+    let nonce = nonce()?;
     let signature = sign(
         &signer.credential.key,
         &timestamp,
+        &nonce,
         "GET",
         &signed_target(&target),
         &[],
@@ -183,6 +185,7 @@ fn request(url: &Url, signer: &Signer, deployment_id: &str) -> Result<Request, A
     for (name, value) in [
         ("X-Credential", signer.credential.credential.as_str()),
         ("X-Timestamp", timestamp.as_str()),
+        ("X-Nonce", nonce.as_str()),
         ("X-Signature", signature.as_str()),
     ] {
         let value = HeaderValue::from_str(value).map_err(|_| failed("a header is not ASCII"))?;

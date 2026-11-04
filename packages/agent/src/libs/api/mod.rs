@@ -1,3 +1,4 @@
+use std::io::Read;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use hmac::{Hmac, KeyInit, Mac};
@@ -323,9 +324,11 @@ impl HttpApi {
     ) -> Result<Response, AgentError> {
         let url = self.url(&format!("api/v1/agents/{agent_id}/{action}"))?;
         let timestamp = unix_now().to_string();
+        let nonce = nonce()?;
         let signature = sign(
             &credential.key,
             &timestamp,
+            &nonce,
             method.as_str(),
             &target(&url),
             &body,
@@ -336,6 +339,7 @@ impl HttpApi {
             .header("Content-Type", "application/json")
             .header("X-Credential", &credential.credential)
             .header("X-Timestamp", timestamp)
+            .header("X-Nonce", nonce)
             .header("X-Signature", signature)
             .body(body)
             .send()
@@ -576,16 +580,27 @@ pub fn target(url: &Url) -> String {
     }
 }
 
-/// HMAC-SHA256 of `ts\nMETHOD\npath[?query]\nsha256(body)` under the credential's key, as in 06.
+/// 16 random bytes in hex: what makes every signed request one the API accepts once.
+pub fn nonce() -> Result<String, AgentError> {
+    let mut bytes = [0_u8; 16];
+    std::fs::File::open("/dev/urandom")
+        .and_then(|mut source| source.read_exact(&mut bytes))
+        .map_err(|err| AgentError::Api(format!("nonce: {err}")))?;
+    Ok(hex::encode(bytes))
+}
+
+/// HMAC-SHA256 of `ts\nnonce\nMETHOD\npath[?query]\nsha256(body)` under the credential's key,
+/// as in 06.
 pub fn sign(
     key: &str,
     timestamp: &str,
+    nonce: &str,
     method: &str,
     path: &str,
     body: &[u8],
 ) -> Result<String, AgentError> {
     let message = format!(
-        "{timestamp}\n{method}\n{path}\n{}",
+        "{timestamp}\n{nonce}\n{method}\n{path}\n{}",
         hex::encode(Sha256::digest(body))
     );
     let mut signer = mac(key.as_bytes())?;

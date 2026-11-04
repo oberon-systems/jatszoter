@@ -15,6 +15,7 @@ from jatszoter_api.settings import Settings, app_settings
 LINK_COOKIE = "jatszoter_link"
 # Not isdigit: it passes a superscript and any length, and int() refuses both.
 TIMESTAMP = re.compile(r"[0-9]{1,12}")
+NONCE = re.compile(r"[0-9a-f]{32}")
 
 
 def unauthorized() -> HTTPException:
@@ -56,17 +57,21 @@ def _signed[T: SecretOwner](
     body: bytes,
     x_credential: str,
     x_timestamp: str,
+    x_nonce: str,
     x_signature: str,
 ) -> T:
-    """The owner `owner_id` names, once its signed request checks out."""
+    """The owner `owner_id` names, once its signed request checks out and its nonce is new."""
     credential = _credential(owner_id, x_credential)
-    if credential is None or not TIMESTAMP.fullmatch(x_timestamp):
+    if credential is None or not TIMESTAMP.fullmatch(x_timestamp) or not NONCE.fullmatch(x_nonce):
         raise unauthorized()
     try:
         owner = model(session=session).load(id=owner_id)
     except IndexError:
         raise unauthorized() from None
-    if not owner.verify(credential, keys, method, path, body, int(x_timestamp), x_signature):
+    timestamp = int(x_timestamp)
+    if not owner.verify(credential, keys, method, path, body, timestamp, x_nonce, x_signature):
+        raise unauthorized()
+    if not owner.spend(x_nonce):
         raise unauthorized()
     return owner
 
@@ -79,6 +84,7 @@ def require_agent(
     body: Annotated[bytes, Depends(_body)],
     x_credential: Annotated[str, Header()] = "",
     x_timestamp: Annotated[str, Header()] = "",
+    x_nonce: Annotated[str, Header()] = "",
     x_signature: Annotated[str, Header()] = "",
 ) -> Agent:
     """The agent named in the path, once its signed request checks out."""
@@ -92,6 +98,7 @@ def require_agent(
         body,
         x_credential,
         x_timestamp,
+        x_nonce,
         x_signature,
     )
 
@@ -104,6 +111,7 @@ def require_user(
     x_owner: Annotated[str, Header()] = "",
     x_credential: Annotated[str, Header()] = "",
     x_timestamp: Annotated[str, Header()] = "",
+    x_nonce: Annotated[str, Header()] = "",
     x_signature: Annotated[str, Header()] = "",
 ) -> User:
     """The user named in `X-Owner`, once its signed request checks out."""
@@ -117,6 +125,7 @@ def require_user(
         body,
         x_credential,
         x_timestamp,
+        x_nonce,
         x_signature,
     )
 
@@ -143,6 +152,7 @@ def socket_agent(
         b"",
         headers.get("x-credential", ""),
         headers.get("x-timestamp", ""),
+        headers.get("x-nonce", ""),
         headers.get("x-signature", ""),
     )
 
@@ -160,6 +170,7 @@ def socket_operator(websocket: WebSocket, session: Session, keys: dict[str, str]
         b"",
         headers.get("x-credential", ""),
         headers.get("x-timestamp", ""),
+        headers.get("x-nonce", ""),
         headers.get("x-signature", ""),
     )
     return require_operator(user)
@@ -224,6 +235,7 @@ def require_deployment_party(
             body,
             headers.get("x-credential", ""),
             headers.get("x-timestamp", ""),
+            headers.get("x-nonce", ""),
             headers.get("x-signature", ""),
         )
         return Party(require_operator(user), None)

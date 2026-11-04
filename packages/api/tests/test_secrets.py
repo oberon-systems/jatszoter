@@ -15,6 +15,7 @@ KEYS = {"old": "a" * 64, KID: "b" * 64}
 DAY = 24 * 60 * 60
 PATH = "/api/v1/agents/alpha/deployments/beta/transition"
 BODY = b'{"expected": "BOOTSTRAPPING", "target": "READY"}'
+NONCE = "00112233445566778899aabbccddeeff"
 
 
 def enabled_agent(session: Session) -> Agent:
@@ -24,9 +25,9 @@ def enabled_agent(session: Session) -> Agent:
 
 
 def signed(owner: Agent | User, credential: Credential) -> bool:
-    signature = credential.sign(KEYS, "POST", PATH, BODY, NOW)
+    signature = credential.sign(KEYS, "POST", PATH, BODY, NOW, NONCE)
     assert signature is not None
-    return owner.verify(credential, KEYS, "POST", PATH, BODY, NOW, signature, now=NOW)
+    return owner.verify(credential, KEYS, "POST", PATH, BODY, NOW, NONCE, signature, now=NOW)
 
 
 def test_a_registered_agent_waits_disabled(session: Session) -> None:
@@ -69,20 +70,22 @@ def test_a_signature_does_not_cover_another_request(
 ) -> None:
     agent = enabled_agent(session)
     credential, _ = agent.issue(2 * DAY, KID, KEYS)
-    signature = credential.sign(KEYS, "POST", PATH, BODY, NOW)
+    signature = credential.sign(KEYS, "POST", PATH, BODY, NOW, NONCE)
     assert signature is not None
 
-    assert not agent.verify(credential, KEYS, method, path, body, NOW, signature, now=NOW)
+    assert not agent.verify(credential, KEYS, method, path, body, NOW, NONCE, signature, now=NOW)
 
 
 @pytest.mark.parametrize("skew", [SIGNATURE_WINDOW_SECONDS + 1, -SIGNATURE_WINDOW_SECONDS - 1])
 def test_a_signature_outside_the_window_is_refused(session: Session, skew: int) -> None:
     agent = enabled_agent(session)
     credential, _ = agent.issue(2 * DAY, KID, KEYS)
-    signature = credential.sign(KEYS, "POST", PATH, BODY, NOW)
+    signature = credential.sign(KEYS, "POST", PATH, BODY, NOW, NONCE)
     assert signature is not None
 
-    assert not agent.verify(credential, KEYS, "POST", PATH, BODY, NOW, signature, now=NOW + skew)
+    assert not agent.verify(
+        credential, KEYS, "POST", PATH, BODY, NOW, NONCE, signature, now=NOW + skew
+    )
 
 
 def test_an_expired_credential_is_refused(session: Session) -> None:
@@ -105,11 +108,11 @@ def test_an_expired_credential_is_refused(session: Session) -> None:
 def test_an_altered_credential_signs_nothing(session: Session, change: dict[str, Any]) -> None:
     agent = enabled_agent(session)
     credential, _ = agent.issue(2 * DAY, KID, KEYS)
-    signature = credential.sign(KEYS, "POST", PATH, BODY, NOW)
+    signature = credential.sign(KEYS, "POST", PATH, BODY, NOW, NONCE)
     assert signature is not None
     altered = dataclasses.replace(credential, **change)
 
-    assert not agent.verify(altered, KEYS, "POST", PATH, BODY, NOW, signature, now=NOW)
+    assert not agent.verify(altered, KEYS, "POST", PATH, BODY, NOW, NONCE, signature, now=NOW)
 
 
 def test_another_owners_credential_is_refused(session: Session) -> None:
@@ -230,8 +233,8 @@ def test_a_credential_has_no_key_without_its_master_key(session: Session) -> Non
     credential, _ = agent.issue(2 * DAY, KID, KEYS)
 
     assert credential.key({"old": KEYS["old"]}) is None
-    assert credential.sign({}, "POST", PATH, BODY, NOW) is None
-    assert not agent.verify(credential, {}, "POST", PATH, BODY, NOW, "alpha", now=NOW)
+    assert credential.sign({}, "POST", PATH, BODY, NOW, NONCE) is None
+    assert not agent.verify(credential, {}, "POST", PATH, BODY, NOW, NONCE, "alpha", now=NOW)
 
 
 def test_issuing_under_a_kid_without_a_master_key_fails(session: Session) -> None:
@@ -239,3 +242,23 @@ def test_issuing_under_a_kid_without_a_master_key_fails(session: Session) -> Non
 
     with pytest.raises(RuntimeError, match="no master key"):
         agent.issue(2 * DAY, "unknown", KEYS)
+
+
+def test_a_signature_over_another_nonce_is_refused(session: Session) -> None:
+    agent = enabled_agent(session)
+    credential, _ = agent.issue(2 * DAY, KID, KEYS)
+    signature = credential.sign(KEYS, "POST", PATH, BODY, NOW, NONCE)
+    assert signature is not None
+
+    other = "ffeeddccbbaa99887766554433221100"
+    assert not agent.verify(credential, KEYS, "POST", PATH, BODY, NOW, other, signature, now=NOW)
+
+
+def test_a_nonce_is_spent_once_per_owner(session: Session) -> None:
+    alpha = enabled_agent(session)
+    beta = Agent(session=session, name="beta", state=State.ENABLED)
+    beta.save()
+
+    assert alpha.spend(NONCE)
+    assert not alpha.spend(NONCE)
+    assert beta.spend(NONCE)

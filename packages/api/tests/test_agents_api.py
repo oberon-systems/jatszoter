@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import json
+import secrets
 import time
 import uuid
 from collections.abc import Callable, Iterator
@@ -56,19 +57,24 @@ class Enrolled:
         self.credential = claimed["credential"]["credential"]
         self.key = claimed["credential"]["key"]
 
-    def call(self, method: str, suffix: str, payload: Any = None, **headers: str) -> Response:
-        path = f"/api/v1/agents/{self.id}{suffix}"
-        body = b"" if payload is None else json.dumps(payload).encode()
+    def signed(self, method: str, path: str, body: bytes) -> dict[str, str]:
         timestamp = str(int(time.time()))
-        message = "\n".join((timestamp, method, path, hashlib.sha256(body).hexdigest()))
-        signed = {
+        nonce = secrets.token_hex(16)
+        message = "\n".join((timestamp, nonce, method, path, hashlib.sha256(body).hexdigest()))
+        return {
             "Content-Type": "application/json",
             "X-Credential": self.credential,
             "X-Timestamp": timestamp,
+            "X-Nonce": nonce,
             "X-Signature": hmac.new(
                 self.key.encode(), message.encode(), hashlib.sha256
             ).hexdigest(),
         }
+
+    def call(self, method: str, suffix: str, payload: Any = None, **headers: str) -> Response:
+        path = f"/api/v1/agents/{self.id}{suffix}"
+        body = b"" if payload is None else json.dumps(payload).encode()
+        signed = self.signed(method, path, body)
         signed.update(headers)
         response: Response = self.client.request(method, path, content=body, headers=signed)
         return response
@@ -164,6 +170,9 @@ def test_a_heartbeat_keeps_its_lease(client: TestClient, session: Session) -> No
         {"X-Signature": "0" * 64},
         {"X-Timestamp": "1"},
         {"X-Timestamp": "later"},
+        {"X-Nonce": ""},
+        {"X-Nonce": "z" * 32},
+        {"X-Nonce": "0" * 31},
         {"X-Credential": "current:1"},
         {"X-Credential": ""},
     ],
@@ -174,6 +183,16 @@ def test_an_unsigned_or_altered_heartbeat_is_refused(
     agent = enroll(client, session)
 
     assert agent.call("POST", "/heartbeat", {"capacity": 1}, **headers).status_code == 401
+
+
+def test_a_signed_request_is_accepted_once(client: TestClient, session: Session) -> None:
+    agent = enroll(client, session)
+    path = f"/api/v1/agents/{agent.id}/heartbeat"
+    body = json.dumps({"capacity": 1}).encode()
+    signed = agent.signed("POST", path, body)
+
+    assert client.post(path, content=body, headers=signed).status_code == 200
+    assert client.post(path, content=body, headers=signed).status_code == 401
 
 
 @pytest.mark.parametrize("timestamp", [b"\xb2", b"1" * 5000, b"1" * 13, b"-1", b"1.5", b" 1"])

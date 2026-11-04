@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import logging
+import secrets
 import time
 from collections.abc import Callable, Iterator
 from typing import Annotated, Any
@@ -87,13 +88,15 @@ class Operator:
         self, method: str, path: str, signed_path: str | None = None, skew: int = 0
     ) -> Response:
         timestamp = str(int(time.time()) + skew)
+        nonce = secrets.token_hex(16)
         message = "\n".join(
-            (timestamp, method, signed_path or path, hashlib.sha256(b"").hexdigest())
+            (timestamp, nonce, method, signed_path or path, hashlib.sha256(b"").hexdigest())
         )
         headers = {
             "X-Owner": self.id,
             "X-Credential": self.credential,
             "X-Timestamp": timestamp,
+            "X-Nonce": nonce,
             "X-Signature": hmac.new(
                 self.key.encode(), message.encode(), hashlib.sha256
             ).hexdigest(),

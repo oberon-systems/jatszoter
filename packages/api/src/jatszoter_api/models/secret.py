@@ -41,14 +41,21 @@ class Credential:
         return hmac.new(master.encode(), message, hashlib.sha256).hexdigest()
 
     def sign(
-        self, keys: dict[str, str], method: str, path: str, body: bytes, timestamp: int
+        self,
+        keys: dict[str, str],
+        method: str,
+        path: str,
+        body: bytes,
+        timestamp: int,
+        nonce: str,
     ) -> str | None:
-        """HMAC-SHA256 of `ts\\nMETHOD\\npath[?query]\\nsha256(body)`, as the owner signs it."""
+        """HMAC-SHA256 of `ts\\nnonce\\nMETHOD\\npath[?query]\\nsha256(body)`, as the owner
+        signs it."""
         key = self.key(keys)
         if key is None:
             return None
         message = "\n".join(
-            (str(timestamp), method.upper(), path, hashlib.sha256(body).hexdigest())
+            (str(timestamp), nonce, method.upper(), path, hashlib.sha256(body).hexdigest())
         )
         return hmac.new(key.encode(), message.encode(), hashlib.sha256).hexdigest()
 
@@ -138,6 +145,7 @@ class SecretOwner(Base):
         path: str,
         body: bytes,
         timestamp: int,
+        nonce: str,
         signature: str,
         now: int | None = None,
     ) -> bool:
@@ -145,7 +153,7 @@ class SecretOwner(Base):
             return False
         if abs((int(time.time()) if now is None else now) - timestamp) > SIGNATURE_WINDOW_SECONDS:
             return False
-        expected = credential.sign(keys, method, path, body, timestamp)
+        expected = credential.sign(keys, method, path, body, timestamp, nonce)
         if credential.expired or expected is None:
             return False
         if not hmac.compare_digest(signature, expected):
@@ -162,6 +170,11 @@ class SecretOwner(Base):
         if credential.generation < record.generation:
             self.superseded()
         return False
+
+    def spend(self, nonce: str) -> bool:
+        """Whether `nonce` is this owner's first use of it within the window."""
+        # A timestamp may lie a whole window ahead, so the nonce outlives two windows.
+        return self._add(f"nonce:{self.id}:{nonce}", True, 2 * SIGNATURE_WINDOW_SECONDS)
 
     def superseded(self) -> None:
         """A superseded generation still signs: two parties hold it, so only an operator

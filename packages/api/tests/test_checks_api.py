@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import secrets
 import time
 import uuid
 from collections.abc import Callable
@@ -307,11 +308,13 @@ class Runner:
         where = f"/api/v1/agents/{self.agent.id}/deployments/{deployment_id}{suffix}"
         body = json.dumps(payload).encode()
         timestamp = str(int(time.time()))
-        message = "\n".join((timestamp, "POST", where, hashlib.sha256(body).hexdigest()))
+        nonce = secrets.token_hex(16)
+        message = "\n".join((timestamp, nonce, "POST", where, hashlib.sha256(body).hexdigest()))
         signed = {
             "Content-Type": "application/json",
             "X-Credential": self.credential,
             "X-Timestamp": timestamp,
+            "X-Nonce": nonce,
             "X-Signature": hmac.new(
                 self.key.encode(), message.encode(), hashlib.sha256
             ).hexdigest(),

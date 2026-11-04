@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+import secrets
 import time
 import uuid
 from collections.abc import Callable
@@ -57,10 +58,12 @@ def small(**update: int) -> pytest.MarkDecorator:
 
 def headers(path: str, credential: str, key: str, **extra: str) -> dict[str, str]:
     timestamp = str(int(time.time()))
-    message = "\n".join((timestamp, "GET", path, hashlib.sha256(b"").hexdigest()))
+    nonce = secrets.token_hex(16)
+    message = "\n".join((timestamp, nonce, "GET", path, hashlib.sha256(b"").hexdigest()))
     return {
         "X-Credential": credential,
         "X-Timestamp": timestamp,
+        "X-Nonce": nonce,
         "X-Signature": hmac.new(key.encode(), message.encode(), hashlib.sha256).hexdigest(),
         **extra,
     }

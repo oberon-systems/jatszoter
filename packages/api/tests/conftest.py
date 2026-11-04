@@ -48,10 +48,12 @@ class Signed:
         timestamp = str(int(time.time()))
         body_hash = hashlib.sha256(request.read()).hexdigest()
         target = request.url.raw_path.decode("ascii")
-        message = "\n".join((timestamp, method, target, body_hash))
+        nonce = secrets.token_hex(16)
+        message = "\n".join((timestamp, nonce, method, target, body_hash))
         request.headers["X-Owner"] = self.id
         request.headers["X-Credential"] = self.credential
         request.headers["X-Timestamp"] = timestamp
+        request.headers["X-Nonce"] = nonce
         request.headers["X-Signature"] = hmac.new(
             self.key.encode(), message.encode(), hashlib.sha256
         ).hexdigest()

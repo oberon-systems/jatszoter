@@ -464,19 +464,27 @@ cached_sha256() {
     sha256sum "$1" | cut -d' ' -f1
 }
 
-image="$SMOKE_CACHE/${SMOKE_IMAGE_URL##*/}"
-if [ ! -f "$image" ] || [ "$(cached_sha256 "$image")" != "$SMOKE_IMAGE_SHA256" ]; then
-    echo "downloading $SMOKE_IMAGE_URL..."
+cached() {
+    local url="$1" sha256="$2" file="$SMOKE_CACHE/${1##*/}"
+    if [ -f "$file" ] && [ "$(cached_sha256 "$file")" = "$sha256" ]; then
+        return
+    fi
+    echo "downloading $url..."
     mkdir -p "$SMOKE_CACHE"
-    part="$image.part"
-    curl -fL --retry 3 -o "$part" "$SMOKE_IMAGE_URL"
-    if [ "$(cached_sha256 "$part")" != "$SMOKE_IMAGE_SHA256" ]; then
-        echo "the downloaded image does not match SMOKE_IMAGE_SHA256" >&2
+    part="$file.part"
+    curl -fL --retry 3 -o "$part" "$url"
+    if [ "$(cached_sha256 "$part")" != "$sha256" ]; then
+        echo "the download of $url does not match its sha256" >&2
         exit 1
     fi
-    mv "$part" "$image"
+    mv "$part" "$file"
     part=
-fi
+}
+
+cached "$SMOKE_IMAGE_URL" "$SMOKE_IMAGE_SHA256"
+cached "$SMOKE_INSPECTOR_URL" "$SMOKE_INSPECTOR_SHA256"
+image="$SMOKE_CACHE/${SMOKE_IMAGE_URL##*/}"
+inspector="$SMOKE_CACHE/${SMOKE_INSPECTOR_URL##*/}"
 
 mkdir -m 700 "$TEMP_DIR"
 touch "$TEMP_DIR/api.log" "$TEMP_DIR/agent.log" "$TEMP_DIR/web.log"
@@ -487,6 +495,7 @@ echo "smoke test, working dir: $TEMP_DIR"
 echo "serving the base image and the scenario bundle..."
 mkdir "$TEMP_DIR/www"
 ln -s "$image" "$TEMP_DIR/www/rocky-9.qcow2"
+ln -s "$inspector" "$TEMP_DIR/www/inspector.qcow2"
 tar -czf "$TEMP_DIR/www/nginx-502.tar.gz" -C "$ROOT/scenarios" nginx-502
 setsid "$VENV/bin/python" -m http.server --bind 127.0.0.1 8081 \
     --directory "$TEMP_DIR/www" >"$TEMP_DIR/www.log" 2>&1 &
@@ -536,6 +545,8 @@ JATSZOTER_AGENT_API_URL="$api" \
     JATSZOTER_AGENT_NAME=alpha \
     JATSZOTER_AGENT_STATE_DIR="$TEMP_DIR/agent" \
     JATSZOTER_AGENT_IMAGE_INTERNAL_CIDRS=127.0.0.1/32 \
+    JATSZOTER_AGENT_INSPECTOR_URL="$www/inspector.qcow2" \
+    JATSZOTER_AGENT_INSPECTOR_DIGEST="$SMOKE_INSPECTOR_SHA256" \
     JATSZOTER_AGENT_ALLOW_TCG="$allow_tcg" \
     RUST_LOG=jatszoter_agent=debug \
     setsid cargo run -q -p jatszoter-agent >>"$TEMP_DIR/agent.log" 2>&1 &
@@ -778,7 +789,13 @@ fi
 
 echo "stopping the deployment..."
 signed POST "/api/v1/deployments/$deployment/stop" >/dev/null
-wait_for 60 vm_destroyed
+# The agent powers the guest off and boots the inspector before it destroys the VM.
+wait_for 360 vm_destroyed
+verdict="$(signed GET "/api/v1/deployments/$deployment/disk-check")"
+if [ "$(jq -r .status <<<"$verdict")" != passed ]; then
+    echo "the disk check is $(jq -c '{status, message}' <<<"$verdict"), not passed" >&2
+    exit 1
+fi
 if [ ! -s "$stored" ]; then
     echo "the recording is not at $stored once the deployment completed" >&2
     exit 1

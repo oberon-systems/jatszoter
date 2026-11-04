@@ -108,7 +108,7 @@ def stored(tmp_path: Path) -> list[Path]:
     return sorted(path for path in tmp_path.joinpath("data").rglob("*") if path.is_file())
 
 
-def bundle_path(tmp_path: Path, version: int = 2) -> Path:
+def bundle_path(tmp_path: Path, version: int = 3) -> Path:
     return tmp_path / "data" / "storage" / "scenarios" / "nginx-502" / f"{version}.tar.gz"
 
 
@@ -126,7 +126,7 @@ def test_an_upload_registers_the_sample(operator: Any, pack: Pack, tmp_path: Pat
     assert response.json() == {
         "id": response.json()["id"],
         "slug": "nginx-502",
-        "version": 2,
+        "version": 3,
         "title": "Nginx answers 502",
         "image": "rocky-9",
     }
@@ -140,9 +140,9 @@ def test_a_url_registers_the_sample(
 
     response = fetch(operator)
 
-    scenario = Scenario(session=session).load(slug="nginx-502", version=2)
+    scenario = Scenario(session=session).load(slug="nginx-502", version=3)
     assert response.status_code == 201
-    assert scenario.bundle_url == f"{DISK_BASE}scenarios/nginx-502/2.tar.gz"
+    assert scenario.bundle_url == f"{DISK_BASE}scenarios/nginx-502/3.tar.gz"
     assert scenario.document["check"] == "check.sh"
 
 
@@ -160,7 +160,7 @@ def test_the_same_version_again_conflicts_and_keeps_the_bundle(
 
 
 def test_a_new_version_registers_beside_the_old(operator: Any, pack: Pack, tmp_path: Path) -> None:
-    second = DOCUMENT.read_text().replace("version: 2\n", "version: 3\n")
+    second = DOCUMENT.read_text().replace("version: 3\n", "version: 4\n")
     upload(operator, pack())
 
     response = upload(operator, pack(changes={"scenario.yaml": second.encode()}))
@@ -168,10 +168,10 @@ def test_a_new_version_registers_beside_the_old(operator: Any, pack: Pack, tmp_p
     listed = operator.request("GET", SCENARIOS).json()
     assert response.status_code == 201
     assert {(item["slug"], item["version"]) for item in listed} == {
-        ("nginx-502", 2),
         ("nginx-502", 3),
+        ("nginx-502", 4),
     }
-    assert stored(tmp_path) == [bundle_path(tmp_path), bundle_path(tmp_path, 3)]
+    assert stored(tmp_path) == [bundle_path(tmp_path), bundle_path(tmp_path, 4)]
 
 
 def test_the_same_version_with_changed_content_conflicts(
@@ -509,3 +509,46 @@ def test_a_viewer_makes_the_api_fetch_nothing(sign_in: Callable[..., Any], api: 
 
     assert response.status_code == 403
     assert seen == []
+
+
+OUTSIDE = (
+    "outside:\n  network:\n    - port: 80\n      http:\n        contains: hello from app\n"
+    "  disk:\n    - path: /etc/nginx/conf.d/app.conf\n"
+    "      contains: proxy_pass http://127.0.0.1:8081;\n"
+)
+
+
+@pytest.mark.parametrize(
+    "outside",
+    [
+        "outside: {}\n",
+        "outside:\n  network:\n    - port: 0\n",
+        "outside:\n  network:\n    - port: 80\n      http:\n        path: no-slash\n",
+        "outside:\n  network:\n    - port: 80\n      http:\n        contains: ': alpha'\n",
+        "outside:\n  disk:\n    - path: relative\n",
+        "outside:\n  disk:\n    - path: /alpha/../beta\n",
+        "outside:\n  disk:\n    - path: /alpha beta\n",
+        "outside:\n  disk:\n    - path: /alpha\n      exists: false\n      contains: beta\n",
+    ],
+)
+def test_a_check_from_outside_out_of_bounds_is_refused(
+    operator: Any, pack: Pack, refused: Any, outside: str
+) -> None:
+    document = DOCUMENT.read_text()
+    assert OUTSIDE in document
+
+    response = upload(
+        operator, pack(changes={"scenario.yaml": document.replace(OUTSIDE, outside).encode()})
+    )
+
+    assert response.status_code == 422
+    refused(response, "scenario-invalid", "scenario.yaml at ")
+
+
+def test_a_disk_check_within_bounds_registers(operator: Any, pack: Pack) -> None:
+    disk = "outside:\n  disk:\n    - path: /etc/alpha.conf\n      contains: 'beta = 1;'\n"
+    document = DOCUMENT.read_text().replace(OUTSIDE, disk)
+
+    response = upload(operator, pack(changes={"scenario.yaml": document.encode()}))
+
+    assert response.status_code == 201

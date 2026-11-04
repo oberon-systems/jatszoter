@@ -82,7 +82,8 @@ class Agent(SecretOwner, table=True):
         accelerator: Accelerator | None = None,
     ) -> Lease:
         """Renew the lease, failing what it held once it lapsed; then take waiting deployments,
-        pinned ones first, oldest first, while `capacity` has room."""
+        pinned ones first, oldest first, while `capacity` has room. An agent that reports the
+        accelerator `none` takes only its pinned ones, which no other agent could run."""
         current = self.lease
         if current is None:
             for deployment in self.deployments:
@@ -111,7 +112,11 @@ class Agent(SecretOwner, table=True):
             for row in self.deployments
             if row.status is DeploymentStatus.PENDING and row.vm_id is None
         ]
-        waiting = Deployment._load(self._session, status=DeploymentStatus.PENDING, agent_id=None)
+        waiting = (
+            []
+            if accelerator == "none"
+            else Deployment._load(self._session, status=DeploymentStatus.PENDING, agent_id=None)
+        )
         free = capacity - len(held)
         for deployment in [
             *sorted(pinned, key=lambda row: row.created_at),

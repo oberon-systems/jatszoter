@@ -14,6 +14,7 @@ from jatszoter_api.models.agent import (
     LEASE_SECONDS,
     PENDING_FULL,
     REGISTER_THROTTLED,
+    Accelerator,
     _digest,
 )
 
@@ -342,6 +343,48 @@ def test_capacity_zero_assigns_nothing(session: Session) -> None:
     assert waiting.agent_id is None
     assert pinned.vm_id is None
     assert agent.desired(1024) == []
+
+
+def test_an_agent_without_an_accelerator_leaves_the_waiting_to_another(session: Session) -> None:
+    alpha, beta = approved(session), approved(session, "beta")
+    waiting = queued(session, 1)
+
+    lease = alpha.heartbeat(2, accelerator="none")
+
+    session.refresh(waiting)
+    assert waiting.agent_id is None
+    assert waiting.vm_id is None
+    assert (lease.capacity, lease.accelerator) == (2, "none")
+
+    beta.heartbeat(2, accelerator="kvm")
+
+    session.refresh(waiting)
+    assert waiting.agent_id == beta.id
+
+
+def test_an_agent_without_an_accelerator_takes_what_is_pinned_to_it(session: Session) -> None:
+    agent = approved(session)
+    waiting, pinned = queued(session, 1), queued(session, 2, agent)
+
+    agent.heartbeat(2, accelerator="none")
+
+    session.refresh(waiting)
+    session.refresh(pinned)
+    assert waiting.agent_id is None
+    assert pinned.vm_id is not None
+
+
+@pytest.mark.parametrize("accelerator", ["kvm", "tcg", None])
+def test_any_other_accelerator_takes_the_waiting(
+    session: Session, accelerator: Accelerator | None
+) -> None:
+    agent = approved(session)
+    waiting = queued(session, 1)
+
+    agent.heartbeat(1, accelerator=accelerator)
+
+    session.refresh(waiting)
+    assert waiting.agent_id == agent.id
 
 
 def test_held_deployments_take_their_slots(session: Session) -> None:

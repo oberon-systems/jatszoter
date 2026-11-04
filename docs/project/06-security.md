@@ -146,8 +146,10 @@ operator has not taken control.
   disks inside them, whatever modes those files have.
 - A VM starts only with KVM, because QEMU supports hardware virtualization
   as a security boundary and does not support its TCG emulator as one.
-  Without a usable `/dev/kvm` the deployment fails with the code `vm-failed`,
-  and the agent logs `vm: KVM is not usable and TCG is not allowed`.
+  Without a usable `/dev/kvm` a deployment on that agent fails with the code
+  `vm-failed`, and the agent logs
+  `vm: KVM is not usable and TCG is not allowed`. Such an agent gets only the
+  deployments pinned to it; see [01](01-architecture.md#agent-protocol).
 - `JATSZOTER_AGENT_ALLOW_TCG=true` allows TCG. Use it only on dev stands.
   The agent logs the accelerator at each VM start and reports it in every
   heartbeat, and the Agents page shows it.

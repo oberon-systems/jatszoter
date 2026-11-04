@@ -196,6 +196,10 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
   capacity minus the non-terminal deployments it already holds. The
   assignment is compare-and-swap on `agent_id`, so a deployment never lands
   on two agents, and it sets `vm_id`.
+- An agent that reports the accelerator `none` gets only the deployments
+  pinned to it, and those fail at once. Unpinned ones wait for an agent that
+  can run them. With no such agent they stay PENDING with no fail reason, and
+  the Agents page shows why.
 - A signed GET request signs an empty body.
 - `GET .../deployments` is the desired state: every non-terminal deployment
   of the agent, and any pending check. A request without a live lease gets

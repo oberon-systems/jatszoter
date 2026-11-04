@@ -31,8 +31,8 @@
     timeout: "warning",
   };
   const DOWN = {
-    502: "The API cannot be reached. Nothing was changed; try again in a moment. (502)",
-    504: "The API did not answer in time. Try again in a moment. (504)",
+    502: "The API cannot be reached. Nothing was changed; try again in a moment.",
+    504: "The API did not answer in time. Try again in a moment.",
   };
   const HOLDERS = {
     trainee: { operator: "operator", trainee: "you" },
@@ -84,8 +84,20 @@
     slot.replaceChildren(box);
   }
 
-  function failed(status) {
-    const text = DOWN[status] || `The API failed to answer. Try again in a moment. (${status})`;
+  // A failed fetch has no json() and a proxy's own page is no JSON: neither carries an id.
+  async function errorNote(response) {
+    try {
+      const answer = await response.json();
+      return typeof answer.error_id === "string" ? ` (error ${answer.error_id})` : "";
+    } catch {
+      return "";
+    }
+  }
+
+  async function failed(response) {
+    const { status } = response;
+    const said = DOWN[status] || "The API failed to answer. Try again in a moment.";
+    const text = `${said}${await errorNote(response)} (${status})`;
     failing = true;
     flash("error", "Something went wrong", text);
   }
@@ -104,16 +116,6 @@
       return await fetch(base + path, init);
     } catch {
       return { ok: false, status: 502 };
-    }
-  }
-
-  async function detail(response) {
-    try {
-      const answer = await response.json();
-      const id = typeof answer.error_id === "string" ? ` (error ${answer.error_id})` : "";
-      return `the request was refused${id}`;
-    } catch {
-      return "the request was refused";
     }
   }
 
@@ -195,7 +197,7 @@
       return;
     }
     if (!answer.ok) {
-      failed(answer.status);
+      await failed(answer);
       return;
     }
     task = await answer.json();
@@ -211,7 +213,7 @@
     } else if (listed.status === 401 || listed.status === 403) {
       linkEnded();
     } else {
-      failed(listed.status);
+      await failed(listed);
     }
   }
 
@@ -226,10 +228,10 @@
     if (response.status === 401) {
       linkEnded();
     } else if (response.status >= 500) {
-      failed(response.status);
+      await failed(response);
     } else {
-      const text = await detail(response);
-      flash("refusal", "Refused", `${text} (${response.status})`);
+      const id = await errorNote(response);
+      flash("refusal", "Refused", `the request was refused${id} (${response.status})`);
     }
   }
 

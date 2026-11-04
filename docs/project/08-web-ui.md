@@ -403,6 +403,8 @@ never reaches JavaScript.
   relay.
 - An API that cannot be reached answers 502, one that does not answer
   within 30 seconds 504.
+- The trainee page shows the error id of a 5xx answer in its flash. A request
+  that never got an answer, or a body that is not JSON, shows the status alone.
 - The access log of `web` shows method, path, status and duration. A link
   open is written as `/s/<redacted>`; no header, cookie or body is logged.
 

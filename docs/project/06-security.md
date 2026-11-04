@@ -342,6 +342,10 @@ columns, hosts and the caller's own input, so they stay in the server log.
 - Text: `web` turns a code into a sentence of its own table
   (`jatszoter_web/texts.py`) for a signed-in operator only. The login page
   and the trainee page show `The request was refused` and the error id.
+- Failure: a request that raises, and an API that is out of reach or fails,
+  get a fixed sentence with an error id on the page. `web` logs the cause
+  under that id, a raised request with its traceback. A failed API answer
+  that carries an id keeps it, since the API log holds the cause.
 
 ## Acceptance criteria
 

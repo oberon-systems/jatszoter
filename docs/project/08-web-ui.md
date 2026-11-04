@@ -289,8 +289,8 @@ differs from the current one.
     reload and deployments.
   - Any other 4xx: `Request refused`, naming the status's reason;
     deployments.
-  - 500: `Something went wrong`, the error that the page failed; reload
-    and deployments.
+  - 500: `Something went wrong`, the error that the page failed with the
+    error id the log holds; reload and deployments.
 
 - Reload is the page itself for a `GET`, else the `Referer` when it names
   a page of `web`; without one only deployments is offered.

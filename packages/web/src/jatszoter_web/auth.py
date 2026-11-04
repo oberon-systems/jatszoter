@@ -21,8 +21,8 @@ from jatszoter_web.cookies import (
 )
 from jatszoter_web.csrf import browser_token, check_browser
 from jatszoter_web.middleware import queue_cookie
-from jatszoter_web.pages import LANDING, Flash, error, refusal, render, templates
-from jatszoter_web.session import OperatorDep, PostedOperatorDep, local
+from jatszoter_web.pages import LANDING, Flash, error, redirect, refusal, render, templates, when
+from jatszoter_web.session import OperatorDep, PostedOperatorDep, Session, local
 from jatszoter_web.texts import answered, told
 
 PENDING = "jatszoter_login"
@@ -42,6 +42,10 @@ PASSWORD_LENGTH = 12
 WEAK = f"at least {PASSWORD_LENGTH} characters and three of: lowercase, uppercase, digits, symbols"
 UNCHANGED = "must differ from the current password"
 EXPIRED = "The login form has expired. Nothing was sent; enter your name and password again"
+LOGOUT_UNCONFIRMED = (
+    "The API did not confirm the logout, so this session may stay valid until {until} UTC. "
+    "Log in and log out again to end it. (error {error_id})"
+)
 
 router = APIRouter()
 
@@ -215,11 +219,22 @@ async def logged_in(
     return RedirectResponse(next_page or LANDING, status_code=303)
 
 
+async def end_credential(session: Session) -> None:
+    """Have the API end the session's credential; a 401 means it has ended already."""
+    answer = await session.api.signed(session.operator, "POST", "/api/v1/auth/logout")
+    if not answer.is_success and answer.status_code != 401:
+        raise failed(answer)
+
+
 @router.post("/logout")
 async def logout(request: Request, session: PostedOperatorDep) -> Response:
-    """End the session whatever the API answers."""
-    if session.operator.expires_at > time.time():
-        with suppress(ApiDown):
-            await session.api.signed(session.operator, "POST", "/api/v1/auth/logout")
+    """Clear the cookie in every case; warn when the API did not end the credential."""
     queue_cookie(request, SESSION_COOKIE, None)
-    return RedirectResponse("/login", status_code=303)
+    expires_at = session.operator.expires_at
+    if expires_at > time.time():
+        try:
+            await end_credential(session)
+        except ApiDown as down:
+            text = LOGOUT_UNCONFIRMED.format(until=when(expires_at), error_id=down.error_id)
+            return redirect(request, "/login", Flash("error", "Logout not confirmed", text))
+    return redirect(request, "/login")

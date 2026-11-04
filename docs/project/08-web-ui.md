@@ -376,7 +376,11 @@ never reaches JavaScript.
   as associated data and with the same attributes. The next full page shows
   it once and clears it; it carries text only, never a token or a link.
 - Logout: `POST /logout` calls `POST /api/v1/auth/logout`, clears the
-  cookie whatever the API answered, and redirects to `/login`.
+  cookie whatever the API answered, and redirects to `/login`. When the API
+  is unreachable or answers anything but 2xx or 401, the login page warns
+  that the session may stay valid until its credential expires. Logging in
+  and out again ends it. A 401 means the credential has already ended, so it
+  does not warn.
 - A second login, in another browser, supersedes the first; the first gets
   401 at its next call and lands on the login page.
 

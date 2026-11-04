@@ -111,7 +111,9 @@ operator has not taken control.
 - **Logout** - `POST /api/v1/auth/logout` ends every credential the user
   holds: the live generation moves past both the live and the pending one.
   A credential issued before is then a superseded generation and gets
-  401.
+  401. If the API does not end them, they stay valid until they expire: `web`
+  warns the operator and keeps no copy to retry with, see
+  [08](08-web-ui.md).
 - **Link** - the token is exchanged once for a session cookie, see
   [04](04-console.md#links). A request or an upgrade that authenticates by
   that cookie is bound by SameSite=Strict and by its `Origin`, which, when

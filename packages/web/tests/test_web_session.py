@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from jatszoter_web.cookies import SESSION_COOKIE, Operator, unseal_operator
+from jatszoter_web.pages import when
 from jatszoter_web.session import OperatorDep, PostedOperatorDep
 
 Routes = dict[tuple[str, str], Callable[[httpx.Request], httpx.Response]]
@@ -17,6 +18,7 @@ SignIn = Callable[..., Operator]
 ME = ("GET", "/api/v1/auth/me")
 REFRESH = ("POST", "/api/v1/auth/credential")
 LOGOUT = ("POST", "/api/v1/auth/logout")
+UNCONFIRMED = "Logout not confirmed"
 HTMX = {"hx-request": "true", "hx-current-url": "https://web.example.com/agents?state=enabled"}
 
 
@@ -334,36 +336,58 @@ def test_logout_ends_the_session_at_the_api(
     assert cleared(response)
     assert [call.url.path for call in calls] == ["/api/v1/auth/logout"]
     assert signed_by(calls[0], who.key)
+    assert UNCONFIRMED not in client.get("/login").text
+
+
+def test_logout_of_a_credential_already_ended_does_not_warn(
+    client: TestClient, sign_in: SignIn, routes: Routes
+) -> None:
+    routes[LOGOUT] = lambda _: httpx.Response(401, json={"error": "not-authorized"})
+    who = sign_in()
+
+    response = client.post("/logout", data={"csrf_token": who.csrf})
+
+    assert response.status_code == 303
+    assert cleared(response)
+    assert UNCONFIRMED not in client.get("/login").text
+
+
+def raises(exc: Exception) -> Callable[[httpx.Request], httpx.Response]:
+    def answer(_: httpx.Request) -> httpx.Response:
+        raise exc
+
+    return answer
 
 
 @pytest.mark.parametrize(
-    "answer", [httpx.Response(401, json={"error": "not-authorized"}), httpx.Response(500)]
+    "answer",
+    [
+        lambda _: httpx.Response(500),
+        lambda _: httpx.Response(403, json={"error": "forbidden"}),
+        raises(httpx.ConnectError("refused")),
+        raises(httpx.ReadTimeout("slow")),
+    ],
+    ids=["failed", "refused", "down", "timeout"],
 )
-def test_logout_clears_the_cookie_whatever_the_api_answers(
-    client: TestClient, sign_in: SignIn, routes: Routes, answer: httpx.Response
+def test_logout_the_api_did_not_confirm_clears_the_cookie_and_warns(
+    client: TestClient,
+    sign_in: SignIn,
+    routes: Routes,
+    answer: Callable[[httpx.Request], httpx.Response],
 ) -> None:
-    routes[LOGOUT] = lambda _: answer
+    routes[LOGOUT] = answer
     who = sign_in()
 
     response = client.post("/logout", data={"csrf_token": who.csrf})
+    shown = client.get("/login").text
 
     assert response.status_code == 303
+    assert response.headers["location"] == "/login"
     assert cleared(response)
-
-
-def test_logout_with_an_api_that_is_down_clears_the_cookie(
-    client: TestClient, sign_in: SignIn, routes: Routes
-) -> None:
-    def down(_: httpx.Request) -> httpx.Response:
-        raise httpx.ConnectError("refused")
-
-    routes[LOGOUT] = down
-    who = sign_in()
-
-    response = client.post("/logout", data={"csrf_token": who.csrf})
-
-    assert response.status_code == 303
-    assert cleared(response)
+    assert UNCONFIRMED in shown
+    assert when(who.expires_at) in shown
+    assert who.key not in shown and who.credential not in shown
+    assert UNCONFIRMED not in client.get("/login").text
 
 
 def test_logout_without_the_csrf_token_changes_nothing(

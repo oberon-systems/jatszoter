@@ -12,6 +12,7 @@ from jatszoter_api.lifecycle import TERMINAL, Actor, DeploymentStatus, advance
 from jatszoter_api.models._base import Base
 from jatszoter_api.models.check import Check, CheckStatus
 from jatszoter_api.models.console import Console
+from jatszoter_api.models.disk_check import DiskCheck
 from jatszoter_api.models.image import Image
 from jatszoter_api.models.link import Link
 from jatszoter_api.models.recording import Recording, live
@@ -110,6 +111,40 @@ class Deployment(Base, table=True):
         """The check waiting for its result, if there is one."""
         return next((held for held in self.checks if held.status is CheckStatus.PENDING), None)
 
+    @property
+    def outside(self) -> dict[str, Any]:
+        """The scenario's checks from outside the guest; ending a deployment never needs its row."""
+        scenarios = Scenario._load(self._session, id=self.scenario_id)
+        return scenarios[0].document.get("outside", {}) if scenarios else {}
+
+    @property
+    def disk_check(self) -> DiskCheck | None:
+        """The verdict read from the disk of the stopped VM, if there is one."""
+        return next(iter(DiskCheck._load(self._session, deployment_id=self.id)), None)
+
+    @property
+    def disk_owed(self) -> list[dict[str, Any]]:
+        """What to read from the disk: only a VM that reached READY was ever the trainee's."""
+        if self.ready_at is None or self.disk_check is not None:
+            return []
+        disk: list[dict[str, Any]] = self.outside.get("disk", [])
+        return disk
+
+    def settle_disk(self, status: CheckStatus, message: str | None) -> DiskCheck:
+        """Store the verdict of this STOPPING deployment's disk, once."""
+        self._session.refresh(self, with_for_update=True)
+        if self.status is not DeploymentStatus.STOPPING:
+            raise ConflictError(
+                f"deployment {self.id} is {self.status}", code="deployment-wrong-status"
+            )
+        if not self.disk_owed:
+            raise ConflictError(f"deployment {self.id} owes no disk check", code=DiskCheck.CONFLICT)
+        check = DiskCheck(
+            session=self._session, deployment_id=self.id, status=status, message=message
+        )
+        check.save()
+        return check
+
     def stored(self, filer_url: str | None) -> tuple[int, int]:
         """Bytes held in the file store by the console log and by the recordings."""
         console = File(self.console.path, filer_url=filer_url).size()
@@ -148,7 +183,7 @@ class Deployment(Base, table=True):
         self._checks = None
         return settled
 
-    def _mark(self, check: Check, filer_url: str | None, limit_bytes: int) -> None:
+    def _mark(self, check: Check | DiskCheck, filer_url: str | None, limit_bytes: int) -> None:
         """Write a settled check into the live recording; a failure is logged, never raised."""
         try:
             recording_id = live(self.id)
@@ -222,6 +257,21 @@ class Deployment(Base, table=True):
                 # Before the recordings close below; without a limit there is no marker.
                 if settled and limit_bytes is not None:
                     self._mark(check, filer_url, limit_bytes)
+            if self.disk_owed:
+                owed = DiskCheck(
+                    session=self._session,
+                    deployment_id=self.id,
+                    status=CheckStatus.ERROR,
+                    message="deployment ended",
+                )
+                # The deployment has ended either way: a verdict that got in first stands.
+                try:
+                    owed.save()
+                except ConflictError:
+                    pass
+                else:
+                    if limit_bytes is not None:
+                        self._mark(owed, filer_url, limit_bytes)
             self.console.drop()
             for link in self.links:
                 # The deployment has ended either way: a recording left open never undoes that.

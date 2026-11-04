@@ -2,7 +2,7 @@ import ipaddress
 import logging
 import uuid
 from collections.abc import Callable
-from typing import Annotated, Any
+from typing import Annotated, Any, Protocol
 
 import httpx
 from fastapi import Depends, FastAPI, Request
@@ -10,7 +10,7 @@ from pydantic import AfterValidator, Field
 from sqlmodel import Session
 
 from jatszoter_api.db import get_session
-from jatszoter_api.models import Check, Recording
+from jatszoter_api.models import Recording
 from jatszoter_api.models.recording import live
 from jatszoter_api.settings import Settings, app_settings
 
@@ -34,10 +34,19 @@ def recorded(
         log.error("recording of deployment %s not written: %s", deployment_id, type(error).__name__)
 
 
-def _marks(request: Request, settings: SettingsDep) -> Callable[[Check], None]:
+class Settled(Protocol):
+    """A verdict that goes into the recording: a check, or the disk's."""
+
+    deployment_id: uuid.UUID
+
+    @property
+    def marker(self) -> str: ...
+
+
+def _marks(request: Request, settings: SettingsDep) -> Callable[[Settled], None]:
     """What writes a settled check into its deployment's live recording as a marker."""
 
-    def mark(check: Check) -> None:
+    def mark(check: Settled) -> None:
         recorded(
             request.app,
             check.deployment_id,
@@ -50,7 +59,7 @@ def _marks(request: Request, settings: SettingsDep) -> Callable[[Check], None]:
     return mark
 
 
-MarkDep = Annotated[Callable[[Check], None], Depends(_marks)]
+MarkDep = Annotated[Callable[[Settled], None], Depends(_marks)]
 
 
 def _parsed(url: str) -> httpx.URL:

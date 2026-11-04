@@ -108,6 +108,64 @@ properties:
     description: Exit 0 means solved. Sent to the VM per check, never stored there.
     $ref: '#/$defs/file'
 
+  outside:
+    description: Checks made from outside the guest; root in the guest can only fake what they see.
+    type: object
+    additionalProperties: false
+    minProperties: 1
+    properties:
+      network:
+        description: Asked from the agent host in every check, after the script passed.
+        type: array
+        minItems: 1
+        maxItems: 8
+        items:
+          type: object
+          additionalProperties: false
+          required: [port]
+          properties:
+            port:
+              type: integer
+              minimum: 1
+              maximum: 65535
+            http:
+              type: object
+              additionalProperties: false
+              properties:
+                path:
+                  type: string
+                  pattern: ^/[A-Za-z0-9._~/?=&%-]*$
+                  maxLength: 256
+                status:
+                  type: integer
+                  minimum: 100
+                  maximum: 599
+                contains:
+                  $ref: '#/$defs/text'
+      disk:
+        description: Read from the disk once, after the VM of a READY deployment stopped.
+        type: array
+        minItems: 1
+        maxItems: 8
+        items:
+          type: object
+          additionalProperties: false
+          required: [path]
+          properties:
+            path:
+              type: string
+              pattern: ^(/(?!\.\.?(/|$))[A-Za-z0-9._-]+)+$
+              maxLength: 256
+            exists:
+              type: boolean
+            contains:
+              $ref: '#/$defs/text'
+          not:
+            required: [exists, contains]
+            properties:
+              exists:
+                const: false
+
   hints:
     type: array
     maxItems: 32
@@ -121,3 +179,8 @@ $defs:
     description: File name next to scenario.yaml.
     type: string
     pattern: ^[A-Za-z0-9._-]+$
+  text:
+    description: Plain text to look for; it starts with a letter or a digit, so no tool reads it as syntax.
+    type: string
+    pattern: ^[A-Za-z0-9][A-Za-z0-9 ._/:;=,@+-]*$
+    maxLength: 200

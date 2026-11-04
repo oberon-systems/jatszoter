@@ -3,6 +3,7 @@ from jatszoter_api.models.agent import Agent
 from jatszoter_api.models.check import Check, CheckStatus
 from jatszoter_api.models.console import Console
 from jatszoter_api.models.deployment import Deployment
+from jatszoter_api.models.disk_check import DiskCheck
 from jatszoter_api.models.image import Image
 from jatszoter_api.models.link import Link
 from jatszoter_api.models.recording import Recording
@@ -17,6 +18,7 @@ __all__ = [
     "Console",
     "Credential",
     "Deployment",
+    "DiskCheck",
     "Image",
     "Link",
     "Recording",

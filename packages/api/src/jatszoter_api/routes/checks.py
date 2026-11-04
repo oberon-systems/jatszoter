@@ -31,6 +31,15 @@ class CheckOfDeployment(CheckDetail):
     deployment_id: uuid.UUID
 
 
+class DiskCheckOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    status: CheckStatus
+    message: str | None
+    created_at: int
+
+
 def check_out(check: Check, party: Party) -> dict[str, Any]:
     """A check as its reader may see it: `detail` is there for an operator alone."""
     shape = CheckDetail if party.user.role is Role.OPERATOR else CheckOut
@@ -55,6 +64,12 @@ all_router = APIRouter(prefix="/checks", dependencies=[Depends(require_operator)
 def index_all(session: SessionDep) -> list[CheckOfDeployment]:
     stored = sorted(Check._load(session), key=lambda row: row.created_at, reverse=True)
     return [CheckOfDeployment.model_validate(check) for check in stored]
+
+
+@router.get("/{deployment_id}/disk-check", dependencies=[Depends(require_operator)])
+def disk_verdict(session: SessionDep, deployment_id: uuid.UUID) -> DiskCheckOut | None:
+    stored = _deployment(session, deployment_id).disk_check
+    return None if stored is None else DiskCheckOut.model_validate(stored)
 
 
 @router.post("/{deployment_id}/checks", status_code=201)

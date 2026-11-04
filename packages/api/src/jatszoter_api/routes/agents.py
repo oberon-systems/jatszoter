@@ -107,6 +107,28 @@ class Limits(BaseModel):
     console_bytes: int
 
 
+class HttpProbe(BaseModel):
+    path: str = "/"
+    status: int = 200
+    contains: str | None = None
+
+
+class NetworkProbe(BaseModel):
+    port: int
+    http: HttpProbe | None = None
+
+
+class DiskAssert(BaseModel):
+    path: str
+    exists: bool = True
+    contains: str | None = None
+
+
+class Outside(BaseModel):
+    network: list[NetworkProbe]
+    disk: list[DiskAssert]
+
+
 class DesiredOut(BaseModel):
     id: uuid.UUID
     vm_id: uuid.UUID
@@ -117,6 +139,7 @@ class DesiredOut(BaseModel):
     timeouts: Timeouts
     limits: Limits
     check: uuid.UUID | None
+    outside: Outside
 
 
 class TransitionIn(StrictModel):
@@ -168,6 +191,11 @@ class ResultIn(StrictModel):
 class ResultOut(BaseModel):
     id: uuid.UUID
     status: CheckStatus
+
+
+class DiskResultIn(StrictModel):
+    status: Literal["passed", "failed", "error", "timeout"]
+    message: str | None = None
 
 
 class AgentOut(BaseModel):
@@ -367,6 +395,20 @@ def result(
     _, check = _pending(session, agent, deployment_id, check_id)
     if not check.settle(CheckStatus(body.status), body.exit_code, body.message, body.detail):
         raise ConflictError(f"check {check_id} is {check.status}", code="check-wrong-status")
+    mark(check)
+    return ResultOut(id=check.id, status=check.status)
+
+
+@router.post("/{agent_id}/deployments/{deployment_id}/disk-check")
+def disk_result(
+    body: DiskResultIn,
+    agent: LeasedDep,
+    session: SessionDep,
+    mark: MarkDep,
+    deployment_id: uuid.UUID,
+) -> ResultOut:
+    deployment = _held(session, agent, deployment_id)
+    check = deployment.settle_disk(CheckStatus(body.status), body.message)
     mark(check)
     return ResultOut(id=check.id, status=check.status)
 

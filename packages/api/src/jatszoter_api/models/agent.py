@@ -149,6 +149,10 @@ class Agent(SecretOwner, table=True):
                 },
                 "limits": {"console_bytes": console_bytes},
                 "check": None if row.pending is None else row.pending.id,
+                "outside": {
+                    "network": row.outside.get("network", []),
+                    "disk": row.disk_owed if row.status is DeploymentStatus.STOPPING else [],
+                },
             }
             for row in self.deployments
             if row.status not in TERMINAL and row.vm_id

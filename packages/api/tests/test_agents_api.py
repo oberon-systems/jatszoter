@@ -23,6 +23,7 @@ from jatszoter_api.models import (
     Check,
     CheckStatus,
     Deployment,
+    DiskCheck,
     Image,
     Role,
     Scenario,
@@ -412,6 +413,7 @@ def test_the_desired_state_carries_the_image_of_the_deployment(
         "timeouts": {"bootstrap_seconds": 600, "check_seconds": 30, "session_minutes": 45},
         "limits": {"console_bytes": settings.console_limit_bytes},
         "check": None,
+        "outside": {"network": [], "disk": []},
     }
 
 
@@ -1002,3 +1004,160 @@ def test_only_an_operator_lists_or_switches_agents(
     assert operator.client.get(AGENTS).status_code == 401
     session.expire_all()
     assert Agent(session=session).load(id=uuid.UUID(agent.id)).state is State.ENABLED
+
+
+@pytest.fixture
+def watched(session: Session) -> Scenario:
+    """A scenario with checks from outside the guest."""
+    Image(session=session, name="debian-12", url="https://example.com/a", digest="a" * 64).save()
+    scenario = Scenario(
+        session=session,
+        slug="alpha",
+        version=1,
+        document={
+            "image": "debian-12",
+            "outside": {
+                "network": [{"port": 80, "http": {"contains": "beta"}}, {"port": 22}],
+                "disk": [{"path": "/etc/alpha"}, {"path": "/etc/gamma", "exists": False}],
+            },
+        },
+        digest="b" * 64,
+    )
+    scenario.save(File(scenario.bundle_path, b"bundle"))
+    return scenario
+
+
+def outside(agent: Enrolled, deployment_id: str) -> dict[str, Any]:
+    entries = agent.call("GET", "/deployments").json()
+    entry = next(item for item in entries if item["id"] == deployment_id)
+    found: dict[str, Any] = entry["outside"]
+    return found
+
+
+def stop(session: Session, deployment_id: str) -> None:
+    Deployment(session=session).load(id=uuid.UUID(deployment_id)).stop()
+
+
+def posted(agent: Enrolled, deployment_id: str, **body: Any) -> Response:
+    return agent.call("POST", f"/deployments/{deployment_id}/disk-check", body)
+
+
+def verdicts(session: Session, deployment_id: str) -> list[DiskCheck]:
+    session.expire_all()
+    return DiskCheck._load(session, deployment_id=uuid.UUID(deployment_id))
+
+
+def test_the_network_probes_are_sent_with_defaults_and_the_disk_only_once_stopping(
+    client: TestClient, session: Session, watched: Scenario
+) -> None:
+    agent, deployment_id = ready(client, session, watched)
+
+    before = outside(agent, deployment_id)
+    stop(session, deployment_id)
+    after = outside(agent, deployment_id)
+
+    assert before == {
+        "network": [
+            {"port": 80, "http": {"path": "/", "status": 200, "contains": "beta"}},
+            {"port": 22, "http": None},
+        ],
+        "disk": [],
+    }
+    assert after["disk"] == [
+        {"path": "/etc/alpha", "exists": True, "contains": None},
+        {"path": "/etc/gamma", "exists": False, "contains": None},
+    ]
+
+
+def test_a_deployment_stopped_before_ready_owes_no_disk_check(
+    client: TestClient, session: Session, watched: Scenario
+) -> None:
+    agent, deployment_id = starting(client, session, watched)
+    stop(session, deployment_id)
+
+    assert outside(agent, deployment_id)["disk"] == []
+    assert posted(agent, deployment_id, status="passed").status_code == 409
+
+
+def test_a_disk_verdict_is_stored_once_and_leaves_the_desired_state(
+    client: TestClient, session: Session, watched: Scenario
+) -> None:
+    agent, deployment_id = ready(client, session, watched)
+    stop(session, deployment_id)
+
+    first = posted(agent, deployment_id, status="failed", message="/etc/alpha is missing\nbeta")
+    again = posted(agent, deployment_id, status="passed")
+
+    assert (first.status_code, first.json()["status"]) == (200, "failed")
+    assert again.status_code == 409
+    stored = verdicts(session, deployment_id)
+    assert [(row.status, row.message) for row in stored] == [
+        (CheckStatus.FAILED, "/etc/alpha is missing")
+    ]
+    assert outside(agent, deployment_id)["disk"] == []
+
+
+def test_a_disk_verdict_of_a_running_deployment_is_refused(
+    client: TestClient, session: Session, watched: Scenario
+) -> None:
+    agent, deployment_id = ready(client, session, watched)
+
+    assert posted(agent, deployment_id, status="passed").status_code == 409
+    assert verdicts(session, deployment_id) == []
+
+
+def test_a_scenario_without_a_disk_check_owes_no_verdict(
+    client: TestClient, session: Session, scenario: Scenario
+) -> None:
+    agent, deployment_id = ready(client, session, scenario)
+    stop(session, deployment_id)
+
+    assert posted(agent, deployment_id, status="passed").status_code == 409
+    assert move(agent, deployment_id, event="destroy", expected="STOPPING").status_code == 200
+    assert verdicts(session, deployment_id) == []
+
+
+def test_a_deployment_that_ends_without_its_verdict_stores_an_error(
+    client: TestClient, session: Session, watched: Scenario
+) -> None:
+    agent, deployment_id = ready(client, session, watched)
+    stop(session, deployment_id)
+
+    assert move(agent, deployment_id, event="destroy", expected="STOPPING").status_code == 200
+
+    stored = verdicts(session, deployment_id)
+    assert [(row.status, row.message) for row in stored] == [
+        (CheckStatus.ERROR, "deployment ended")
+    ]
+
+
+def test_a_verdict_in_time_stays_when_the_deployment_ends(
+    client: TestClient, session: Session, watched: Scenario
+) -> None:
+    agent, deployment_id = ready(client, session, watched)
+    stop(session, deployment_id)
+    posted(agent, deployment_id, status="passed")
+
+    assert move(agent, deployment_id, event="destroy", expected="STOPPING").status_code == 200
+
+    assert [row.status for row in verdicts(session, deployment_id)] == [CheckStatus.PASSED]
+
+
+def test_an_operator_alone_reads_the_disk_verdict(
+    operator: Any, session: Session, scenario: Scenario
+) -> None:
+    deployment = deploy(session, scenario)
+    path = f"/api/v1/deployments/{deployment.id}/disk-check"
+
+    empty = operator.request("GET", path)
+    DiskCheck(
+        session=session,
+        deployment_id=deployment.id,
+        status=CheckStatus.PASSED,
+        message="alpha",
+    ).save()
+    stored = operator.request("GET", path)
+
+    assert (empty.status_code, empty.json()) == (200, None)
+    assert (stored.json()["status"], stored.json()["message"]) == ("passed", "alpha")
+    assert operator.client.get(path).status_code == 401

@@ -121,6 +121,43 @@ pub struct Desired {
     pub limits: Limits,
     #[serde(default)]
     pub check: Option<String>,
+    #[serde(default)]
+    pub outside: Outside,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct HttpProbe {
+    pub path: String,
+    pub status: u16,
+    pub contains: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct NetworkProbe {
+    pub port: u16,
+    pub http: Option<HttpProbe>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct DiskAssert {
+    pub path: String,
+    pub exists: bool,
+    pub contains: Option<String>,
+}
+
+/// What is checked from outside the guest; it tells the solution, so `Debug` prints no content.
+#[derive(Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct Outside {
+    #[serde(default)]
+    pub network: Vec<NetworkProbe>,
+    #[serde(default)]
+    pub disk: Vec<DiskAssert>,
+}
+
+impl std::fmt::Debug for Outside {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Outside").finish_non_exhaustive()
+    }
 }
 
 /// A deployment's NoCloud seed; it carries the scenario's steps, so `Debug` prints no content.
@@ -172,6 +209,21 @@ impl std::fmt::Debug for CheckResult {
         f.debug_struct("CheckResult")
             .field("status", &self.status)
             .field("exit_code", &self.exit_code)
+            .finish_non_exhaustive()
+    }
+}
+
+/// What reading the disk of a stopped VM came to; `message` names a path, so `Debug` skips it.
+#[derive(Clone, PartialEq, Eq, Serialize)]
+pub struct DiskResult {
+    pub status: CheckStatus,
+    pub message: Option<String>,
+}
+
+impl std::fmt::Debug for DiskResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DiskResult")
+            .field("status", &self.status)
             .finish_non_exhaustive()
     }
 }
@@ -257,6 +309,15 @@ pub(crate) trait Api {
         _deployment_id: &str,
         _check_id: &str,
         _result: &CheckResult,
+    ) -> Result<Signed<Posted>, AgentError> {
+        Ok(Signed::Accepted(Posted::Conflict))
+    }
+    async fn disk_result(
+        &self,
+        _agent_id: &str,
+        _credential: &Credential,
+        _deployment_id: &str,
+        _result: &DiskResult,
     ) -> Result<Signed<Posted>, AgentError> {
         Ok(Signed::Accepted(Posted::Conflict))
     }
@@ -557,6 +618,28 @@ impl Api for HttpApi {
     ) -> Result<Signed<Posted>, AgentError> {
         let body = serde_json::to_vec(result).map_err(|err| AgentError::Api(err.to_string()))?;
         let action = format!("deployments/{deployment_id}/checks/{check_id}");
+        let response = self
+            .signed(Method::POST, agent_id, credential, &action, body)
+            .await?;
+        match response.status() {
+            StatusCode::UNAUTHORIZED => Ok(Signed::Refused),
+            StatusCode::CONFLICT => Ok(Signed::Accepted(Posted::Conflict)),
+            _ => {
+                accepted(response, StatusCode::OK)?;
+                Ok(Signed::Accepted(Posted::Stored))
+            }
+        }
+    }
+
+    async fn disk_result(
+        &self,
+        agent_id: &str,
+        credential: &Credential,
+        deployment_id: &str,
+        result: &DiskResult,
+    ) -> Result<Signed<Posted>, AgentError> {
+        let body = serde_json::to_vec(result).map_err(|err| AgentError::Api(err.to_string()))?;
+        let action = format!("deployments/{deployment_id}/disk-check");
         let response = self
             .signed(Method::POST, agent_id, credential, &action, body)
             .await?;

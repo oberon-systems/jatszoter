@@ -39,6 +39,8 @@ fn runtime_at(dir: &TempDir, api_url: &str) -> QemuRuntime {
         qemu_img: "/nonexistent/qemu-img".into(),
         xorriso: "/nonexistent/xorriso".into(),
         passt: "/nonexistent/passt".into(),
+        inspector_url: Url::parse("https://example.com/alpha.qcow2").unwrap(),
+        inspector_digest: "0".repeat(64),
         ovmf_code: "/nonexistent/OVMF_CODE.fd".into(),
         ovmf_vars: "/nonexistent/OVMF_VARS.fd".into(),
     };
@@ -72,6 +74,7 @@ fn stopping(id: &str) -> Desired {
         },
         limits: Limits::default(),
         check: None,
+        outside: crate::libs::api::Outside::default(),
     }
 }
 

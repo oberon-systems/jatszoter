@@ -5,9 +5,9 @@ use wiremock::matchers::{any, body_json, method, path};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
 use super::{
-    mac, nonce, sign, target, Accelerator, Api, CheckResult, CheckStatus, Claim, Desired, Event,
-    HttpApi, ImageRef, Lease, Limits, Moved, Posted, Resources, ScenarioRef, Script, Seed, Signed,
-    Status, Timeouts, CONSOLE_LIMIT,
+    mac, nonce, sign, target, Accelerator, Api, CheckResult, CheckStatus, Claim, Desired,
+    DiskResult, Event, HttpApi, ImageRef, Lease, Limits, Moved, Outside, Posted, Resources,
+    ScenarioRef, Script, Seed, Signed, Status, Timeouts, CONSOLE_LIMIT,
 };
 use crate::libs::error::AgentError;
 use crate::libs::state::Credential;
@@ -268,6 +268,7 @@ fn desired() -> Desired {
         },
         limits: Limits::default(),
         check: None,
+        outside: Outside::default(),
     }
 }
 
@@ -762,4 +763,76 @@ fn every_nonce_is_32_lowercase_hex_and_new() {
     assert_eq!(first.len(), 32);
     assert!(first.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')));
     assert_ne!(first, nonce().unwrap());
+}
+
+#[tokio::test]
+async fn a_disk_result_is_a_signed_post() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/agents/gamma/deployments/eta/disk-check"))
+        .and(body_json(
+            json!({"status": "failed", "message": "/alpha is missing"}),
+        ))
+        .and(signed_by("beta", "current:1:1790000000"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let result = DiskResult {
+        status: CheckStatus::Failed,
+        message: Some("/alpha is missing".into()),
+    };
+
+    let posted = api(&server)
+        .disk_result("gamma", &credential(), "eta", &result)
+        .await
+        .unwrap();
+
+    assert_eq!(posted, Signed::Accepted(Posted::Stored));
+}
+
+#[tokio::test]
+async fn a_disk_result_no_longer_owed_is_a_conflict() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(409))
+        .mount(&server)
+        .await;
+    let result = DiskResult {
+        status: CheckStatus::Passed,
+        message: None,
+    };
+
+    let posted = api(&server)
+        .disk_result("gamma", &credential(), "eta", &result)
+        .await
+        .unwrap();
+
+    assert_eq!(posted, Signed::Accepted(Posted::Conflict));
+}
+
+#[test]
+fn the_outside_checks_decode_and_their_debug_shows_no_content() {
+    let outside: Outside = serde_json::from_value(json!({
+        "network": [
+            {"port": 80, "http": {"path": "/", "status": 200, "contains": "mu-secret"}},
+            {"port": 22, "http": null}
+        ],
+        "disk": [{"path": "/nu-secret", "exists": true, "contains": null}]
+    }))
+    .unwrap();
+
+    assert_eq!(outside.network[1].port, 22);
+    assert_eq!(outside.disk[0].path, "/nu-secret");
+    assert!(!format!("{outside:?}").contains("secret"));
+}
+
+#[test]
+fn the_debug_of_a_disk_result_shows_no_path() {
+    let result = DiskResult {
+        status: CheckStatus::Failed,
+        message: Some("/nu-secret is missing".into()),
+    };
+
+    assert!(!format!("{result:?}").contains("secret"));
 }

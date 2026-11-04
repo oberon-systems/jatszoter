@@ -24,6 +24,10 @@ const DEFAULT_QEMU: &str = "qemu-system-x86_64";
 const DEFAULT_QEMU_IMG: &str = "qemu-img";
 const DEFAULT_XORRISO: &str = "xorriso";
 const DEFAULT_PASST: &str = "passt";
+const DEFAULT_INSPECTOR_URL: &str =
+    "https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/cloud/alpine-3.24.3-x86_64-tiny-r0.qcow2";
+const DEFAULT_INSPECTOR_DIGEST: &str =
+    "037ae53f960ce24477b18e033aa61f81c12953a6dc1c554400c5e28b588d4356";
 const DEFAULT_OVMF_CODE: &str = "/usr/share/OVMF/OVMF_CODE_4M.fd";
 const DEFAULT_OVMF_VARS: &str = "/usr/share/OVMF/OVMF_VARS_4M.fd";
 const PREFIX: &str = "JATSZOTER_AGENT_";
@@ -46,6 +50,8 @@ pub struct Config {
     pub qemu_img: PathBuf,
     pub xorriso: PathBuf,
     pub passt: PathBuf,
+    pub inspector_url: Url,
+    pub inspector_digest: String,
     pub ovmf_code: PathBuf,
     pub ovmf_vars: PathBuf,
 }
@@ -68,6 +74,8 @@ pub struct RawConfig {
     pub qemu_img: Option<PathBuf>,
     pub xorriso: Option<PathBuf>,
     pub passt: Option<PathBuf>,
+    pub inspector_url: Option<String>,
+    pub inspector_digest: Option<String>,
     pub ovmf_code: Option<PathBuf>,
     pub ovmf_vars: Option<PathBuf>,
 }
@@ -126,6 +134,7 @@ impl Config {
         let image_download_minutes = raw
             .image_download_minutes
             .map_or(Ok(DEFAULT_IMAGE_DOWNLOAD_MINUTES), check_image_download)?;
+        let (inspector_url, inspector_digest) = inspector(raw.inspector_url, raw.inspector_digest)?;
         Ok(Self {
             api_url: parse_api_url(&raw.api_url)?,
             name: parse_name(&raw.name)?,
@@ -145,6 +154,8 @@ impl Config {
             qemu_img: raw.qemu_img.unwrap_or_else(|| DEFAULT_QEMU_IMG.into()),
             xorriso: raw.xorriso.unwrap_or_else(|| DEFAULT_XORRISO.into()),
             passt: raw.passt.unwrap_or_else(|| DEFAULT_PASST.into()),
+            inspector_url,
+            inspector_digest,
             ovmf_code: raw.ovmf_code.unwrap_or_else(|| DEFAULT_OVMF_CODE.into()),
             ovmf_vars: raw.ovmf_vars.unwrap_or_else(|| DEFAULT_OVMF_VARS.into()),
         })
@@ -203,6 +214,24 @@ pub fn prepare_private_dir(path: &Path) -> Result<(), AgentError> {
         )));
     }
     Ok(())
+}
+
+fn inspector(url: Option<String>, digest: Option<String>) -> Result<(Url, String), AgentError> {
+    let (url, digest) = match (url, digest) {
+        (None, None) => (
+            DEFAULT_INSPECTOR_URL.to_owned(),
+            DEFAULT_INSPECTOR_DIGEST.to_owned(),
+        ),
+        (Some(url), Some(digest)) => (url, digest),
+        _ => {
+            return Err(AgentError::Config(format!(
+                "{PREFIX}INSPECTOR_URL and {PREFIX}INSPECTOR_DIGEST are set together"
+            )))
+        }
+    };
+    let url = Url::parse(&url)
+        .map_err(|_| AgentError::Config(format!("{PREFIX}INSPECTOR_URL is not a valid URL")))?;
+    Ok((url, digest))
 }
 
 pub fn parse_api_url(raw: &str) -> Result<Url, AgentError> {

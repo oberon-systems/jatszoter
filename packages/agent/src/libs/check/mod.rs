@@ -4,8 +4,9 @@ use std::time::Duration;
 use tokio::time::{sleep, timeout};
 
 use crate::libs::agent::Auth;
-use crate::libs::api::{Api, CheckResult, CheckStatus, Posted, Script, Signed};
+use crate::libs::api::{Api, CheckResult, CheckStatus, DiskResult, Posted, Script, Signed};
 use crate::libs::error::AgentError;
+use crate::libs::outside::{self, Aimed};
 use crate::libs::qga::{Qga, Ran, TRUNCATED};
 use crate::libs::vm;
 
@@ -21,14 +22,20 @@ const UNWRITTEN: &str = "the check script could not be written";
 const OVERSIZE: &str = "the check output is too large to read";
 const BROKEN: &str = "the guest agent failed to run the check";
 const RANGE: &str = "the exit code is out of range";
+// The API settles a check 30 s past its deadline, so the probes stay inside that grace.
+const OUTSIDE_WAIT: Duration = Duration::from_secs(20);
+const OUTSIDE_FAILED: &str = "the check from outside the guest failed";
+const OUTSIDE_EXIT: i32 = 1;
 
-/// Runs one pending check in the guest behind `socket` and posts what it came to.
+/// Runs one pending check in the guest behind `socket`, then `aimed` from the agent host, and
+/// posts what it came to.
 pub(crate) async fn run(
     api: &impl Api,
     auth: &Auth,
     socket: &Path,
     deployment_id: &str,
     check_id: &str,
+    aimed: &[Aimed],
 ) {
     if !vm::valid_id(check_id) {
         tracing::warn!("the check id is not a valid name");
@@ -62,7 +69,30 @@ pub(crate) async fn run(
             failure(SILENT)
         }
     };
+    let result = from_outside(result, aimed).await;
     post(api, auth, deployment_id, check_id, &result).await;
+}
+
+// Only a script that passed goes on: its verdict is the one root in the guest can fake.
+async fn from_outside(result: CheckResult, aimed: &[Aimed]) -> CheckResult {
+    if result.status != CheckStatus::Passed || aimed.is_empty() {
+        return result;
+    }
+    match timeout(OUTSIDE_WAIT, outside::network(aimed)).await {
+        Ok(Ok(())) => result,
+        Ok(Err(why)) => CheckResult {
+            status: CheckStatus::Failed,
+            exit_code: Some(OUTSIDE_EXIT),
+            message: Some(OUTSIDE_FAILED.into()),
+            detail: Some(why),
+        },
+        Err(_) => CheckResult {
+            status: CheckStatus::Timeout,
+            exit_code: None,
+            message: None,
+            detail: None,
+        },
+    }
 }
 
 async fn execute(qga: &mut Qga, path: &str, script: &Script) -> (CheckResult, bool) {
@@ -228,6 +258,44 @@ async fn post(
             }
             Ok(Err(err)) => tracing::warn!(error = %err, attempt, "posting the result failed"),
             Err(_) => tracing::warn!(attempt, "posting the result timed out"),
+        }
+        if attempt < ATTEMPTS {
+            sleep(RETRY).await;
+        }
+    }
+}
+
+/// Posts the verdict on a stopped VM's disk; a stop goes on whatever comes of it.
+pub(crate) async fn post_disk(
+    api: &impl Api,
+    auth: &Auth,
+    deployment_id: &str,
+    result: &DiskResult,
+) {
+    for attempt in 1..=ATTEMPTS {
+        let call = async {
+            let signer = auth.read().await;
+            let Some(signer) = signer.as_ref() else {
+                return Ok(Signed::Refused);
+            };
+            api.disk_result(&signer.agent_id, &signer.credential, deployment_id, result)
+                .await
+        };
+        match timeout(SIGN_WAIT, call).await {
+            Ok(Ok(Signed::Accepted(Posted::Stored))) => {
+                tracing::info!(status = ?result.status, "the disk check is posted");
+                return;
+            }
+            Ok(Ok(Signed::Accepted(Posted::Conflict))) => {
+                tracing::info!("the disk check is no longer owed; the result is dropped");
+                return;
+            }
+            Ok(Ok(Signed::Refused)) => {
+                tracing::warn!("the API refused the credential");
+                return;
+            }
+            Ok(Err(err)) => tracing::warn!(error = %err, attempt, "posting the disk check failed"),
+            Err(_) => tracing::warn!(attempt, "posting the disk check timed out"),
         }
         if attempt < ATTEMPTS {
             sleep(RETRY).await;

@@ -33,6 +33,7 @@ fn desired(id: &str, status: Status) -> Desired {
         },
         limits: Limits::default(),
         check: None,
+        outside: crate::libs::api::Outside::default(),
     }
 }
 
@@ -47,6 +48,7 @@ fn vm(id: &str, alive: bool) -> OnDisk {
             deployment_id: id.into(),
             vm_id: format!("vm-{id}"),
             created_at: 0,
+            forwards: std::collections::BTreeMap::new(),
         }),
         alive,
     }

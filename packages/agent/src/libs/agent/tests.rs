@@ -179,6 +179,8 @@ fn agent(dir: &TempDir, api: FakeApi, state: State) -> Agent<FakeApi, CountingRu
         qemu_img: "qemu-img".into(),
         xorriso: "xorriso".into(),
         passt: "passt".into(),
+        inspector_url: Url::parse("https://example.com/alpha.qcow2").unwrap(),
+        inspector_digest: "0".repeat(64),
         ovmf_code: "/nonexistent/OVMF_CODE.fd".into(),
         ovmf_vars: "/nonexistent/OVMF_VARS.fd".into(),
     };

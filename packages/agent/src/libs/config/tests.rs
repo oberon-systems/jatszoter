@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use super::{parse_api_url, parse_cidrs, parse_labels, parse_name, Config, RawConfig};
+use crate::libs::error::AgentError;
 
 fn raw() -> RawConfig {
     RawConfig {
@@ -196,4 +197,32 @@ fn the_firmware_paths_can_be_overridden() {
 
     assert_eq!(config.ovmf_code, PathBuf::from("/opt/edk2/code.fd"));
     assert_eq!(config.ovmf_vars, PathBuf::from("/opt/edk2/vars.fd"));
+}
+
+#[test]
+fn the_inspector_is_pinned_unless_a_mirror_is_named() {
+    let default = Config::parse(raw(), None, Some("/home/alpha".into())).unwrap();
+    let named = RawConfig {
+        inspector_url: Some("https://example.com/alpha.qcow2".into()),
+        inspector_digest: Some("b".repeat(64)),
+        ..raw()
+    };
+
+    let config = Config::parse(named, None, Some("/home/alpha".into())).unwrap();
+
+    assert_eq!(default.inspector_digest.len(), 64);
+    assert_eq!(config.inspector_url.host_str(), Some("example.com"));
+    assert_eq!(config.inspector_digest, "b".repeat(64));
+}
+
+#[test]
+fn a_mirror_without_its_digest_is_refused() {
+    let named = RawConfig {
+        inspector_url: Some("https://example.com/alpha.qcow2".into()),
+        ..raw()
+    };
+
+    let err = Config::parse(named, None, Some("/home/alpha".into())).unwrap_err();
+
+    assert!(matches!(err, AgentError::Config(_)), "{err}");
 }

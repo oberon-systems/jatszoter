@@ -9,13 +9,17 @@ use tracing::Instrument;
 use url::Url;
 
 use crate::libs::agent::{Auth, Runtime};
-use crate::libs::api::{Accelerator, Api, Desired, Event, HttpApi, Moved, Seed, Signed, Status};
+use crate::libs::api::{
+    Accelerator, Api, CheckStatus, Desired, Event, HttpApi, Moved, NetworkProbe, Seed, Signed,
+    Status,
+};
 use crate::libs::bootstrap::{self, Verdict, MARKER};
 use crate::libs::check;
 use crate::libs::config::Config;
 use crate::libs::console;
 use crate::libs::error::AgentError;
 use crate::libs::images::ImageCache;
+use crate::libs::outside::{self, Aimed};
 use crate::libs::qga::Qga;
 use crate::libs::reconcile::{plan, Action};
 use crate::libs::vm::{self, OnDisk, Tools, VmSpec};
@@ -30,6 +34,10 @@ const MARKER_MAX: usize = 256;
 const OVERDUE: &str = "bootstrap timeout";
 const CONSOLE_RETRY: Duration = Duration::from_secs(5);
 const CAP_TICK: Duration = Duration::from_secs(1);
+const POWER_OFF_WAIT: Duration = Duration::from_secs(60);
+const DISK_WAIT: Duration = Duration::from_secs(300);
+const DISK_LATE: &str = "reading the disk took too long";
+const DISK_STUCK: &str = "the VM did not stop";
 
 type Full = Arc<Mutex<HashSet<String>>>;
 
@@ -38,6 +46,8 @@ struct Shared {
     api_url: Url,
     images: ImageCache,
     root: PathBuf,
+    inspector_url: Url,
+    inspector_digest: String,
     tools: Tools,
 }
 
@@ -91,6 +101,8 @@ impl QemuRuntime {
                     config.image_use_proxy,
                 )?,
                 root: config.state_dir.join("vms"),
+                inspector_url: config.inspector_url.clone(),
+                inspector_digest: config.inspector_digest.clone(),
                 tools: Tools {
                     qemu: config.qemu.clone(),
                     qemu_img: config.qemu_img.clone(),
@@ -233,6 +245,7 @@ impl QemuRuntime {
                 Arc::clone(auth),
                 item.id.clone(),
                 check_id.clone(),
+                item.outside.network.clone(),
             );
             self.checks.insert(
                 check_id.clone(),
@@ -266,9 +279,13 @@ impl Runtime for QemuRuntime {
                 return;
             }
         };
-        self.shared
-            .images
-            .keep(desired.iter().map(|item| item.image.digest.clone()));
+        let inspector = self.shared.inspector_digest.clone();
+        self.shared.images.keep(
+            desired
+                .iter()
+                .map(|item| item.image.digest.clone())
+                .chain([inspector]),
+        );
         self.keep_consoles(auth, &desired, &on_disk);
         self.keep_checks(auth, &desired);
         let mut aborted = self.abort_stopping(&desired);
@@ -381,9 +398,67 @@ async fn cap_console(log: PathBuf, limit: u64) {
     }
 }
 
-async fn run_check(shared: Arc<Shared>, auth: Auth, deployment_id: String, check_id: String) {
-    let socket = shared.root.join(&deployment_id).join(vm::QGA);
-    check::run(&shared.api, &auth, &socket, &deployment_id, &check_id).await;
+async fn run_check(
+    shared: Arc<Shared>,
+    auth: Auth,
+    deployment_id: String,
+    check_id: String,
+    probes: Vec<NetworkProbe>,
+) {
+    let dir = shared.root.join(&deployment_id);
+    let forwards = vm::read_record(&dir)
+        .map(|record| record.forwards)
+        .unwrap_or_default();
+    let aimed: Vec<Aimed> = probes
+        .into_iter()
+        .map(|probe| Aimed {
+            host_port: forwards.get(&probe.port).copied(),
+            probe,
+        })
+        .collect();
+    let socket = dir.join(vm::QGA);
+    check::run(
+        &shared.api,
+        &auth,
+        &socket,
+        &deployment_id,
+        &check_id,
+        &aimed,
+    )
+    .await;
+}
+
+// Bounded as a whole, so a guest that will not stop or a disk that will not read never holds a
+// stop; the VM is destroyed after this whatever it came to.
+async fn read_disk(shared: &Shared, auth: &Auth, item: &Desired) {
+    let dir = shared.root.join(&item.id);
+    let read = async {
+        if let Err(err) = vm::power_off(&dir, POWER_OFF_WAIT).await {
+            tracing::warn!(error = %err, "powering the VM off failed");
+            return outside::verdict(CheckStatus::Error, Some(DISK_STUCK.into()));
+        }
+        let asserts = &item.outside.disk;
+        let answers = async {
+            let base = shared
+                .images
+                .ensure(&shared.inspector_url, &shared.inspector_digest)
+                .await?;
+            let seed = outside::inspector_seed(&item.vm_id, asserts);
+            vm::inspect(&dir, &base, &seed, &shared.tools).await
+        };
+        match answers.await {
+            Ok(answers) => outside::judged(asserts, &answers),
+            Err(err) => {
+                tracing::warn!(error = %err, "reading the disk failed");
+                outside::unreadable()
+            }
+        }
+    };
+    let result = timeout(DISK_WAIT, read).await.unwrap_or_else(|_| {
+        tracing::warn!("reading the disk timed out");
+        outside::verdict(CheckStatus::Timeout, Some(DISK_LATE.into()))
+    });
+    check::post_disk(&shared.api, auth, &item.id, &result).await;
 }
 
 async fn run(shared: Arc<Shared>, auth: Auth, action: Action, after: Option<JoinHandle<()>>) {
@@ -394,6 +469,9 @@ async fn run(shared: Arc<Shared>, auth: Auth, action: Action, after: Option<Join
     match action {
         Action::Start(item) => start(&shared, &auth, &item).await,
         Action::Stop(item) => {
+            if !item.outside.disk.is_empty() {
+                read_disk(&shared, &auth, &item).await;
+            }
             if let Err(err) = vm::destroy(&shared.root.join(&item.id)).await {
                 tracing::warn!(error = %err, "destroying the VM failed");
                 return;
@@ -584,6 +662,12 @@ async fn launch(shared: &Shared, item: &Desired, seed: Seed) -> Result<(), Agent
         disk_gib: resource(item.resources.disk_gib, "disk_gib")?,
         base,
         seed: Some(seed),
+        ports: item
+            .outside
+            .network
+            .iter()
+            .map(|probe| probe.port)
+            .collect(),
     };
     vm::create(&shared.root, &spec, &shared.tools)
         .await

@@ -1,6 +1,8 @@
+use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fs::{self, DirBuilder, OpenOptions, Permissions};
 use std::io::{ErrorKind, Write};
+use std::net::{Ipv4Addr, TcpListener};
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -23,7 +25,7 @@ use crate::libs::qmp::Qmp;
 pub const KVM_DEVICE: &str = "/dev/kvm";
 const NO_ACCELERATOR: &str = "KVM is not usable and TCG is not allowed";
 const RECORD: &str = "vm.json";
-const DISK: &str = "disk.qcow2";
+pub const DISK: &str = "disk.qcow2";
 const PID_FILE: &str = "qemu.pid";
 pub(crate) const PASST_PID: &str = "passt.pid";
 const QMP: &str = "qmp.sock";
@@ -42,6 +44,15 @@ const MAX_SOCKET_PATH: usize = 107;
 const MAX_ID: usize = 64;
 const MAX_STDERR: usize = 400;
 const FORMATS: [&str; 2] = ["qcow2", "raw"];
+const INSPECT_DIR: &str = "inspect";
+const INSPECT_SYSTEM: &str = "system.qcow2";
+const INSPECT_ANSWERS: &str = "answers.raw";
+const INSPECT_ANSWERS_BYTES: usize = 64 * 1024;
+const INSPECT_MEMORY_MIB: u32 = 256;
+const INSPECT_MAX_GIB: u32 = 16;
+// outside/inspector.sh finds the two disks by these, whatever order they come up in.
+pub(crate) const DISK_SERIAL: &str = "jatszoter-disk";
+pub(crate) const ANSWERS_SERIAL: &str = "jatszoter-answers";
 const TOOL_TIMEOUT: Duration = Duration::from_secs(60);
 const QMP_TIMEOUT: Duration = Duration::from_secs(5);
 const SOCKET_WAIT: Duration = Duration::from_secs(10);
@@ -58,6 +69,8 @@ pub struct VmSpec {
     pub disk_gib: u32,
     pub base: PathBuf,
     pub seed: Option<Seed>,
+    /// Guest ports the agent host asks from outside the guest.
+    pub ports: Vec<u16>,
 }
 
 #[derive(Debug, Clone)]
@@ -99,6 +112,9 @@ pub struct Record {
     /// Unix seconds; absent from a `vm.json` written before the field existed.
     #[serde(default)]
     pub created_at: u64,
+    /// Guest port to the agent host's loopback port that passt forwards to it.
+    #[serde(default)]
+    pub forwards: BTreeMap<u16, u16>,
 }
 
 #[allow(dead_code, reason = "the fields are read by the tests")]
@@ -216,6 +232,12 @@ pub fn qemu_args(spec: &VmSpec, dir: &Path, kvm: bool, firmware: &Path) -> Vec<O
 // --no-map-gw keeps the gateway from leading to the host's loopback, the reason passt
 // replaces QEMU's user-mode network; --one-off ends passt together with QEMU.
 pub(crate) fn passt_args(dir: &Path) -> Vec<OsString> {
+    forwarding_passt_args(dir, &BTreeMap::new())
+}
+
+// A forward binds the host's loopback only: the network gains no way in, and --no-map-gw keeps
+// the guest itself from reaching it.
+pub(crate) fn forwarding_passt_args(dir: &Path, forwards: &BTreeMap<u16, u16>) -> Vec<OsString> {
     let mut args: Vec<OsString> = [
         "--one-off",
         "--no-map-gw",
@@ -230,15 +252,18 @@ pub(crate) fn passt_args(dir: &Path) -> Vec<OsString> {
         "10.0.2.3",
         "--dns-forward",
         "10.0.2.3",
-        "--tcp-ports",
-        "none",
-        "--udp-ports",
-        "none",
-        "--socket",
     ]
     .iter()
     .map(OsString::from)
     .collect();
+    if forwards.is_empty() {
+        args.extend(["--tcp-ports".into(), "none".into()]);
+    }
+    for (guest, host) in forwards {
+        args.push("--tcp-ports".into());
+        args.push(format!("{}/{host}:{guest}", Ipv4Addr::LOCALHOST).into());
+    }
+    args.extend(["--udp-ports".into(), "none".into(), "--socket".into()]);
     args.push(dir.join(NET).into_os_string());
     args.push("--pid".into());
     args.push(dir.join(PASST_PID).into_os_string());
@@ -284,6 +309,7 @@ pub async fn create(root: &Path, spec: &VmSpec, tools: &Tools) -> Result<Vm, Age
         created_at: SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |elapsed| elapsed.as_secs()),
+        forwards: free_ports(&spec.ports)?,
     };
     tracing::info!(?accelerator, "starting the VM");
     if let Err(err) = start(&dir, spec, &record, tools, accelerator).await {
@@ -293,6 +319,21 @@ pub async fn create(root: &Path, spec: &VmSpec, tools: &Tools) -> Result<Vm, Age
         return Err(err);
     }
     Ok(Vm { dir, record })
+}
+
+// Every listener stays open until all are chosen, so no two guest ports get the same host port.
+fn free_ports(ports: &[u16]) -> Result<BTreeMap<u16, u16>, AgentError> {
+    let mut held = Vec::new();
+    let mut forwards = BTreeMap::new();
+    for &guest in ports {
+        if forwards.contains_key(&guest) {
+            continue;
+        }
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
+        forwards.insert(guest, listener.local_addr()?.port());
+        held.push(listener);
+    }
+    Ok(forwards)
 }
 
 async fn start(
@@ -330,7 +371,7 @@ async fn start(
         .arg(dir.join(DISK))
         .arg(format!("{}G", spec.disk_gib)))
     .await?;
-    run(Command::new(&tools.passt).args(passt_args(dir))).await?;
+    run(Command::new(&tools.passt).args(forwarding_passt_args(dir, &record.forwards))).await?;
     let kvm = accelerator == Accelerator::Kvm;
     let args = qemu_args(spec, dir, kvm, &tools.ovmf_code);
     run(Command::new(&tools.qemu).args(args)).await?;
@@ -427,6 +468,149 @@ pub async fn destroy(dir: &Path) -> Result<(), AgentError> {
         Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
         other => Ok(other?),
     }
+}
+
+/// Asks the guest to shut down, so what it holds in memory reaches the disk; a guest that has not
+/// done so after `wait` is stopped as `destroy` would.
+pub async fn power_off(dir: &Path, wait: Duration) -> Result<(), AgentError> {
+    let Some(record) = read_record(dir) else {
+        return Ok(());
+    };
+    if owner(dir, &record.vm_id).is_none() {
+        return Ok(());
+    }
+    let socket = dir.join(QMP);
+    let attempt = async {
+        Qmp::connect(&socket, QMP_TIMEOUT)
+            .await?
+            .execute("system_powerdown", None)
+            .await
+    };
+    let asked = timeout(QMP_TIMEOUT, attempt)
+        .await
+        .is_ok_and(|reply| reply.is_ok());
+    if asked && exited(dir, &record.vm_id, wait).await {
+        return Ok(());
+    }
+    stop(dir, &record.vm_id, quit(&socket).await).await
+}
+
+/// Boots `base` beside the stopped VM's disk, which it sees read-only, runs `seed` there and
+/// answers what it left on its answers disk. Dropping this kills the inspector, so a caller bounds
+/// it with a timeout.
+pub async fn inspect(
+    dir: &Path,
+    base: &Path,
+    seed: &Seed,
+    tools: &Tools,
+) -> Result<Vec<u8>, AgentError> {
+    let accelerator = tools.require_accelerator()?;
+    let work = dir.join(INSPECT_DIR);
+    // A stop that was cut short leaves its files behind.
+    match fs::remove_dir_all(&work) {
+        Err(err) if err.kind() != ErrorKind::NotFound => return Err(err.into()),
+        _ => {}
+    }
+    DirBuilder::new().mode(0o700).create(&work)?;
+    pack(&work, seed, &tools.xorriso).await?;
+    let vars = fs::read(&tools.ovmf_vars)
+        .map_err(|err| AgentError::Vm(format!("{}: {err}", tools.ovmf_vars.display())))?;
+    write_private(&work.join(EFIVARS), &vars)?;
+    write_private(&work.join(INSPECT_ANSWERS), &vec![0; INSPECT_ANSWERS_BYTES])?;
+    let base = std::path::absolute(base)?;
+    let info = run(Command::new(&tools.qemu_img)
+        .args(["info", "--output=json"])
+        .arg(&base))
+    .await?;
+    let format = base_format(&info, INSPECT_MAX_GIB)?;
+    run(Command::new(&tools.qemu_img)
+        .args(["create", "-f", "qcow2", "-F", format.as_str(), "-b"])
+        .arg(&base)
+        .arg(work.join(INSPECT_SYSTEM)))
+    .await?;
+    let kvm = accelerator == Accelerator::Kvm;
+    let args = inspect_args(&work, &dir.join(DISK), kvm, &tools.ovmf_code);
+    let output = Command::new(&tools.qemu)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .output()
+        .await
+        .map_err(|err| AgentError::Vm(format!("the inspector: {err}")))?;
+    if !output.status.success() {
+        let head = &output.stderr[..output.stderr.len().min(MAX_STDERR)];
+        return Err(AgentError::Vm(format!(
+            "the inspector {}: {}",
+            output.status,
+            String::from_utf8_lossy(head).trim()
+        )));
+    }
+    Ok(fs::read(work.join(INSPECT_ANSWERS))?)
+}
+
+// No -netdev: the inspector reads a disk root in the guest wrote, and needs no way out.
+pub(crate) fn inspect_args(work: &Path, disk: &Path, kvm: bool, firmware: &Path) -> Vec<OsString> {
+    let (accel, cpu) = if kvm { ("kvm", "host") } else { ("tcg", "max") };
+    let mut args: Vec<OsString> = [
+        "-name",
+        "jatszoter-inspector",
+        "-nodefaults",
+        "-no-user-config",
+        "-no-reboot",
+        "-display",
+        "none",
+        "-machine",
+        &format!("q35,accel={accel}"),
+        "-cpu",
+        cpu,
+        "-smp",
+        "1",
+        "-m",
+        &format!("{INSPECT_MEMORY_MIB}M"),
+    ]
+    .iter()
+    .map(OsString::from)
+    .collect();
+    let mut drive = |value: OsString| {
+        args.push("-drive".into());
+        args.push(value);
+    };
+    drive(option(
+        "if=pflash,format=raw,unit=0,readonly=on,file=",
+        firmware,
+    ));
+    drive(option(
+        "if=pflash,format=raw,unit=1,file=",
+        &work.join(EFIVARS),
+    ));
+    drive(option(
+        "if=none,id=system,format=qcow2,file=",
+        &work.join(INSPECT_SYSTEM),
+    ));
+    drive(option(
+        "if=none,id=disk,format=qcow2,readonly=on,file=",
+        disk,
+    ));
+    drive(option(
+        "if=none,id=answers,format=raw,file=",
+        &work.join(INSPECT_ANSWERS),
+    ));
+    drive(option(
+        "if=none,id=seed,media=cdrom,readonly=on,file=",
+        &work.join(SEED_ISO),
+    ));
+    for device in [
+        "virtio-blk-pci,drive=system,bootindex=1".to_owned(),
+        format!("virtio-blk-pci,drive=disk,serial={DISK_SERIAL}"),
+        format!("virtio-blk-pci,drive=answers,serial={ANSWERS_SERIAL}"),
+        "ide-cd,drive=seed,bus=ide.1".to_owned(),
+    ] {
+        args.push("-device".into());
+        args.push(device.into());
+    }
+    args
 }
 
 async fn quit(socket: &Path) -> bool {

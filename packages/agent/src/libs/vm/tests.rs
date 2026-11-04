@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fs;
 use std::io;
@@ -15,7 +16,8 @@ use tokio::net::UnixListener;
 use tokio::task::JoinHandle;
 
 use super::{
-    base_format, create, destroy, eject_seed, list, passt_args, qemu_args, Record, Tools, VmSpec,
+    base_format, create, destroy, eject_seed, forwarding_passt_args, free_ports, inspect_args,
+    list, passt_args, power_off, qemu_args, Record, Tools, VmSpec, ANSWERS_SERIAL, DISK_SERIAL,
     GIB,
 };
 use crate::libs::api::{Accelerator, Seed};
@@ -34,6 +36,7 @@ fn spec(deployment_id: &str, base: &Path) -> VmSpec {
         disk_gib: 8,
         base: base.into(),
         seed: None,
+        ports: Vec::new(),
     }
 }
 
@@ -122,6 +125,7 @@ fn record(deployment_id: &str) -> Option<Record> {
         deployment_id: deployment_id.into(),
         vm_id: format!("vm-{deployment_id}"),
         created_at: 0,
+        forwards: BTreeMap::new(),
     })
 }
 
@@ -518,6 +522,7 @@ async fn an_existing_directory_is_refused_and_kept() {
             deployment_id: "alpha".into(),
             vm_id: "vm-beta".into(),
             created_at: 0,
+            forwards: BTreeMap::new(),
         })
     );
     assert!(dir.exists());
@@ -729,4 +734,92 @@ async fn a_real_vm_starts_is_listed_and_is_destroyed() {
     assert!(!cmdline.windows(8).any(|window| window == b"vm-alpha"));
     let passt_cmdline = fs::read(format!("/proc/{}/cmdline", passt_pid.trim())).unwrap_or_default();
     assert!(!passt_cmdline.windows(8).any(|window| window == b"net.sock"));
+}
+
+#[test]
+fn a_forward_binds_the_host_loopback_and_replaces_none() {
+    let forwards = BTreeMap::from([(22, 40022), (80, 40080)]);
+
+    let args = strings(forwarding_passt_args(
+        Path::new("/state/vms/alpha"),
+        &forwards,
+    ));
+
+    let at = args.iter().position(|arg| arg == "--tcp-ports").unwrap();
+    assert_eq!(
+        args[at..at + 6],
+        [
+            "--tcp-ports",
+            "127.0.0.1/40022:22",
+            "--tcp-ports",
+            "127.0.0.1/40080:80",
+            "--udp-ports",
+            "none",
+        ]
+    );
+    assert!(args.contains(&"--no-map-gw".to_owned()));
+    assert_eq!(args.iter().filter(|arg| *arg == "none").count(), 1);
+}
+
+#[test]
+fn each_guest_port_gets_one_host_port_of_its_own() {
+    let forwards = free_ports(&[80, 22, 80]).unwrap();
+
+    assert_eq!(forwards.keys().copied().collect::<Vec<_>>(), [22, 80]);
+    assert_ne!(forwards[&22], forwards[&80]);
+}
+
+#[test]
+fn a_record_from_before_the_forwards_reads_with_none() {
+    let record: Record = serde_json::from_str(r#"{"deployment_id":"a","vm_id":"b"}"#).unwrap();
+
+    assert!(record.forwards.is_empty());
+}
+
+#[tokio::test]
+async fn a_guest_that_cannot_be_asked_is_killed_and_its_disk_stays() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path().join("vms");
+    let mut live = holder(&["-name", "vm-alpha"]);
+    let dir = fake(&root, "alpha", Some("vm-alpha"), Some(live.id()));
+
+    power_off(&dir, Duration::from_millis(50)).await.unwrap();
+
+    assert_eq!(live.wait().unwrap().signal(), Some(9));
+    assert!(dir.exists());
+}
+
+#[tokio::test]
+async fn powering_off_what_has_no_record_changes_nothing() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path().join("vms");
+    let dir = fake(&root, "gamma", None, None);
+
+    power_off(&dir, Duration::from_millis(50)).await.unwrap();
+
+    assert!(dir.exists());
+}
+
+#[test]
+fn the_inspector_has_no_network_and_sees_the_disk_read_only() {
+    let args = strings(inspect_args(
+        Path::new("/vms/alpha/inspect"),
+        Path::new("/vms/alpha/disk.qcow2"),
+        true,
+        Path::new(FIRMWARE),
+    ));
+
+    assert!(!args
+        .iter()
+        .any(|arg| arg.starts_with("-net") || arg.contains("netdev")));
+    assert!(args.contains(
+        &"if=none,id=disk,format=qcow2,readonly=on,file=/vms/alpha/disk.qcow2".to_owned()
+    ));
+    assert!(args.contains(&"virtio-blk-pci,drive=system,bootindex=1".to_owned()));
+    assert!(args.contains(&format!("virtio-blk-pci,drive=disk,serial={DISK_SERIAL}")));
+    assert!(args.contains(&format!(
+        "virtio-blk-pci,drive=answers,serial={ANSWERS_SERIAL}"
+    )));
+    assert!(args.contains(&"-no-reboot".to_owned()));
+    assert!(args.contains(&"q35,accel=kvm".to_owned()));
 }

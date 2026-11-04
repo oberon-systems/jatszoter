@@ -12,9 +12,10 @@ use url::Url;
 use wiremock::matchers::{body_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use super::{detail, message, run, BROKEN, MAX_DETAIL, SILENT, UNWRITTEN};
+use super::{detail, message, post_disk, run, BROKEN, MAX_DETAIL, SILENT, UNWRITTEN};
 use crate::libs::agent::{Auth, Signer};
-use crate::libs::api::HttpApi;
+use crate::libs::api::{CheckStatus, DiskResult, HttpApi, NetworkProbe};
+use crate::libs::outside::Aimed;
 use crate::libs::state::Credential;
 
 const ROUTE: &str = "/api/v1/agents/alpha/deployments/beta/checks/gamma";
@@ -185,7 +186,7 @@ async fn a_script_that_exits_0_posts_passed_with_its_first_line() {
     let dir = tempfile::tempdir().unwrap();
     let (socket, asked) = guest_agent(&dir, Guest::Exits(0, "alpha is there\nzeta\n", ""));
 
-    run(&api(&server), &auth(), &socket, "beta", "gamma").await;
+    run(&api(&server), &auth(), &socket, "beta", "gamma", &[]).await;
 
     let mut expected = written();
     expected.extend([started(), removed()]);
@@ -202,7 +203,7 @@ async fn a_script_that_exits_3_posts_failed_with_the_code_and_stderr() {
     let dir = tempfile::tempdir().unwrap();
     let (socket, asked) = guest_agent(&dir, Guest::Exits(3, "", "no alpha\n"));
 
-    run(&api(&server), &auth(), &socket, "beta", "gamma").await;
+    run(&api(&server), &auth(), &socket, "beta", "gamma", &[]).await;
 
     assert_eq!(seen(&asked).last(), Some(&removed()));
 }
@@ -217,7 +218,7 @@ async fn a_script_running_at_the_deadline_is_killed_posted_as_timeout_and_delete
     let dir = tempfile::tempdir().unwrap();
     let (socket, asked) = guest_agent(&dir, Guest::Hangs);
 
-    run(&api(&server), &auth(), &socket, "beta", "gamma").await;
+    run(&api(&server), &auth(), &socket, "beta", "gamma", &[]).await;
 
     let mut expected = written();
     expected.extend([
@@ -234,7 +235,7 @@ async fn a_guest_agent_error_posts_error_and_the_script_is_still_deleted() {
     let dir = tempfile::tempdir().unwrap();
     let (socket, asked) = guest_agent(&dir, Guest::RefusesToRun);
 
-    run(&api(&server), &auth(), &socket, "beta", "gamma").await;
+    run(&api(&server), &auth(), &socket, "beta", "gamma", &[]).await;
 
     let mut expected = written();
     expected.extend([started(), removed()]);
@@ -247,7 +248,7 @@ async fn a_file_that_cannot_be_written_posts_error_and_runs_nothing() {
     let dir = tempfile::tempdir().unwrap();
     let (socket, asked) = guest_agent(&dir, Guest::RefusesToOpen);
 
-    run(&api(&server), &auth(), &socket, "beta", "gamma").await;
+    run(&api(&server), &auth(), &socket, "beta", "gamma", &[]).await;
 
     assert_eq!(seen(&asked), vec![open(), removed()]);
 }
@@ -263,6 +264,7 @@ async fn a_guest_agent_that_is_not_there_posts_error() {
         &dir.path().join("qga.sock"),
         "beta",
         "gamma",
+        &[],
     )
     .await;
 }
@@ -284,7 +286,7 @@ async fn a_409_on_the_script_ends_without_a_post_and_without_the_guest() {
     let dir = tempfile::tempdir().unwrap();
     let (socket, asked) = guest_agent(&dir, Guest::Exits(0, "", ""));
 
-    run(&api(&server), &auth(), &socket, "beta", "gamma").await;
+    run(&api(&server), &auth(), &socket, "beta", "gamma", &[]).await;
 
     assert!(seen(&asked).is_empty());
 }
@@ -308,7 +310,7 @@ async fn a_409_on_the_result_is_posted_once() {
     let dir = tempfile::tempdir().unwrap();
     let (socket, asked) = guest_agent(&dir, Guest::Exits(0, "", ""));
 
-    run(&api(&server), &auth(), &socket, "beta", "gamma").await;
+    run(&api(&server), &auth(), &socket, "beta", "gamma", &[]).await;
 
     assert_eq!(seen(&asked).last(), Some(&removed()));
 }
@@ -324,7 +326,7 @@ async fn a_check_id_that_is_no_file_name_asks_nobody() {
     let dir = tempfile::tempdir().unwrap();
     let (socket, asked) = guest_agent(&dir, Guest::Exits(0, "", ""));
 
-    run(&api(&server), &auth(), &socket, "beta", "../gamma").await;
+    run(&api(&server), &auth(), &socket, "beta", "../gamma", &[]).await;
 
     assert!(seen(&asked).is_empty());
 }
@@ -349,4 +351,86 @@ fn the_detail_is_the_first_4096_bytes_of_stderr() {
     assert_eq!(cut, "\u{e9}".repeat(MAX_DETAIL / 2));
     assert_eq!(detail(&[b'a'; MAX_DETAIL + 1]).unwrap().len(), MAX_DETAIL);
     assert_eq!(detail(b""), None);
+}
+
+fn unforwarded() -> Vec<Aimed> {
+    vec![Aimed {
+        host_port: None,
+        probe: NetworkProbe {
+            port: 80,
+            http: None,
+        },
+    }]
+}
+
+#[tokio::test]
+async fn a_script_that_passes_still_fails_on_what_is_seen_from_outside() {
+    let server = serving(
+        30,
+        json!({
+            "status": "failed",
+            "exit_code": 1,
+            "message": "the check from outside the guest failed",
+            "detail": "port 80: not forwarded to this VM"
+        }),
+    )
+    .await;
+    let dir = tempfile::tempdir().unwrap();
+    let (socket, _) = guest_agent(&dir, Guest::Exits(0, "solved\n", ""));
+
+    run(
+        &api(&server),
+        &auth(),
+        &socket,
+        "beta",
+        "gamma",
+        &unforwarded(),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_script_that_fails_is_not_asked_from_outside() {
+    let server = serving(
+        30,
+        json!({ "status": "failed", "exit_code": 3, "message": null, "detail": null }),
+    )
+    .await;
+    let dir = tempfile::tempdir().unwrap();
+    let (socket, _) = guest_agent(&dir, Guest::Exits(3, "", ""));
+
+    run(
+        &api(&server),
+        &auth(),
+        &socket,
+        "beta",
+        "gamma",
+        &unforwarded(),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_disk_verdict_is_retried_past_a_server_error() {
+    let server = MockServer::start().await;
+    let route = "/api/v1/agents/alpha/deployments/beta/disk-check";
+    Mock::given(method("POST"))
+        .and(path(route))
+        .respond_with(ResponseTemplate::new(500))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path(route))
+        .and(body_json(json!({ "status": "passed", "message": null })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let result = DiskResult {
+        status: CheckStatus::Passed,
+        message: None,
+    };
+
+    post_disk(&api(&server), &auth(), "beta", &result).await;
 }

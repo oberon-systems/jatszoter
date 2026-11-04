@@ -228,7 +228,7 @@ def test_a_result_is_cut_to_its_limits_and_stored_once(session: Session, ready: 
 def test_a_second_request_while_one_is_pending_conflicts(
     operator: Any, session: Session, ready: Deployment
 ) -> None:
-    held(session, ready, age=CHECK_SECONDS + 29)
+    held(session, ready, age=CHECK_SECONDS + 20)
 
     assert operator.request("POST", path(ready.id)).status_code == 409
     assert len(Check._load(session, deployment_id=ready.id)) == 1

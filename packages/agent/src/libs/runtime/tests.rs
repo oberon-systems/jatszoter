@@ -1,20 +1,23 @@
 use std::fs;
-use std::sync::Arc;
+use std::io;
+use std::sync::{Arc, Mutex};
 
 use tempfile::TempDir;
 use tokio::sync::oneshot::{self, error::TryRecvError};
 use tokio::sync::RwLock;
 use tokio::time::{sleep, timeout, Duration};
 use url::Url;
+use uuid::Uuid;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use super::{Kind, QemuRuntime};
+use super::{reason, Kind, QemuRuntime};
 use crate::libs::agent::{Auth, Runtime, Signer};
 use crate::libs::api::{
     Desired, HttpApi, ImageRef, Limits, Resources, ScenarioRef, Status, Timeouts,
 };
 use crate::libs::config::Config;
+use crate::libs::error::AgentError;
 use crate::libs::state::Credential;
 use crate::libs::vm::{self, OnDisk};
 
@@ -310,4 +313,79 @@ async fn fencing_empties_the_checks() {
 
     assert!(runtime.checks.is_empty());
     assert_eq!(released.try_recv(), Err(TryRecvError::Closed));
+}
+
+#[derive(Clone, Default)]
+struct Captured(Arc<Mutex<Vec<u8>>>);
+
+impl io::Write for Captured {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+fn logged_reason(err: &AgentError, url: &str) -> (String, String) {
+    let captured = Captured::default();
+    let writer = captured.clone();
+    let subscriber = tracing_subscriber::fmt()
+        .with_ansi(false)
+        .with_writer(move || writer.clone())
+        .finish();
+    let shown = tracing::subscriber::with_default(subscriber, || reason(err, url));
+    let log = String::from_utf8(captured.0.lock().unwrap().clone()).unwrap();
+    (shown, log)
+}
+
+#[test]
+fn a_failed_qemu_img_shows_a_code_and_an_id_and_logs_the_stderr_under_that_id() {
+    let err = AgentError::Vm("/var/lib/alpha/vms/qemu-img exit status: 1: beta gamma".into());
+
+    let (shown, log) = logged_reason(&err, "https://example.com/beta.qcow2");
+
+    let id = shown
+        .strip_prefix("vm-failed (error ")
+        .and_then(|rest| rest.strip_suffix(')'))
+        .unwrap();
+    assert_eq!(Uuid::parse_str(id).unwrap().get_version_num(), 4);
+    let [line] = &log.lines().collect::<Vec<_>>()[..] else {
+        panic!("{log}");
+    };
+    assert!(line.contains(id), "{log}");
+    assert!(line.contains("vm-failed"), "{log}");
+    assert!(line.contains("/var/lib/alpha/vms/qemu-img"), "{log}");
+    assert!(line.contains("beta gamma"), "{log}");
+}
+
+#[test]
+fn the_log_of_a_failed_start_keeps_the_image_url_bare() {
+    let url = "https://example.com/beta.qcow2?token=delta";
+    let err = AgentError::Image(format!("{url}: refused"));
+
+    let (shown, log) = logged_reason(&err, url);
+
+    assert!(shown.starts_with("image-failed (error "), "{shown}");
+    assert!(
+        log.contains("https://example.com/beta.qcow2: refused"),
+        "{log}"
+    );
+    assert!(!log.contains("delta"), "{log}");
+}
+
+#[test]
+fn every_error_has_a_stable_code() {
+    let io = io::Error::other("alpha");
+    for (err, code) in [
+        (AgentError::Image("alpha".into()), "image-failed"),
+        (AgentError::Seed("alpha".into()), "seed-failed"),
+        (AgentError::Vm("alpha".into()), "vm-failed"),
+        (AgentError::Qmp("alpha".into()), "agent-failed"),
+        (AgentError::Io(io), "agent-failed"),
+    ] {
+        assert_eq!(err.code(), code);
+    }
 }

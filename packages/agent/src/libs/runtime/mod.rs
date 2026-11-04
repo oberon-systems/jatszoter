@@ -7,6 +7,7 @@ use tokio::task::{JoinHandle, JoinSet};
 use tokio::time::{sleep, timeout};
 use tracing::Instrument;
 use url::Url;
+use uuid::Uuid;
 
 use crate::libs::agent::{Auth, Runtime};
 use crate::libs::api::{
@@ -26,7 +27,6 @@ use crate::libs::vm::{self, OnDisk, Tools, VmSpec};
 
 // Bounds how long a task holds the credential, so a refresh is never held off.
 const SIGN_WAIT: Duration = Duration::from_secs(15);
-const MAX_REASON: usize = 200;
 const LOST: &str = "vm lost";
 const PROBE_WAIT: Duration = Duration::from_secs(15);
 const QGA_WAIT: Duration = Duration::from_secs(5);
@@ -609,7 +609,6 @@ async fn start(shared: &Shared, auth: &Auth, item: &Desired) {
         Ok(()) => tracing::info!("VM started"),
         Err(err) => {
             let reason = reason(&err, &item.image.url);
-            tracing::warn!(error = %reason, "starting the VM failed");
             send(
                 shared,
                 auth,
@@ -726,13 +725,17 @@ fn resource(value: u64, name: &str) -> Result<u32, AgentError> {
     u32::try_from(value).map_err(|_| AgentError::Vm(format!("{name} {value} is out of range")))
 }
 
-// The image URL may carry a token in its query, and a reason reaches the operator.
+// The operator gets a code and an id; the text stays in this log under that id.
+// The image URL may carry a token in its query, so the log keeps it bare.
 fn reason(err: &AgentError, url: &str) -> String {
     let mut text = err.to_string();
     if let Some((bare, _)) = url.split_once(['?', '#']) {
         text = text.replace(url, bare);
     }
-    text.chars().take(MAX_REASON).collect()
+    let code = err.code();
+    let error_id = Uuid::new_v4();
+    tracing::warn!(%error_id, code, error = %text, "starting the VM failed");
+    format!("{code} (error {error_id})")
 }
 
 #[cfg(test)]

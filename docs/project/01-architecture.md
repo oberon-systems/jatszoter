@@ -276,8 +276,8 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
   at least `JATSZOTER_AGENT_IMAGE_LIMIT_GIB`). Before a download it reserves
   the image's `Content-Length`, or the per-image limit when the server sends
   none, and evicts the least recently used images that no deployment of the
-  agent names. When the images in use leave no room, the
-  download fails with "the image cache is full".
+  agent names. When the images in use leave no room, the download fails, and
+  the agent logs "the image cache is full".
 
 - QEMU is daemonized with a pid file, so a VM outlives an agent restart and
   reconciliation adopts it. It runs with KVM. Without a usable `/dev/kvm`
@@ -396,8 +396,11 @@ reason `vm lost`, never silently rebooted.
   stop, lost VM or stale directory runs as its own task, so downloads and
   boots never delay a heartbeat, and a deployment is never worked on twice.
 - A start moves the deployment to STARTING first and stops quietly when that
-  transition conflicts. A failed start moves it to FAILED with a short reason
-  and leaves no VM directory behind.
+  transition conflicts. A failed start moves it to FAILED and leaves no VM
+  directory behind. Its reason is a stable code and an error id, such as
+  `vm-failed (error <uuid4>)`, with the code `image-failed`, `seed-failed`,
+  `vm-failed` or `agent-failed`. The agent logs the error itself under that
+  id, so tool output and host paths never reach the operator.
 - Starts count against the capacity together with the running VMs and the
   starts in flight.
 - A live VM whose deployment is STARTING or BOOTSTRAPPING is probed once per

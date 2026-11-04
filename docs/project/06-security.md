@@ -146,8 +146,8 @@ operator has not taken control.
   disks inside them, whatever modes those files have.
 - A VM starts only with KVM, because QEMU supports hardware virtualization
   as a security boundary and does not support its TCG emulator as one.
-  Without a usable `/dev/kvm` the deployment fails with
-  `vm: KVM is not usable and TCG is not allowed`.
+  Without a usable `/dev/kvm` the deployment fails with the code `vm-failed`,
+  and the agent logs `vm: KVM is not usable and TCG is not allowed`.
 - `JATSZOTER_AGENT_ALLOW_TCG=true` allows TCG. Use it only on dev stands.
   The agent logs the accelerator at each VM start and reports it in every
   heartbeat, and the Agents page shows it.
@@ -193,8 +193,8 @@ agent checks every address it connects to.
   `JATSZOTER_AGENT_IMAGE_DOWNLOAD_MINUTES`, 60 by default and at most 1440.
   A slow server cannot hold the per-digest lock past it. At the default, a
   20 GiB image needs about 48 Mbit/s, so raise it for a slower link.
-- Failures: the operator sees a fixed reason without the address. The
-  address is in the agent's log.
+- Failures: the operator sees the code `image-failed` and an error id. The
+  agent logs the error under that id, and the address is in the agent's log.
 
 The agent ignores proxy variables for image downloads by default, because
 through a proxy it can check only the proxy's name.

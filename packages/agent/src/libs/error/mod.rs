@@ -21,3 +21,14 @@ pub enum AgentError {
     #[error(transparent)]
     Http(#[from] reqwest::Error),
 }
+
+impl AgentError {
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Image(_) => "image-failed",
+            Self::Seed(_) => "seed-failed",
+            Self::Vm(_) => "vm-failed",
+            _ => "agent-failed",
+        }
+    }
+}

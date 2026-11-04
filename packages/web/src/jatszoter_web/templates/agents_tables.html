@@ -46,10 +46,11 @@
             <thead>
                 <tr>
                     <th class="w-200">Name</th>
-                    <th class="w-320">Labels</th>
+                    <th class="w-200">Labels</th>
                     <th class="w-150">State</th>
                     <th class="w-200">Last heartbeat</th>
                     <th class="w-110">Capacity</th>
+                    <th class="w-120">Accelerator</th>
                     <th class="w-200">Lease deadline</th>
                     <th></th>
                 </tr>
@@ -62,6 +63,7 @@
                         <td>{{ badge(row.state) }}</td>
                         <td class="mono-small">{{ row.heartbeat_at | when(True) }}</td>
                         <td class="mono-small">{{ '-' if row.capacity is none else row.capacity }}</td>
+                        <td class="mono-small">{{ row.accelerator or '-' }}</td>
                         <td class="mono-small">{{ row.lease_expires_at | when(True) }}</td>
                         <td>
                             {% if row.state == "enabled" %}

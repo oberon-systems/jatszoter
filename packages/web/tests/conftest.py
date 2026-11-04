@@ -146,6 +146,7 @@ def stand(answer: Callable[..., None]) -> dict[str, Any]:
             "state": "enabled",
             "heartbeat_at": at,
             "capacity": 2,
+            "accelerator": "tcg",
             "lease_expires_at": at + 30,
         },
         "registration": {

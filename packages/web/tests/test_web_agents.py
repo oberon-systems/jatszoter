@@ -23,7 +23,7 @@ def test_the_page_lists_registrations_and_agents(
     page = client.get("/agents")
 
     assert page.status_code == 200
-    for text in ("Pending registrations", "gamma", "delta", "kvm", "2025-10-09 08:53:20"):
+    for text in ("Pending registrations", "gamma", "delta", "kvm", "tcg", "2025-10-09 08:53:20"):
         assert text in page.text
     assert f'action="/agents/{stand["registration"]["id"]}/state"' in page.text
     assert f'hx-get="/agents/{stand["agent"]["id"]}/state"' in page.text

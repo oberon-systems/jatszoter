@@ -68,7 +68,7 @@ RECORDING = {
 
 
 @pytest.fixture
-def detail(stand: dict[str, Any], answer: Answer) -> dict[str, Any]:
+def detail(stand: dict[str, Any], answer: Answer, routes: Routes) -> dict[str, Any]:
     """The stand's READY deployment with every field the detail page shows, and its rows."""
     row = {
         **stand["deployment"],
@@ -86,6 +86,8 @@ def detail(stand: dict[str, Any], answer: Answer) -> dict[str, Any]:
     answer("GET", "/api/v1/users", [stand["trainee"], VIEWER])
     answer("GET", f"{base}/links", [VIEWER_LINK, TRAINEE_LINK])
     answer("GET", f"{base}/checks", [FAILED, PASSED])
+    # `answer` turns None into an empty body; the API answers a JSON null.
+    routes[("GET", f"{base}/disk-check")] = lambda _: httpx.Response(200, content=b"null")
     answer("GET", f"{base}/recordings", [RECORDING])
     return row
 
@@ -540,3 +542,24 @@ def test_the_trainee_script_never_reads_a_check_detail(client: TestClient) -> No
     script = client.get("/static/trainee.js").text
 
     assert "check.detail" not in script and ".exit_code" not in script
+
+
+def test_a_disk_verdict_shows_on_the_page_and_none_leaves_no_section(
+    client: TestClient, sign_in: SignIn, detail: dict[str, Any], answer: Answer
+) -> None:
+    sign_in()
+    page = f"/deployments/{detail['id']}"
+
+    without = client.get(page).text
+    verdict = {
+        "id": "00000000-0000-4000-8000-0000000000d1",
+        "status": "failed",
+        "message": "/etc/alpha is missing",
+        "created_at": AT + 500,
+    }
+    answer("GET", f"/api/v1/deployments/{detail['id']}/disk-check", verdict)
+    shown = client.get(page).text
+
+    assert "Disk check" not in without
+    assert "Disk check" in shown
+    assert "/etc/alpha is missing" in shown

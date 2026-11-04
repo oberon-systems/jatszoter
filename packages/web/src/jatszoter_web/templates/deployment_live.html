@@ -90,6 +90,27 @@
             </tbody>
         </table>
     </section>
+    {% if disk_check %}
+        <section class="section">
+            <h2 class="heading">Disk check</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th class="w-120">Status</th>
+                        <th class="w-170">Read</th>
+                        <th class="left">Message</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>{{ badge(disk_check.status) }}</td>
+                        <td class="mono-small">{{ disk_check.created_at | when(True) }}</td>
+                        <td class="left">{{ disk_check.message or "-" }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+    {% endif %}
     <section class="section">
         <h2 class="heading">Recordings</h2>
         <table class="table">

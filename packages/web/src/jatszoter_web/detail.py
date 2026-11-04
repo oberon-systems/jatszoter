@@ -84,6 +84,7 @@ async def detail(session: Session, deployment_id: uuid.UUID) -> dict[str, Any]:
         "links_by_id": by_id(links),
         "checks": checks,
         "last": checks[0] if checks else None,
+        "disk_check": await read(session, f"{base}/disk-check"),
         "recordings": await read(session, f"{base}/recordings"),
         "ready": row["status"] == "READY",
         "ended": row["status"] in TERMINAL,

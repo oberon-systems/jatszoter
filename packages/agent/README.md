@@ -38,6 +38,21 @@ The RHEL family ships QEMU as `/usr/libexec/qemu-kvm` and OVMF under
 `/usr/share/edk2/ovmf/`, so point `JATSZOTER_AGENT_QEMU`,
 `JATSZOTER_AGENT_OVMF_CODE` and `JATSZOTER_AGENT_OVMF_VARS` there.
 
+### Disk checks
+
+A scenario's disk checks need no extra tool. The agent boots a pinned Alpine
+image as an inspector VM and downloads it on the first such check, about
+100 MiB. Without internet access, serve a copy of the image and name it:
+
+| Setting                            | Value                                   |
+| ---------------------------------- | --------------------------------------- |
+| `JATSZOTER_AGENT_INSPECTOR_URL`    | URL of the qcow2 image                  |
+| `JATSZOTER_AGENT_INSPECTOR_DIGEST` | its sha256, as 64 lowercase hex digits  |
+
+Set both or neither. The download follows the same address rules as any other
+image, so a mirror on an internal address also needs
+`JATSZOTER_AGENT_IMAGE_INTERNAL_CIDRS`.
+
 ### passt
 
 [passt](https://passt.top/) gives each guest outbound NAT without root and

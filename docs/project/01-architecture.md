@@ -102,6 +102,7 @@ POST /api/v1/deployments/{id}/checks       signed (operator), operator or traine
 GET  /api/v1/deployments/{id}/checks       signed (operator), link
 GET  /api/v1/deployments/{id}/checks/{id}  signed (operator), link
 WS   /api/v1/deployments/{id}/attach       signed (operator), link
+GET  /api/v1/deployments/{id}/disk-check   signed (operator)
 GET  /api/v1/checks                        signed (operator)
 GET  /api/v1/storage                       signed (operator)
 POST /api/v1/links/{id}/revoke             signed (operator)
@@ -146,6 +147,7 @@ POST /api/v1/agents/{agent_id}/deployments/{id}/transition signed
 GET  /api/v1/agents/{agent_id}/deployments/{id}/seed       signed
 GET  /api/v1/agents/{agent_id}/deployments/{id}/checks/{check_id} signed
 POST /api/v1/agents/{agent_id}/deployments/{id}/checks/{check_id} signed
+POST /api/v1/agents/{agent_id}/deployments/{id}/disk-check signed
 WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
 ```
 
@@ -207,6 +209,8 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
   timeouts   bootstrap_seconds, check_seconds, session_minutes
   limits     console_bytes
   check      the id of the pending check, or null
+  outside    network: the scenario's probes
+             disk: the files to read, only while a verdict is owed
   ```
 
 - `GET .../seed` is the deployment's cloud-init seed:
@@ -227,6 +231,9 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
   live lease, while the deployment is READY and the check is `pending`;
   anything else gets 409. An unknown deployment or check, or another
   agent's deployment, gets 404.
+- `POST .../disk-check` is the verdict on a stopped VM's disk: `status` and
+  `message`. It answers only while the deployment is STOPPING and owes one;
+  anything else gets 409.
 - A transition body is `event`, `expected` - the status the agent believes
   the deployment is in - and an optional `reason`. The agent events are
   `assign`, `boot`, `bootstrap`, `destroy` and `fail`.
@@ -304,8 +311,10 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
 - The guest sees `10.0.2.15/24`, gateway `10.0.2.2` and DNS `10.0.2.3`,
   IPv4 only. passt forwards DNS to the host's first resolver and opens
   every other connection as an ordinary socket of the agent's user. The
-  guest reaches the internet for package installs; nothing reaches the
-  guest from outside.
+  guest reaches the internet for package installs; nothing on the network
+  reaches the guest. The one way in is from the agent host's own `127.0.0.1`,
+  for the ports a scenario's network probes name, see
+  [03](03-scenario-format.md#network-probes).
 - passt runs with `--no-map-gw`: the gateway does not lead to the host's
   loopback, unlike QEMU's own user-mode network. It runs with `--one-off`
   and exits when QEMU does; destroy also kills the pid in `passt.pid` when
@@ -314,12 +323,15 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
   starts it as above, plays the guest and fails when the host is not safe.
   Installing it is [09](09-guest-network.md).
 - The trainee's shell is the guest's serial console `ttyS0`; no SSH and no
-  port forwarding are involved.
+  port forwarding are involved in it.
 - QEMU logs the serial console to `console.log` from boot; the agent ships
   that file to the API, see [04](04-console.md#pipeline).
 - Work inside the guest - bootstrap status, checks, terminal resize - goes
   through qemu-guest-agent `guest-exec` and `guest-file-*`, never through
   the console.
+- A disk check reads the stopped VM's disk in an inspector VM with no network,
+  from the image at `JATSZOTER_AGENT_INSPECTOR_URL`; see
+  [03](03-scenario-format.md#disk-checks).
 - The agent never runs scenario text or trainee input through a host shell.
 
 ## Data flows
@@ -348,7 +360,8 @@ Check:
    is pending at a time: a request while one is answers 409.
 2. The agent sees the check's id in its desired state, fetches the script,
    writes it into the guest, runs it with the scenario's `check_seconds`
-   timeout and deletes it.
+   timeout and deletes it. When the script passed, it asks the scenario's
+   network probes from the agent host.
 3. The agent posts the status, the exit code, the first stdout line and
    the start of stderr; the API stores the result, shows it and writes it
    into the recording as a marker, see [05](05-recording.md#format).
@@ -363,8 +376,11 @@ Stop:
 
 1. Operator stops the deployment; STARTING, BOOTSTRAPPING and READY move
    to STOPPING, PENDING to CANCELLED.
-2. The agent destroys the VM and its directory, then moves it to COMPLETED.
-3. COMPLETED revokes the deployment's links and closes the trainee link's
+2. When the scenario has disk checks and the deployment reached READY, the
+   agent powers the VM off, reads its disk in an inspector VM and posts the
+   verdict; see [03](03-scenario-format.md#disk-checks).
+3. The agent destroys the VM and its directory, then moves it to COMPLETED.
+4. COMPLETED revokes the deployment's links and closes the trainee link's
    recording: the API stores its final size and duration. FAILED and
    CANCELLED do the same.
 

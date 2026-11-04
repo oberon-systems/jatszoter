@@ -31,10 +31,13 @@ One JSON header line, then one JSON event per line:
 - `r` - resize, `<cols>x<rows>`, from the holder of control.
 - `m` - markers: `control operator` and `control trainee` for control
   changes, `check <status>: <message>` for a settled check, or `check
-  <status>` when it has no message, and `recording limit reached`, see
+  <status>` when it has no message, `disk check <status>: <message>` for the
+  verdict on the stopped VM's disk, and `recording limit reached`, see
   [Storage](#storage).
 - There are no `i` events: keys are never stored. Nothing a viewer sends
-  reaches the file except the size in a resize.
+  reaches the file except the size in a resize. What a trainee types with
+  echo off therefore leaves no trace; see
+  [06](06-security.md#check-verdicts).
 
 ## Writing
 

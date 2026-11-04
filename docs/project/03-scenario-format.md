@@ -9,6 +9,7 @@ validates every `scenario.yaml` against it.
 - [Fields](#fields)
 - [Bootstrap](#bootstrap)
 - [Check](#check)
+- [Checks from outside](#checks-from-outside)
 - [Registering](#registering)
 - [Acceptance criteria](#acceptance-criteria)
 
@@ -42,6 +43,7 @@ scenarios/nginx-502/
 | `packages`    | no       | installed by cloud-init before the steps             |
 | `steps`       | yes      | `install`, `configure`, `break`; `break` is required |
 | `check`       | yes      | check script file                                    |
+| `outside`     | no       | `network` and `disk` checks from outside the guest   |
 | `hints`       | no       | strings the operator can reveal, in order            |
 
 Missing `resources`, `timeouts` and `trainee` values fall back to API
@@ -120,6 +122,77 @@ marker as reason, and `bootstrap_seconds` passing does so with reason
   stderr are kept as the check's detail, for the operator only.
 - A check must not change the state it checks, so running it twice gives the
   same result.
+- The trainee can make this script pass; see
+  [06](06-security.md#check-verdicts).
+
+## Checks from outside
+
+The optional `outside` block adds what the agent checks without the guest's
+help. The check script stays required. These checks are declarative: the agent
+runs no scenario text on the host.
+
+```yaml
+outside:
+  network:
+    - port: 80
+      http:
+        path: /
+        status: 200
+        contains: hello from app
+    - port: 22
+  disk:
+    - path: /etc/nginx/conf.d/app.conf
+      contains: proxy_pass http://127.0.0.1:8081;
+    - path: /var/lib/alpha/broken
+      exists: false
+```
+
+Limits:
+
+- At most 8 `network` probes and 8 `disk` files.
+- `path` of a probe is an absolute URL path, by default `/`; `status` is by
+  default 200.
+- `path` of a disk file is an absolute path of letters, digits, `.`, `_` and
+  `-`, without `.` or `..` as a part. `exists` is by default true.
+- `contains` is plain text of at most 200 characters that starts with a letter
+  or a digit. It cannot go with `exists: false`.
+
+### Network probes
+
+- They run in every check, from the agent host, after the script passed. A
+  check passes only when the script and every probe pass. A failed probe is
+  `failed` with exit code 1, a fixed message for the trainee, and the port and
+  the reason in the detail for the operator.
+- With `http` the agent sends a GET and compares the status and the first
+  64 KiB of the body. It follows no redirect.
+- Without `http` the probe connects and passes unless the guest closes the
+  connection within 2 seconds.
+- The ports are forwarded when the VM starts, so a probe needs the service
+  only when it runs. Each guest port gets a free port on the agent host's
+  `127.0.0.1`, kept in `vm.json`.
+
+### Disk checks
+
+- They run once, when a deployment that reached READY stops, so they give no
+  answer the trainee can act on. The verdict reaches the operator only: on the
+  deployment page, and as a marker in the recording.
+- The agent asks the guest to power off and waits up to 60 seconds, then kills
+  it. It then boots an inspector VM: a pinned
+  [Alpine](https://alpinelinux.org/cloud/) image, 256 MiB, with no network and
+  the trainee's disk attached read-only. The agent downloads the image once
+  and checks its digest, and the host needs nothing new.
+- The inspector mounts the first partition holding `/etc/os-release`, tests the
+  files and powers off. The agent posts the verdict and destroys both VMs. All
+  of this is bounded at 300 seconds, and a stop goes on whatever it comes to.
+- XFS and ext4 roots are read. A root on LVM is not, and its verdict is `error`.
+- `exists` looks for a regular file. A symlink does not count, because an
+  absolute one would resolve inside the inspector. `contains` searches the file
+  for the text.
+- The status is `passed`, `failed`, `error` when the disk cannot be read, or
+  `timeout`. A deployment that ends without a verdict stores `error` with the
+  message `deployment ended`.
+- An agent without internet access needs a mirror of the image; see the
+  [agent README](../../packages/agent/README.md).
 
 ## Registering
 

@@ -74,6 +74,9 @@ holding that entity's UUID.
   at a time. The agent's result settles it; without one the API settles
   it as `timeout` once it is overdue, and as `error` when the deployment
   ends. See [01](01-architecture.md#data-flows).
+- **DiskCheck** - deployment, status, message, time. At most one per
+  deployment: the verdict on the disk of its stopped VM, for the operator
+  only. See [03](03-scenario-format.md#disk-checks).
 
 ## Deployment lifecycle
 

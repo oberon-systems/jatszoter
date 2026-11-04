@@ -16,6 +16,7 @@ operator has not taken control.
 - [Images](#images)
 - [Valkey](#valkey)
 - [Scenario secrecy](#scenario-secrecy)
+- [Check verdicts](#check-verdicts)
 - [Web](#web)
 - [Error answers](#error-answers)
 - [Acceptance criteria](#acceptance-criteria)
@@ -148,10 +149,14 @@ operator has not taken control.
 - `JATSZOTER_AGENT_ALLOW_TCG=true` allows TCG. Use it only on dev stands.
   The agent logs the accelerator at each VM start and reports it in every
   heartbeat, and the Agents page shows it.
-- passt gives the guest outbound NAT and nothing inbound. It runs with
-  `--no-map-gw`, so the gateway does not lead to the agent host's loopback:
-  services bound to `127.0.0.1` are out of the guest's reach. QEMU's own
-  user-mode network is not used because its gateway does.
+- passt gives the guest outbound NAT and nothing inbound from the network.
+  It runs with `--no-map-gw`, so the gateway does not lead to the agent
+  host's loopback: services bound to `127.0.0.1` are out of the guest's
+  reach. QEMU's own user-mode network is not used because its gateway does.
+- A scenario with a network check gets its guest ports forwarded from the
+  agent host's `127.0.0.1`; see [Check verdicts](#check-verdicts). Every
+  local user of the agent host can connect to such a port for as long as
+  the VM runs.
 - passt older than `2026_10_02` forwards a guest packet sent to
   `127.0.0.1` to the host's loopback. `jatszoter-agent check-network`
   refuses such a host; see [09](09-guest-network.md).
@@ -303,6 +308,40 @@ The check script is guarded the same way:
   check's detail reaches an operator only, never a trainee or viewer
   link.
 
+## Check verdicts
+
+A check's verdict is only as reliable as the guest. Treat it as a result to
+review, not as proof.
+
+- The agent runs the check script under the guest's own `/bin/sh`, through
+  the guest's own qemu-guest-agent. A trainee with root, through `sudo: true`
+  or a local privilege escalation, can replace either, so that every check
+  passes.
+- The recording is the evidence, and it has limits. It holds what the
+  terminal showed and no keys, see [05](05-recording.md#format), so tampering
+  typed with echo off leaves no command in it.
+- The VM and its disk are destroyed when the deployment stops. Nothing is
+  kept to inspect later.
+
+[Checks from outside the guest](03-scenario-format.md#checks-from-outside)
+close the route of a replaced `/bin/sh`, and only that route. Root can still
+answer a probe from a stub listener or write the file a disk check expects.
+
+Both kinds treat the guest as hostile:
+
+- A network probe reads the guest's answer within bounds: 5 seconds, 64 KiB,
+  no redirects and no proxy.
+- A disk check reads the disk in an inspector VM with no network, booted from
+  a pinned image the trainee never touched, with the disk attached read-only.
+  No host kernel mounts a filesystem the guest wrote. A filesystem crafted to
+  exploit the inspector's kernel can fake the verdict, and it stays in a VM; an
+  escape from that VM is out of scope, as a QEMU escape is.
+- Neither runs scenario text in a host shell. The schema limits the paths and
+  the texts to plain characters, and the agent passes them as an argument
+  vector.
+- A check's detail and a disk check's message name ports or paths, so they
+  reach an operator only. A trainee sees a fixed sentence.
+
 ## Web
 
 - A cookie request that changes state and a cookie WebSocket upgrade are
@@ -353,5 +392,7 @@ columns, hosts and the caller's own input, so they stay in the server log.
 - A trainee cookie gets 403 on every operator route and on another
   deployment.
 - A grep of logs and recordings after a full exam finds no token or link.
+- A `/bin/sh` wrapper in the guest that exits 0 passes the check script but
+  not a network probe of a service that is down.
 - No error answer of `api` or `web` carries a `detail`, a driver or parser
   message, or the input it was sent.

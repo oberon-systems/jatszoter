@@ -30,6 +30,8 @@ when needed and replays the recording later.
 - The operator can take control and give it back at any moment, and the
   trainee cannot type while the operator holds it.
 - The check result is decided by the scenario's own script, not by a person.
+  A trainee with root can fake it, so the recording stays the evidence; see
+  [06](06-security.md#check-verdicts).
 - Every trainee link's terminal is recorded and can be replayed.
 - A scenario is a directory of plain files that lives in git and is
   validated before it is registered.

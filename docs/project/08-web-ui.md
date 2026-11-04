@@ -137,12 +137,13 @@ unless a screen says otherwise. `Missing API` names the routes of
 
 - Route: `/deployments/{id}`. Who: operator.
 - API calls: `GET /api/v1/deployments/{id}`, `.../links`, `.../checks`,
-  `.../recordings`, `GET /api/v1/users`, `GET /api/v1/agents`, the
-  signed terminal of [Terminal sockets](#terminal-sockets).
+  `.../disk-check`, `.../recordings`, `GET /api/v1/users`,
+  `GET /api/v1/agents`, the signed terminal of
+  [Terminal sockets](#terminal-sockets).
 - Shows: status and reason, scenario, agent, resources, timeouts, the
   terminal with who holds control, links with role and state, checks with
-  `detail`, recordings with size and duration. Status, links and checks
-  refresh by HTMX polling every 5 seconds.
+  `detail`, the disk check once there is one, recordings with size and
+  duration. Status, links and checks refresh by HTMX polling every 5 seconds.
 - Actions: take and give back control (`POST .../control`), issue a link
   to an enabled user (`POST .../links`, the link shown once), revoke a
   link, request a check, stop, download the console log, open a

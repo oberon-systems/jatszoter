@@ -49,9 +49,15 @@ class Upstream:
         self.loop.run_forever()
 
     async def start(self) -> Server:
-        # serve() reads the running loop as soon as it is called.
+        # serve() reads the running loop as soon as it is called. The close timeout stays under
+        # stop()'s 5 s: a relay cancelled by TestClient may never answer the close.
         return await serve(
-            self.handle, "127.0.0.1", 0, process_request=self.process, compression=None
+            self.handle,
+            "127.0.0.1",
+            0,
+            process_request=self.process,
+            compression=None,
+            close_timeout=2,
         )
 
     def process(self, connection: ServerConnection, request: Request) -> Response | None:

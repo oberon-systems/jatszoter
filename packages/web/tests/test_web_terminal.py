@@ -33,6 +33,7 @@ class Upstream:
     def __init__(self) -> None:
         self.headers: list[Headers] = []
         self.paths: list[str] = []
+        self.connections: list[ServerConnection] = []
         self.loop = asyncio.new_event_loop()
         self.server: Server | None = None
         self.ready = threading.Event()
@@ -49,15 +50,9 @@ class Upstream:
         self.loop.run_forever()
 
     async def start(self) -> Server:
-        # serve() reads the running loop as soon as it is called. The close timeout stays under
-        # stop()'s 5 s: a relay cancelled by TestClient may never answer the close.
+        # serve() reads the running loop as soon as it is called.
         return await serve(
-            self.handle,
-            "127.0.0.1",
-            0,
-            process_request=self.process,
-            compression=None,
-            close_timeout=2,
+            self.handle, "127.0.0.1", 0, process_request=self.process, compression=None
         )
 
     def process(self, connection: ServerConnection, request: Request) -> Response | None:
@@ -68,6 +63,7 @@ class Upstream:
         return None
 
     async def handle(self, websocket: ServerConnection) -> None:
+        self.connections.append(websocket)
         await websocket.send('{"offset": 0}')
         for _ in range(2):
             await websocket.send(await websocket.recv())
@@ -77,10 +73,17 @@ class Upstream:
             return
         await websocket.close(4403)
 
-    def stop(self) -> None:
+    async def shut(self) -> None:
         assert self.server is not None
+        # TestClient can cancel a relay right after its close frame, leaving its socket open.
+        # No timeout covers a connection already closing, so server.close() alone would hang.
+        for connection in self.connections:
+            connection.transport.abort()
         self.server.close()
-        asyncio.run_coroutine_threadsafe(self.server.wait_closed(), self.loop).result(5)
+        await self.server.wait_closed()
+
+    def stop(self) -> None:
+        asyncio.run_coroutine_threadsafe(self.shut(), self.loop).result(5)
         self.loop.call_soon_threadsafe(self.loop.stop)
         self.thread.join(5)
 

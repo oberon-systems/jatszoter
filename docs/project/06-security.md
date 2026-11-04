@@ -12,6 +12,7 @@ operator has not taken control.
 - [Image downloads](#image-downloads)
 - [Bundle downloads](#bundle-downloads)
 - [Request bodies](#request-bodies)
+- [Answer headers](#answer-headers)
 - [Images](#images)
 - [Valkey](#valkey)
 - [Scenario secrecy](#scenario-secrecy)
@@ -229,6 +230,12 @@ body is cut at the same limit.
 
 No stand needs a reverse proxy. A deployment that adds one should set the
 same limits there, see [10](10-reverse-proxy.md#configure-nginx).
+
+## Answer headers
+
+Every HTTP answer of `api`, an error or a 500 included, carries
+`Cache-Control: no-store` and `X-Content-Type-Options: nosniff`, so a cache
+in front of the API keeps no credential, key or claim code.
 
 ## Images
 

@@ -8,7 +8,7 @@ from sqlmodel import Session, create_engine
 
 from jatszoter_api.answers import HANDLERS, LINK_PATH
 from jatszoter_api.console_hub import ConsoleHub
-from jatszoter_api.middleware import BODY_LIMIT, BodyLimit
+from jatszoter_api.middleware import BODY_LIMIT, AnswerHeaders, BodyLimit
 from jatszoter_api.models import Role, State, User
 from jatszoter_api.models._cache import Cached
 from jatszoter_api.models.user import ADMIN
@@ -90,6 +90,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.add_exception_handler(error, handler)
     upload = settings.scenario_bundle_limit_bytes + BODY_LIMIT
     app.add_middleware(BodyLimit, wider={("POST", "/api/v1/scenarios"): upload})
+    app.add_middleware(AnswerHeaders)
 
     @app.get("/healthz")
     def healthz() -> dict[str, str]:

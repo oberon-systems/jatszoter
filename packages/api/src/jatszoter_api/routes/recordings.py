@@ -31,6 +31,4 @@ def download(session: SessionDep, settings: SettingsDep, recording_id: str) -> R
         raise NotFoundError(
             f"recording {recording.id} has no file", code="recording-without-file"
         ) from None
-    return Response(
-        stored.data, media_type="application/x-asciicast", headers={"Cache-Control": "no-store"}
-    )
+    return Response(stored.data, media_type="application/x-asciicast")

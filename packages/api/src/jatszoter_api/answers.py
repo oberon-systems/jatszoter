@@ -29,6 +29,7 @@ from jatszoter_api.errors import (
     ThrottledError,
     TooLargeError,
 )
+from jatszoter_api.middleware import ANSWER_HEADERS
 
 LINK_PATH = re.compile(r"/s/[^/?#\s]+")
 FIELD = re.compile(r"[a-z][a-z0-9_]{0,63}")
@@ -122,7 +123,9 @@ async def server_error(conn: HTTPConnection, exc: Exception) -> Response:
     method = conn.scope.get("method", "WS")
     where = redacted(conn.url.path)
     log.error("error %s internal-error 500 %s %s", error_id, method, where, exc_info=exc)
-    return JSONResponse({"error": "internal-error", "error_id": error_id}, status_code=500)
+    body = {"error": "internal-error", "error_id": error_id}
+    # Starlette runs the handler of `Exception` outside every middleware.
+    return JSONResponse(body, status_code=500, headers=ANSWER_HEADERS)
 
 
 HANDLERS: dict[type[Exception], Any] = {

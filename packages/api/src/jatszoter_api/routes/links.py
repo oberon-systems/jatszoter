@@ -99,7 +99,7 @@ def open_link(session: SessionDep, settings: SettingsDep, token: str) -> Redirec
     response = RedirectResponse(
         f"/t/{link.deployment_id}",
         status_code=303,
-        headers={"Referrer-Policy": "no-referrer", "Cache-Control": "no-store"},
+        headers={"Referrer-Policy": "no-referrer"},
     )
     response.set_cookie(
         LINK_COOKIE,

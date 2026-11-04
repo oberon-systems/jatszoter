@@ -1,11 +1,12 @@
 from collections.abc import Mapping
 
-from starlette.datastructures import Headers
+from starlette.datastructures import Headers, MutableHeaders
 from starlette.exceptions import HTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 BODY_LIMIT = 64 * 1024
 MAX_LENGTH_DIGITS = 18
+ANSWER_HEADERS = {"cache-control": "no-store", "x-content-type-options": "nosniff"}
 
 
 def _too_large() -> HTTPException:
@@ -46,3 +47,24 @@ class BodyLimit:
             return message
 
         await self.app(scope, bounded, send)
+
+
+class AnswerHeaders:
+    """Keeps every answer out of a cache and a browser from guessing its type."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def headed(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                for name, value in ANSWER_HEADERS.items():
+                    headers[name] = value
+            await send(message)
+
+        await self.app(scope, receive, headed)

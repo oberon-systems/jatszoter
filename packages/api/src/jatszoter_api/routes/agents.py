@@ -14,7 +14,7 @@ from jatszoter_api.errors import ConflictError, DomainError, NotFoundError
 from jatszoter_api.file import File
 from jatszoter_api.lifecycle import Actor, DeploymentStatus
 from jatszoter_api.models import Agent, Check, CheckStatus, Credential, Deployment, State
-from jatszoter_api.models.agent import Lease, Registration
+from jatszoter_api.models.agent import Accelerator, Lease, Registration
 from jatszoter_api.models.secret import CREDENTIAL_SECONDS
 from jatszoter_api.routes.deps import MarkDep, SessionDep, SettingsDep
 from jatszoter_api.settings import Settings
@@ -76,6 +76,7 @@ class ClaimOut(BaseModel):
 
 class HeartbeatIn(StrictModel):
     capacity: Annotated[StrictInt, Field(ge=0, le=64)]
+    accelerator: Accelerator | None = None
 
 
 class ScenarioRef(BaseModel):
@@ -176,6 +177,7 @@ class AgentOut(BaseModel):
     state: State
     heartbeat_at: int | None
     capacity: int | None
+    accelerator: Accelerator | None
     lease_expires_at: int | None
 
 
@@ -188,6 +190,7 @@ def agent_out(agent: Agent) -> AgentOut:
         state=agent.state,
         heartbeat_at=None if lease is None else lease.heartbeat_at,
         capacity=None if lease is None else lease.capacity,
+        accelerator=None if lease is None else lease.accelerator,
         lease_expires_at=None if lease is None else lease.expires_at,
     )
 
@@ -275,7 +278,9 @@ def claim(body: ClaimIn, session: SessionDep, settings: SettingsDep) -> Response
 @router.post("/{agent_id}/heartbeat")
 def heartbeat(body: HeartbeatIn, agent: AgentDep, settings: SettingsDep) -> Lease:
     filer_url = None if settings.seaweed_url is None else str(settings.seaweed_url)
-    return agent.heartbeat(body.capacity, filer_url, settings.recording_limit_bytes)
+    return agent.heartbeat(
+        body.capacity, filer_url, settings.recording_limit_bytes, body.accelerator
+    )
 
 
 @router.post("/{agent_id}/credential")

@@ -2,7 +2,7 @@ import hashlib
 import secrets
 import time
 import uuid
-from typing import Any, ClassVar, Self, cast
+from typing import Any, ClassVar, Literal, Self, cast
 
 from pydantic import PrivateAttr
 from sqlmodel import JSON, Column, Field, Session, SQLModel
@@ -29,6 +29,7 @@ RUNNING = (
     DeploymentStatus.READY,
     DeploymentStatus.STOPPING,
 )
+Accelerator = Literal["kvm", "tcg", "none"]
 
 
 class Lease(SQLModel):
@@ -36,6 +37,7 @@ class Lease(SQLModel):
     capacity: int
     heartbeat_at: int
     expires_at: int
+    accelerator: Accelerator | None = None
 
 
 class Registration(SQLModel):
@@ -73,7 +75,11 @@ class Agent(SecretOwner, table=True):
         return self._deployments
 
     def heartbeat(
-        self, capacity: int, filer_url: str | None = None, limit_bytes: int | None = None
+        self,
+        capacity: int,
+        filer_url: str | None = None,
+        limit_bytes: int | None = None,
+        accelerator: Accelerator | None = None,
     ) -> Lease:
         """Renew the lease, failing what it held once it lapsed; then take waiting deployments,
         pinned ones first, oldest first, while `capacity` has room."""
@@ -95,6 +101,7 @@ class Agent(SecretOwner, table=True):
             capacity=capacity,
             heartbeat_at=now,
             expires_at=now + LEASE_SECONDS,
+            accelerator=accelerator,
         )
         self._set("lease", lease, LEASE_SECONDS)
 

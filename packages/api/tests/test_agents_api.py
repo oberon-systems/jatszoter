@@ -861,6 +861,35 @@ def test_a_stored_bundle_that_no_longer_holds_serves_no_script_and_the_check_sta
 AGENTS = "/api/v1/agents"
 
 
+def test_the_operator_sees_the_reported_accelerator(operator: Any, session: Session) -> None:
+    agent = enroll(operator.client, session)
+
+    beat = agent.call("POST", "/heartbeat", {"capacity": 1, "accelerator": "tcg"})
+
+    assert (beat.status_code, beat.json()["accelerator"]) == (200, "tcg")
+    [listed] = operator.request("GET", AGENTS).json()["agents"]
+    assert listed["accelerator"] == "tcg"
+
+
+def test_an_agent_that_reports_no_accelerator_is_listed_without_one(
+    operator: Any, session: Session
+) -> None:
+    agent = enroll(operator.client, session)
+
+    assert agent.call("POST", "/heartbeat", {"capacity": 1}).status_code == 200
+
+    [listed] = operator.request("GET", AGENTS).json()["agents"]
+    assert listed["accelerator"] is None
+
+
+def test_an_unknown_accelerator_is_refused(client: TestClient, session: Session) -> None:
+    agent = enroll(client, session)
+
+    beat = agent.call("POST", "/heartbeat", {"capacity": 1, "accelerator": "gamma"})
+
+    assert beat.status_code == 422
+
+
 def test_the_operator_lists_registrations_and_agents_with_their_lease(
     operator: Any, session: Session
 ) -> None:

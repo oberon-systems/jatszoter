@@ -94,7 +94,9 @@ def signed_by() -> Callable[[httpx.Request, str], bool]:
     def check(request: httpx.Request, key: str) -> bool:
         body = hashlib.sha256(request.content).hexdigest()
         target = request.url.raw_path.decode("ascii")
-        text = "\n".join((request.headers.get("x-timestamp", ""), request.method, target, body))
+        headers = request.headers
+        nonce = headers.get("x-nonce", "")
+        text = "\n".join((headers.get("x-timestamp", ""), nonce, request.method, target, body))
         expected = hmac.new(key.encode(), text.encode(), hashlib.sha256).hexdigest()
         return hmac.compare_digest(expected, request.headers.get("x-signature", ""))
 

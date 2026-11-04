@@ -71,6 +71,7 @@ def test_a_link_call_passes_the_allow_listed_headers_alone(
             "x-owner": "00000000-0000-4000-8000-000000000001",
             "x-credential": "m1:1:1",
             "x-timestamp": "1",
+            "x-nonce": "00112233445566778899aabbccddeeff",
             "x-signature": "forged",
             "authorization": "Basic YWxwaGE6YmV0YQ==",
         },
@@ -85,8 +86,9 @@ def test_a_link_call_passes_the_allow_listed_headers_alone(
     assert sent.headers["host"] == HOST
     assert sent.headers["origin"] == ORIGIN
     assert sent.headers["cookie"] == f"{LINK_COOKIE}=link-session-alpha"
-    for name in ("x-owner", "x-credential", "x-timestamp", "x-signature", "authorization"):
+    for name in ("x-owner", "x-credential", "x-timestamp", "x-nonce", "x-signature"):
         assert name not in sent.headers
+    assert "authorization" not in sent.headers
     assert SESSION_COOKIE not in sent.headers["cookie"]
     assert CSRF_COOKIE not in sent.headers["cookie"]
 

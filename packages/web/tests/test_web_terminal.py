@@ -229,8 +229,8 @@ def test_the_operator_terminal_is_the_signed_api_socket(upstream: Upstream) -> N
     assert closed.value.code == 4403
     sent = upstream.headers[0]
     assert upstream.paths[0] == ATTACH
-    timestamp = int(sent["x-timestamp"])
-    assert sent["x-signature"] == signature(KEY, "GET", ATTACH, b"", timestamp)
+    timestamp, nonce = int(sent["x-timestamp"]), sent["x-nonce"]
+    assert sent["x-signature"] == signature(KEY, "GET", ATTACH, b"", timestamp, nonce)
     assert sent["x-owner"] == "00000000-0000-4000-8000-000000000001"
     assert "cookie" not in sent and "origin" not in sent
 
@@ -246,8 +246,9 @@ def test_the_operator_terminal_signs_the_offset_it_resumes_from(upstream: Upstre
 
     sent = upstream.headers[0]
     assert upstream.paths[0] == f"{ATTACH}?offset=7"
-    timestamp = int(sent["x-timestamp"])
-    assert sent["x-signature"] == signature(KEY, "GET", f"{ATTACH}?offset=7", b"", timestamp)
+    timestamp, nonce = int(sent["x-timestamp"]), sent["x-nonce"]
+    expected = signature(KEY, "GET", f"{ATTACH}?offset=7", b"", timestamp, nonce)
+    assert sent["x-signature"] == expected
 
 
 @pytest.mark.parametrize(

@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import secrets
 import time
 from typing import Any
 
@@ -28,19 +29,23 @@ def failed(code: int) -> ApiDown:
     return ApiDown(502, f"The API failed to answer. Try again in a moment. ({code})")
 
 
-def signature(key: str, method: str, path: str, body: bytes, timestamp: int) -> str:
-    """HMAC-SHA256 of `ts\\nMETHOD\\npath[?query]\\nsha256(body)`, the way the API checks it."""
-    message = "\n".join((str(timestamp), method.upper(), path, hashlib.sha256(body).hexdigest()))
+def signature(key: str, method: str, path: str, body: bytes, timestamp: int, nonce: str) -> str:
+    """HMAC-SHA256 of `ts\\nnonce\\nMETHOD\\npath[?query]\\nsha256(body)`, the way the API
+    checks it."""
+    digest = hashlib.sha256(body).hexdigest()
+    message = "\n".join((str(timestamp), nonce, method.upper(), path, digest))
     return hmac.new(key.encode(), message.encode(), hashlib.sha256).hexdigest()
 
 
 def signed_headers(operator: Operator, method: str, path: str, body: bytes) -> dict[str, str]:
     timestamp = int(time.time())
+    nonce = secrets.token_hex(16)
     return {
         "x-owner": str(operator.user_id),
         "x-credential": operator.credential,
         "x-timestamp": str(timestamp),
-        "x-signature": signature(operator.key, method, path, body, timestamp),
+        "x-nonce": nonce,
+        "x-signature": signature(operator.key, method, path, body, timestamp, nonce),
     }
 
 

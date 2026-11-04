@@ -1,3 +1,4 @@
+import re
 import time
 from collections.abc import Callable
 from typing import Any
@@ -57,6 +58,7 @@ def test_a_signed_call_carries_the_session_credential(
     assert response.json() == {"name": "alpha"}
     assert calls[0].headers["x-owner"] == str(who.user_id)
     assert calls[0].headers["x-credential"] == who.credential
+    assert re.fullmatch(r"[0-9a-f]{32}", calls[0].headers["x-nonce"])
     assert signed_by(calls[0], who.key)
     assert "cookie" not in calls[0].headers
     assert who.key not in response.text

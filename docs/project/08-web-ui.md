@@ -393,7 +393,8 @@ never reaches JavaScript.
   API's `Origin` check compares the browser's own pair, `Content-Type`,
   `Accept`, and `Cookie` carrying `jatszoter_link` alone.
   `jatszoter_session`, `jatszoter_csrf` and any `X-Owner`, `X-Credential`,
-  `X-Timestamp` or `X-Signature` never reach the API through the relay.
+  `X-Timestamp`, `X-Nonce` or `X-Signature` never reach the API through the
+  relay.
 - An API that cannot be reached answers 502, one that does not answer
   within 30 seconds 504.
 - The access log of `web` shows method, path, status and duration. A link

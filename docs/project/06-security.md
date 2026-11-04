@@ -78,11 +78,15 @@ operator has not taken control.
   belongs on a smoke stand, never on an API others can reach.
 - **Credential** - agents and users sign every request. A request carries
   the credential in the open - owner id (the path for an agent, `X-Owner`
-  for a user), `kid`, `generation`, `expires_at` - plus `X-Timestamp` and
-  `X-Signature`:
-  the HMAC-SHA256 of the timestamp, method, path and sha256 of the body, one
-  per line. A request with a query signs `path?query`, the query exactly as
-  sent, so no parameter can be changed under a valid signature. The signing
+  for a user), `kid`, `generation`, `expires_at` - plus `X-Timestamp`,
+  `X-Nonce` and `X-Signature`:
+  the HMAC-SHA256 of the timestamp, nonce, method, path and sha256 of the
+  body, one per line. A request with a query signs `path?query`, the query
+  exactly as sent, so no parameter can be changed under a valid signature.
+  The nonce is 16 random bytes in lowercase hex, new for every request; the
+  API keeps the nonces of each owner in Valkey for twice the 300-second
+  window and refuses one it has seen, so a captured request cannot be sent
+  again. A request without a nonce gets 401. The signing
   key is never stored: it is the HMAC of `owner id : generation :
   expires_at` under the master key named by `kid`, so the API
   derives it again on every request, and an altered credential yields a
@@ -91,7 +95,7 @@ operator has not taken control.
   `JATSZOTER_MASTER_KID`; keeping the previous key listed lets older
   credentials run out smoothly. The API answers yes or no: the owner is
   `enabled`, the credential has not expired, the timestamp is within 300
-  seconds, the signature matches. Anything else gets 401.
+  seconds, the signature matches, the nonce is new. Anything else gets 401.
 - **Refresh** - the `secrets` table keeps one row per owner: the live
   `generation` and a `pending_generation`. A credential lives an hour and is
   due for refresh 15 minutes before it expires. Every refresh hands out a

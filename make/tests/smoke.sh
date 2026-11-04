@@ -68,16 +68,17 @@ kept_lease() {
         [ "$(printf '%s\n' "$ids" | sort -u | wc -l)" -eq 1 ]
 }
 
-# An operator request: hex HMAC-SHA256 of `ts\nMETHOD\npath[?query]\nsha256(body)` under the key.
+# An operator request: hex HMAC-SHA256 of `ts\nnonce\nMETHOD\npath[?query]\nsha256(body)`.
 signed() {
-    local method="$1" path="$2" body="${3:-}" ts hash signature
+    local method="$1" path="$2" body="${3:-}" ts nonce hash signature
     ts="$(date +%s)"
+    nonce="$(openssl rand -hex 16)"
     hash="$(printf '%s' "$body" | sha256sum | cut -d' ' -f1)"
-    signature="$(printf '%s\n%s\n%s\n%s' "$ts" "$method" "$path" "$hash" |
+    signature="$(printf '%s\n%s\n%s\n%s\n%s' "$ts" "$nonce" "$method" "$path" "$hash" |
         openssl dgst -sha256 -hmac "$key" | awk '{print $NF}')"
     local args=(-fsS -X "$method"
         -H "X-Owner: $owner" -H "X-Credential: $credential"
-        -H "X-Timestamp: $ts" -H "X-Signature: $signature")
+        -H "X-Timestamp: $ts" -H "X-Nonce: $nonce" -H "X-Signature: $signature")
     if [ -n "$body" ]; then
         args+=(-H "Content-Type: application/json" --data-binary @-)
     fi
@@ -129,19 +130,21 @@ vm_destroyed() {
 
 # Attaches as the operator and reads until it holds an offset and console bytes.
 viewer_py='
-import hashlib, hmac, json, os, sys, time
+import hashlib, hmac, json, os, secrets, sys, time
 from urllib.parse import urlsplit
 from websockets.exceptions import WebSocketException
 from websockets.sync.client import connect
 
 url = os.environ["VIEWER_URL"]
 ts = str(int(time.time()))
-message = "\n".join([ts, "GET", urlsplit(url).path, hashlib.sha256(b"").hexdigest()])
+nonce = secrets.token_hex(16)
+message = "\n".join([ts, nonce, "GET", urlsplit(url).path, hashlib.sha256(b"").hexdigest()])
 key = os.environ["VIEWER_KEY"].encode()
 headers = {
     "X-Owner": os.environ["VIEWER_OWNER"],
     "X-Credential": os.environ["VIEWER_CREDENTIAL"],
     "X-Timestamp": ts,
+    "X-Nonce": nonce,
     "X-Signature": hmac.new(key, message.encode(), hashlib.sha256).hexdigest(),
 }
 deadline = time.monotonic() + 30

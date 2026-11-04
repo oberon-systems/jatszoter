@@ -141,6 +141,13 @@ operator has not taken control.
 - QEMU runs as the agent's unprivileged user with KVM. VM directories are
   0700, which keeps everyone but that user away from the sockets, logs and
   disks inside them, whatever modes those files have.
+- A VM starts only with KVM, because QEMU supports hardware virtualization
+  as a security boundary and does not support its TCG emulator as one.
+  Without a usable `/dev/kvm` the deployment fails with
+  `vm: KVM is not usable and TCG is not allowed`.
+- `JATSZOTER_AGENT_ALLOW_TCG=true` allows TCG. Use it only on dev stands.
+  The agent logs the accelerator at each VM start and reports it in every
+  heartbeat, and the Agents page shows it.
 - passt gives the guest outbound NAT and nothing inbound. It runs with
   `--no-map-gw`, so the gateway does not lead to the agent host's loopback:
   services bound to `127.0.0.1` are out of the guest's reach. QEMU's own

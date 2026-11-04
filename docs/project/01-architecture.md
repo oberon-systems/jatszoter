@@ -185,6 +185,10 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
   the number of VMs it may run at once. The answer carries the lease id, the
   heartbeat time and the deadline; the agent heartbeats every third of the
   lease TTL.
+- A heartbeat also reports the agent's accelerator: `kvm`, `tcg`, or `none`
+  when a VM start would be refused. The field is optional, so an older agent
+  keeps working. An older API refuses it with 422, so upgrade the API before
+  the agents.
 - A heartbeat also assigns PENDING deployments to the agent: first those the
   operator pinned to it, then unpinned ones, oldest first, up to its
   capacity minus the non-terminal deployments it already holds. The
@@ -269,8 +273,10 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
   download fails with "the image cache is full".
 
 - QEMU is daemonized with a pid file, so a VM outlives an agent restart and
-  reconciliation adopts it. It runs with KVM when `/dev/kvm` is usable and
-  with TCG otherwise.
+  reconciliation adopts it. It runs with KVM. Without a usable `/dev/kvm`
+  the start fails, unless `JATSZOTER_AGENT_ALLOW_TCG` (default `false`)
+  allows TCG, which is many times slower. See
+  [06](06-security.md#guest-and-host).
 - A VM boots through UEFI: QEMU maps the
   [OVMF](https://github.com/tianocore/tianocore.github.io/wiki/OVMF) code
   from `JATSZOTER_AGENT_OVMF_CODE` read-only and a 0600 copy of

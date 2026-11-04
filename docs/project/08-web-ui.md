@@ -167,7 +167,7 @@ unless a screen says otherwise. `Missing API` names the routes of
 - Route: `/agents`. Who: operator.
 - API calls: `GET /api/v1/agents`, `POST /api/v1/agents/{agent_id}/state`.
 - Shows: pending registrations, then agents with name, labels, state,
-  last heartbeat, capacity and lease deadline.
+  last heartbeat, capacity, accelerator and lease deadline.
 - Actions: approve a registration, enable or disable an agent. Disabling
   asks for confirmation: the agent's lease lapses and its deployments
   fail.
@@ -321,7 +321,8 @@ answers JSON unless it says otherwise.
 
 - `GET /api/v1/agents` lists a pending registration from Valkey with its
   id, name, labels and registration time, and a stored agent with its
-  last heartbeat, capacity and lease deadline when a lease is live.
+  last heartbeat, capacity, accelerator and lease deadline when a lease is
+  live.
 - `POST /api/v1/agents/{agent_id}/state` takes `{"state": "enabled" |
   "disabled"}`; `enabled` on a pending registration approves it.
 - `POST /api/v1/users/{id}/state` takes the same body. Disabling the last

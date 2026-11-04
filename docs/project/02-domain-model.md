@@ -32,16 +32,18 @@ holding that entity's UUID.
   password, and a user without a password cannot log in.
 - **Agent** - a registered host: name, placement labels, `state`
   (`disabled` while it waits for an operator or once one turns it off,
-  `enabled` after approval). An agent owns a secret. Its last heartbeat and
-  reported capacity N are [ephemeral state](#ephemeral-state).
+  `enabled` after approval). An agent owns a secret. Its last heartbeat,
+  reported capacity N and accelerator are
+  [ephemeral state](#ephemeral-state).
 - **Secret** - one row per owner, an agent or a user, stored with its
   owner: `owner_id`, the live `generation` (0 until the first credential is
   issued) and a `pending_generation` during a refresh. No key is
   stored; signing keys are derived from a master key, and the credential
   that names them knows itself whether it is due for refresh or expired.
   See [06](06-security.md#credentials).
-- **Lease** - the agent's single live lease: its id, the reported capacity N,
-  the last heartbeat and the deadline, ephemeral state renewed by heartbeat.
+- **Lease** - the agent's single live lease: its id, the reported capacity N
+  and accelerator, the last heartbeat and the deadline, ephemeral state
+  renewed by heartbeat.
   A heartbeat after expiry opens a new lease with a new id.
 - **Image** - a base disk registered once by the operator: name as used in
   `scenario.yaml`, URL, digest (sha256, 64 lowercase hex characters).
@@ -145,8 +147,8 @@ and tests always - the API uses an in-memory
 [fakeredis](https://github.com/cunla/fakeredis-py) instead.
 
 - The agent's lease under `lease:<agent id>`: its id, the reported capacity N
-  and the last heartbeat, written again with the lease TTL by every
-  heartbeat.
+  and accelerator, and the last heartbeat, written again with the lease TTL
+  by every heartbeat.
 - A pending registration under `registration:<agent id>`, and its claim code
   under `claim:<sha256 of the code>`, until an operator approves it and the
   agent claims it, or their TTL runs out.

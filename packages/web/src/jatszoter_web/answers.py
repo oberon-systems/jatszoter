@@ -1,10 +1,13 @@
 import logging
+import re
 import uuid
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
 log = logging.getLogger(__name__)
+
+LINK_PATH = re.compile(r"/s/[^/?#\s]+")
 
 STATUS_CODES = {
     401: "not-authorized",
@@ -19,6 +22,26 @@ STATUS_CODES = {
 }
 
 
+def redacted(path: str) -> str:
+    return LINK_PATH.sub("/s/<redacted>", path)
+
+
+def logged_error(
+    status: int,
+    code: str,
+    method: str,
+    path: str,
+    message: str,
+    exc: BaseException | None = None,
+) -> str:
+    """Log the real error under a fresh id; the id is all a browser is shown of it."""
+    error_id = str(uuid.uuid4())
+    level = logging.ERROR if status >= 500 else logging.WARNING
+    where = f"{method} {redacted(path)}"
+    log.log(level, "error %s %s %s %s: %s", error_id, code, status, where, message, exc_info=exc)
+    return error_id
+
+
 def coded(
     request: Request,
     status: int,
@@ -27,11 +50,8 @@ def coded(
     error_id: str | None = None,
 ) -> JSONResponse:
     """A JSON error answer of `web`: the code and an id alone, the rest logged under that id.
-    An `error_id` the API already made and logged is passed on as it is."""
+    An `error_id` already logged, by the API or by `web`, is passed on as it is."""
     code = code or STATUS_CODES.get(status, "internal-error" if status >= 500 else "refused")
     if error_id is None:
-        error_id = str(uuid.uuid4())
-        level = logging.ERROR if status >= 500 else logging.WARNING
-        where = f"{request.method} {request.url.path}"
-        log.log(level, "error %s %s %s %s: %s", error_id, code, status, where, logged)
+        error_id = logged_error(status, code, request.method, request.url.path, logged)
     return JSONResponse({"error": code, "error_id": error_id}, status_code=status)

@@ -89,7 +89,7 @@ class Session:
                 }
             )
         except (ValueError, KeyError, TypeError):
-            raise failed(response.status_code) from None
+            raise failed(response) from None
         self.request.state.operator = self.operator
         sealed = seal_operator(self.operator, self.request.app.state.keys, self.settings.cookie_kid)
         queue_cookie(self.request, SESSION_COOKIE, sealed)
@@ -101,7 +101,7 @@ class Session:
         if response.status_code == 403:
             raise NotAllowed()
         if response.status_code >= 500:
-            raise failed(response.status_code)
+            raise failed(response)
         return response
 
 

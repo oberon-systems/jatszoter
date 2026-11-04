@@ -147,7 +147,7 @@ async def login(request: Request) -> Response:
         sealed = seal_pending(payload["name"], payload["password"], request)
         return page(request, {**context, "pending": sealed})
     if status >= 500:
-        failure = failed(status)
+        failure = failed(response)
         return page(request, {**context, "flashes": [error(failure.message)]}, failure.status)
     flash = refusal(told(response, operator=False), status)
     return page(request, {**context, "flashes": [flash]}, status)
@@ -194,14 +194,14 @@ async def logged_in(
             csrf=new_token(),
         )
     except (KeyError, TypeError, ValueError):
-        raise failed(200) from None
+        raise failed(response) from None
     me = await api.signed(operator, "GET", "/api/v1/auth/me")
     try:
         user = me.json() if me.status_code == 200 else None
     except ValueError:
         user = None
     if not isinstance(user, dict):
-        raise failed(me.status_code)
+        raise failed(me)
     if user.get("role") != "operator":
         with suppress(ApiDown):
             await api.signed(operator, "POST", "/api/v1/auth/logout")

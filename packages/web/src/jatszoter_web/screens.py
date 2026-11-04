@@ -33,11 +33,11 @@ async def read(session: Session, path: str, params: dict[str, str] | None = None
     if 400 <= response.status_code < 500:
         raise Refusal(refused(response)[0], response.status_code)
     if response.status_code != 200:
-        raise failed(response.status_code)
+        raise failed(response)
     try:
         return response.json()
     except ValueError:
-        raise failed(response.status_code) from None
+        raise failed(response) from None
 
 
 def by_id(rows: list[Row]) -> dict[str, Row]:

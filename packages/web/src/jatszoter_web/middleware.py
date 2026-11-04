@@ -1,5 +1,4 @@
 import logging
-import re
 import time
 from collections.abc import Callable, Mapping
 
@@ -9,6 +8,7 @@ from starlette.requests import HTTPConnection
 from starlette.responses import PlainTextResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from jatszoter_web.answers import logged_error, redacted
 from jatszoter_web.cookies import set_cookie_header
 
 SECURITY_HEADERS = {
@@ -27,17 +27,12 @@ WASM_POLICY = SECURITY_HEADERS["content-security-policy"].replace(
     "script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'"
 )
 
-LINK_PATH = re.compile(r"/s/[^/?#\s]+")
 COOKIES_STATE = "set_cookies"
 POLICY_STATE = "content_security_policy"
 BODY_LIMIT = 64 * 1024
 MAX_LENGTH_DIGITS = 18
 
 access_log = logging.getLogger("jatszoter_web.access")
-
-
-def redacted(path: str) -> str:
-    return LINK_PATH.sub("/s/<redacted>", path)
 
 
 def queue_cookie(connection: HTTPConnection, name: str, value: str | None) -> None:
@@ -101,18 +96,20 @@ class BodyLimit:
 class Guard:
     """Security headers and queued cookies on every answer, and the access log line."""
 
-    def __init__(self, app: ASGIApp, failure: Callable[[Scope], Response] | None = None) -> None:
+    def __init__(
+        self, app: ASGIApp, failure: Callable[[Scope, str], Response] | None = None
+    ) -> None:
         self.app = app
         self.failure = failure
 
-    def failed(self, scope: Scope) -> Response:
+    def failed(self, scope: Scope, error_id: str) -> Response:
         """The page for a request that raised, plain text when even that page fails."""
         if self.failure is not None:
             try:
-                return self.failure(scope)
+                return self.failure(scope, error_id)
             except Exception:
-                access_log.exception("the server error page failed")
-        return PlainTextResponse("Internal Server Error", 500)
+                access_log.exception("the server error page failed for error %s", error_id)
+        return PlainTextResponse(f"Internal Server Error (error {error_id})", 500)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -138,10 +135,14 @@ class Guard:
 
         try:
             await self.app(scope, receive, guarded)
-        except Exception:
-            if status is None:
-                await self.failed(scope)(scope, receive, guarded)
-            raise
+        except Exception as exc:
+            error_id = logged_error(
+                500, "internal-error", scope["method"], scope["path"], "the request raised", exc
+            )
+            # Raised only to cut an answer already started; uvicorn would log it a second time.
+            if status is not None:
+                raise
+            await self.failed(scope, error_id)(scope, receive, guarded)
         finally:
             access_log.info(
                 "%s %s %d %.0fms",

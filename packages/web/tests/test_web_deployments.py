@@ -94,7 +94,8 @@ def test_a_list_the_api_fails_to_answer_shows_the_failed_board(
 
     assert page.status_code == 502
     assert "The list could not be loaded" in page.text
-    assert "The API failed to answer. Try again in a moment. (503)" in page.text
+    assert "The API failed to answer. Try again in a moment. (error " in page.text
+    assert ") (503)" in page.text
 
 
 def test_the_create_form_offers_what_a_deployment_can_name(

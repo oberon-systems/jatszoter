@@ -7,26 +7,43 @@ from typing import Any
 
 import httpx
 
+from jatszoter_web.answers import STATUS_CODES, logged_error
 from jatszoter_web.cookies import Operator
+from jatszoter_web.texts import answered
 
 TIMEOUT_SECONDS = 30
 
 
 class ApiDown(Exception):
-    """The API is unreachable, too slow or failed; `status` is what `web` answers."""
+    """The API is unreachable, too slow or failed; `status` is what `web` answers, `message`
+    what a page shows, with the `error_id` the log holds the cause under."""
 
-    def __init__(self, status: int, message: str) -> None:
-        super().__init__(message)
+    def __init__(self, status: int, text: str, error_id: str, code: int | None = None) -> None:
         self.status = status
-        self.message = message
+        self.error_id = error_id
+        self.message = f"{text} (error {error_id}) ({code or status})"
+        super().__init__(self.message)
 
 
-UNREACHABLE = "The API cannot be reached. Nothing was changed; try again in a moment. (502)"
-TIMED_OUT = "The API did not answer in time. Try again in a moment. (504)"
+UNREACHABLE = "The API cannot be reached. Nothing was changed; try again in a moment."
+TIMED_OUT = "The API did not answer in time. Try again in a moment."
+FAILED = "The API failed to answer. Try again in a moment."
 
 
-def failed(code: int) -> ApiDown:
-    return ApiDown(502, f"The API failed to answer. Try again in a moment. ({code})")
+def unanswered(status: int, text: str, request: httpx.Request, exc: Exception) -> ApiDown:
+    code = STATUS_CODES[status]
+    error_id = logged_error(status, code, request.method, request.url.path, repr(exc))
+    return ApiDown(status, text, error_id)
+
+
+def failed(response: httpx.Response) -> ApiDown:
+    """An answer of the API no page can use, under the id the API logged it with, if it has one."""
+    code = response.status_code
+    request = response.request
+    error_id = answered(response)[1] or logged_error(
+        502, "api-failed", request.method, request.url.path, f"the API answered {code}"
+    )
+    return ApiDown(502, FAILED, error_id, code)
 
 
 def signature(key: str, method: str, path: str, body: bytes, timestamp: int, nonce: str) -> str:
@@ -61,10 +78,10 @@ class Api:
     async def send(self, request: httpx.Request) -> httpx.Response:
         try:
             return await self.http.send(request)
-        except httpx.TimeoutException:
-            raise ApiDown(504, TIMED_OUT) from None
-        except httpx.TransportError:
-            raise ApiDown(502, UNREACHABLE) from None
+        except httpx.TimeoutException as exc:
+            raise unanswered(504, TIMED_OUT, request, exc) from None
+        except httpx.TransportError as exc:
+            raise unanswered(502, UNREACHABLE, request, exc) from None
 
     async def anonymous(
         self,

@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import json
 import re
 from urllib.parse import urlsplit
 
@@ -11,7 +12,7 @@ from websockets.exceptions import ConnectionClosed, InvalidStatus, InvalidURI
 from websockets.typing import Origin
 
 from jatszoter_web.answers import coded
-from jatszoter_web.api import TIMEOUT_SECONDS, Api, ApiDown, failed
+from jatszoter_web.api import FAILED, TIMEOUT_SECONDS, Api, ApiDown
 from jatszoter_web.cookies import LINK_COOKIE
 from jatszoter_web.csrf import check_browser
 from jatszoter_web.pages import render
@@ -55,7 +56,7 @@ async def relay(request: Request) -> Response:
             api.http.build_request(request.method, url, content=body, headers=headers)
         )
     except ApiDown as down:
-        return coded(request, down.status, down.message)
+        return coded(request, down.status, down.message, error_id=down.error_id)
     if answer.status_code >= 400:
         # Rebuilt, so a body the API did not shape never reaches the trainee.
         code, error_id = answered(answer)
@@ -80,7 +81,7 @@ async def open_link(request: Request, token: str) -> Response:
         return answer
     if answer.status_code < 500:
         return render(request, "link_ended.html", status=answer.status_code)
-    raise failed(answer.status_code)
+    raise ApiDown(502, FAILED, json.loads(bytes(answer.body))["error_id"], answer.status_code)
 
 
 @router.api_route("/api/v1/deployments/{deployment_id:uuid}/{rest:path}", methods=["GET", "POST"])

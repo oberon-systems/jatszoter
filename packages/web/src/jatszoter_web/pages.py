@@ -13,7 +13,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import Scope
 
-from jatszoter_web.answers import coded
+from jatszoter_web.answers import coded, logged_error
 from jatszoter_web.api import ApiDown
 from jatszoter_web.cookies import (
     FLASH_COOKIE,
@@ -88,11 +88,7 @@ EXPIRED = Flash(
     "The form has expired or came from another page. "
     "Nothing was changed; reload the page and try again. (403)",
 )
-SERVER_ERROR = Flash(
-    "error",
-    "Something went wrong",
-    "The page failed on the server. Nothing was changed; try again in a moment. (500)",
-)
+SERVER_ERROR = "The page failed on the server. Nothing was changed; try again in a moment."
 LANDING = "/deployments"
 UNCHANGED = "Nothing was changed"
 
@@ -270,18 +266,27 @@ def refused(request: Request, status: int, reason: str) -> Response:
     return failure(request, status, "Request refused", UNCHANGED, Flash("refusal", "Refused", text))
 
 
-def server_error(request: Request) -> Response:
-    return failure(request, 500, "Something went wrong", UNCHANGED, SERVER_ERROR, reload=True)
+def server_error(request: Request, error_id: str) -> Response:
+    item = error(f"{SERVER_ERROR} (error {error_id}) (500)")
+    return failure(request, 500, "Something went wrong", UNCHANGED, item, reload=True)
 
 
-def failed_scope(scope: Scope) -> Response:
-    """The server error page for a request that raised before it was answered."""
-    return server_error(Request(scope))
+def failed_scope(scope: Scope, error_id: str) -> Response:
+    """The answer to a request that raised before it was answered, logged under `error_id`."""
+    request = Request(scope)
+    if request.url.path.startswith("/api/"):
+        return coded(request, 500, "", error_id=error_id)
+    return server_error(request, error_id)
+
+
+def failed_request(request: Request, exc: Exception) -> Response:
+    error_id = logged_error(500, "internal-error", request.method, request.url.path, repr(exc))
+    return server_error(request, error_id)
 
 
 async def http_error(request: Request, exc: Exception) -> Response:
     if not isinstance(exc, StarletteHTTPException):
-        return server_error(request)
+        return failed_request(request, exc)
     if request.url.path.startswith("/api/"):
         return coded(request, exc.status_code, str(exc.detail))
     status = exc.status_code
@@ -290,7 +295,7 @@ async def http_error(request: Request, exc: Exception) -> Response:
     if status == 404:
         return not_found(request)
     if status >= 500:
-        return server_error(request)
+        return failed_request(request, exc)
     try:
         reason = HTTPStatus(status).phrase.lower()
     except ValueError:

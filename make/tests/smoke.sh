@@ -521,11 +521,22 @@ wait_for 30 curl -fs -o /dev/null "$web/healthz"
 echo "checking the guest network..."
 JATSZOTER_AGENT_STATE_DIR="$TEMP_DIR/agent" cargo run -q -p jatszoter-agent -- check-network
 
+if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+    accel=KVM
+    accelerator=kvm
+    allow_tcg=false
+else
+    accel="TCG, no usable /dev/kvm"
+    accelerator=tcg
+    allow_tcg=true
+fi
+
 echo "starting agent..."
 JATSZOTER_AGENT_API_URL="$api" \
     JATSZOTER_AGENT_NAME=alpha \
     JATSZOTER_AGENT_STATE_DIR="$TEMP_DIR/agent" \
     JATSZOTER_AGENT_IMAGE_INTERNAL_CIDRS=127.0.0.1/32 \
+    JATSZOTER_AGENT_ALLOW_TCG="$allow_tcg" \
     RUST_LOG=jatszoter_agent=debug \
     setsid cargo run -q -p jatszoter-agent >>"$TEMP_DIR/agent.log" 2>&1 &
 agent=$!
@@ -567,10 +578,10 @@ if [ ! -f "$bundle" ]; then
     exit 1
 fi
 
-if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
-    accel=KVM
-else
-    accel="TCG, no usable /dev/kvm"
+reported="$(signed GET /api/v1/agents | jq -r '.agents[0].accelerator')"
+if [ "$reported" != "$accelerator" ]; then
+    echo "the agent reports the accelerator $reported, not $accelerator" >&2
+    exit 1
 fi
 echo "deploying the scenario under $accel; the boot takes minutes..."
 trainee="$(signed POST /api/v1/users "$(jq -cn '{name: "beta", role: "trainee"}')" | jq -r .id)"

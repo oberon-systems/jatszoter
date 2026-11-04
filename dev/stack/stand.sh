@@ -79,10 +79,15 @@ up() {
         JATSZOTER_WEB_COOKIE_KID=dev \
         start web "$MAKE" -f "$ROOT/Makefile" VENV="$VENV" run-web
 
+    allow_tcg=true
+    if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+        allow_tcg=false
+    fi
     JATSZOTER_AGENT_API_URL="$api" \
         JATSZOTER_AGENT_NAME=alpha \
         JATSZOTER_AGENT_STATE_DIR="$state/agent" \
         JATSZOTER_AGENT_IMAGE_INTERNAL_CIDRS=127.0.0.1/32 \
+        JATSZOTER_AGENT_ALLOW_TCG="$allow_tcg" \
         RUST_LOG=jatszoter_agent=info \
         start agent cargo run -q --manifest-path "$ROOT/Cargo.toml" -p jatszoter-agent
 

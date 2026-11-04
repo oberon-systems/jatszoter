@@ -5,9 +5,9 @@ use wiremock::matchers::{any, body_json, method, path};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
 use super::{
-    mac, nonce, sign, target, Api, CheckResult, CheckStatus, Claim, Desired, Event, HttpApi,
-    ImageRef, Lease, Limits, Moved, Posted, Resources, ScenarioRef, Script, Seed, Signed, Status,
-    Timeouts, CONSOLE_LIMIT,
+    mac, nonce, sign, target, Accelerator, Api, CheckResult, CheckStatus, Claim, Desired, Event,
+    HttpApi, ImageRef, Lease, Limits, Moved, Posted, Resources, ScenarioRef, Script, Seed, Signed,
+    Status, Timeouts, CONSOLE_LIMIT,
 };
 use crate::libs::error::AgentError;
 use crate::libs::state::Credential;
@@ -159,7 +159,7 @@ async fn a_heartbeat_is_signed_and_returns_the_lease() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/api/v1/agents/gamma/heartbeat"))
-        .and(body_json(json!({"capacity": 2})))
+        .and(body_json(json!({"capacity": 2, "accelerator": "kvm"})))
         .and(signed_by("beta", "current:1:1790000000"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "id": "epsilon", "capacity": 2, "heartbeat_at": 100, "expires_at": 130
@@ -169,7 +169,7 @@ async fn a_heartbeat_is_signed_and_returns_the_lease() {
         .await;
 
     let lease = api(&server)
-        .heartbeat("gamma", &credential(), 2)
+        .heartbeat("gamma", &credential(), 2, Accelerator::Kvm)
         .await
         .unwrap();
 
@@ -194,7 +194,9 @@ async fn a_refused_credential_is_reported() {
     let api = api(&server);
 
     assert_eq!(
-        api.heartbeat("gamma", &credential(), 1).await.unwrap(),
+        api.heartbeat("gamma", &credential(), 1, Accelerator::None)
+            .await
+            .unwrap(),
         Signed::Refused
     );
     assert_eq!(

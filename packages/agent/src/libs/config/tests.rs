@@ -101,6 +101,18 @@ fn the_image_download_is_strict_by_default() {
 }
 
 #[test]
+fn tcg_is_allowed_only_when_asked_for() {
+    let home = || Some("/home/alpha".into());
+    let asked = RawConfig {
+        allow_tcg: Some(true),
+        ..raw()
+    };
+
+    assert!(!Config::parse(raw(), None, home()).unwrap().allow_tcg);
+    assert!(Config::parse(asked, None, home()).unwrap().allow_tcg);
+}
+
+#[test]
 fn the_image_cache_holds_at_least_one_image() {
     let parse = |limit, cache| {
         Config::parse(

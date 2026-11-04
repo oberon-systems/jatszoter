@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tokio::time::timeout;
 
-use crate::libs::api::{unix_now, Api, Claim, Desired, Signed};
+use crate::libs::api::{unix_now, Accelerator, Api, Claim, Desired, Signed};
 use crate::libs::config::Config;
 use crate::libs::error::AgentError;
 use crate::libs::lease::LeaseClock;
@@ -25,6 +25,7 @@ pub type Auth = Arc<RwLock<Option<Signer>>>;
 
 /// The VMs on the host: matched to the desired state, destroyed when the agent fences.
 pub(crate) trait Runtime {
+    fn accelerator(&self) -> Accelerator;
     /// Spawns the work the desired state calls for and returns at once.
     fn reconcile(&mut self, _auth: &Auth, _desired: Vec<Desired>) {}
     fn destroy_all(&mut self) -> Result<(), AgentError>;
@@ -87,7 +88,12 @@ impl<A: Api, R: Runtime> Agent<A, R> {
         let sent_at = Instant::now();
         match self
             .api
-            .heartbeat(&agent_id, &credential, self.capacity)
+            .heartbeat(
+                &agent_id,
+                &credential,
+                self.capacity,
+                self.runtime.accelerator(),
+            )
             .await?
         {
             Signed::Accepted(lease) => {

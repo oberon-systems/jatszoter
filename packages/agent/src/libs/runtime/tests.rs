@@ -34,6 +34,7 @@ fn runtime_at(dir: &TempDir, api_url: &str) -> QemuRuntime {
         image_download_deadline: std::time::Duration::from_secs(60),
         image_internal_cidrs: Vec::new(),
         image_use_proxy: false,
+        allow_tcg: true,
         qemu: "/nonexistent/qemu-system-x86_64".into(),
         qemu_img: "/nonexistent/qemu-img".into(),
         xorriso: "/nonexistent/xorriso".into(),

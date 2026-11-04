@@ -9,7 +9,7 @@ use tracing::Instrument;
 use url::Url;
 
 use crate::libs::agent::{Auth, Runtime};
-use crate::libs::api::{Api, Desired, Event, HttpApi, Moved, Seed, Signed, Status};
+use crate::libs::api::{Accelerator, Api, Desired, Event, HttpApi, Moved, Seed, Signed, Status};
 use crate::libs::bootstrap::{self, Verdict, MARKER};
 use crate::libs::check;
 use crate::libs::config::Config;
@@ -98,6 +98,8 @@ impl QemuRuntime {
                     passt: config.passt.clone(),
                     ovmf_code: config.ovmf_code.clone(),
                     ovmf_vars: config.ovmf_vars.clone(),
+                    kvm_device: vm::KVM_DEVICE.into(),
+                    allow_tcg: config.allow_tcg,
                 },
             }),
             capacity: config.capacity,
@@ -241,6 +243,10 @@ impl QemuRuntime {
 }
 
 impl Runtime for QemuRuntime {
+    fn accelerator(&self) -> Accelerator {
+        self.shared.tools.accelerator()
+    }
+
     fn reconcile(&mut self, auth: &Auth, desired: Vec<Desired>) {
         if self
             .fence
@@ -559,6 +565,8 @@ async fn seed(shared: &Shared, auth: &Auth, deployment_id: &str) -> Result<Seed,
 }
 
 async fn launch(shared: &Shared, item: &Desired, seed: Seed) -> Result<(), AgentError> {
+    // Refused here too, so a host that cannot run the VM does not download its image first.
+    shared.tools.require_accelerator()?;
     let url = Url::parse(&item.image.url).map_err(|err| AgentError::Image(err.to_string()))?;
     let base = shared
         .images

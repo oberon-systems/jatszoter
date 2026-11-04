@@ -1,9 +1,11 @@
 use std::ffi::OsString;
 use std::fs;
+use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde_json::{json, Value};
@@ -16,7 +18,7 @@ use super::{
     base_format, create, destroy, eject_seed, list, passt_args, qemu_args, Record, Tools, VmSpec,
     GIB,
 };
-use crate::libs::api::Seed;
+use crate::libs::api::{Accelerator, Seed};
 use crate::libs::config::prepare_private_dir;
 use crate::libs::error::AgentError;
 use crate::libs::qmp::Qmp;
@@ -50,6 +52,22 @@ fn missing_tools() -> Tools {
         passt: "/nonexistent/passt".into(),
         ovmf_code: "/nonexistent/OVMF_CODE.fd".into(),
         ovmf_vars: "/nonexistent/OVMF_VARS.fd".into(),
+        kvm_device: "/nonexistent/kvm".into(),
+        allow_tcg: true,
+    }
+}
+
+#[derive(Clone, Default)]
+struct Captured(Arc<Mutex<Vec<u8>>>);
+
+impl io::Write for Captured {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }
 
@@ -583,6 +601,65 @@ async fn a_missing_vars_template_fails_the_start_and_leaves_no_directory() {
     assert!(list(&root).unwrap().is_empty());
 }
 
+#[test]
+fn kvm_is_preferred_and_tcg_needs_the_setting() {
+    let tmp = TempDir::new().unwrap();
+    let device = tmp.path().join("kvm");
+    fs::write(&device, b"").unwrap();
+    let mut tools = missing_tools();
+
+    assert_eq!(tools.accelerator(), Accelerator::Tcg);
+    tools.allow_tcg = false;
+    assert_eq!(tools.accelerator(), Accelerator::None);
+    tools.kvm_device = device;
+    assert_eq!(tools.accelerator(), Accelerator::Kvm);
+}
+
+#[tokio::test]
+async fn a_start_without_kvm_is_refused_unless_tcg_is_allowed() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path().join("vms");
+    let mut tools = missing_tools();
+    tools.allow_tcg = false;
+
+    let err = create(&root, &spec("alpha", Path::new("/base.qcow2")), &tools)
+        .await
+        .unwrap_err();
+
+    assert_eq!(
+        err.to_string(),
+        "vm: KVM is not usable and TCG is not allowed"
+    );
+    assert!(!root.exists());
+}
+
+#[tokio::test]
+async fn an_allowed_tcg_start_is_logged() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path().join("vms");
+    let mut tools = missing_tools();
+    tools.ovmf_vars = vars_template(tmp.path());
+    let captured = Captured::default();
+    let writer = captured.clone();
+    let subscriber = tracing_subscriber::fmt()
+        .with_ansi(false)
+        .with_writer(move || writer.clone())
+        .finish();
+    let guard = tracing::subscriber::set_default(subscriber);
+
+    let err = create(&root, &spec("alpha", Path::new("/base.qcow2")), &tools)
+        .await
+        .unwrap_err();
+    drop(guard);
+
+    assert!(
+        matches!(&err, AgentError::Vm(message) if message.contains("qemu-img")),
+        "{err}"
+    );
+    let log = String::from_utf8(captured.0.lock().unwrap().clone()).unwrap();
+    assert!(log.contains("accelerator=Tcg"), "{log}");
+}
+
 // Needs qemu-system-x86_64, qemu-img, xorriso, passt and OVMF, so it runs only with `-- --ignored`.
 #[tokio::test]
 #[ignore]
@@ -604,6 +681,8 @@ async fn a_real_vm_starts_is_listed_and_is_destroyed() {
         passt: "passt".into(),
         ovmf_code: "/usr/share/OVMF/OVMF_CODE_4M.fd".into(),
         ovmf_vars: "/usr/share/OVMF/OVMF_VARS_4M.fd".into(),
+        kvm_device: "/dev/kvm".into(),
+        allow_tcg: true,
     };
     let mut spec = spec("alpha", &base);
     spec.cpus = 1;

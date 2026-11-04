@@ -17,9 +17,10 @@ The agent runs as an unprivileged user and spawns these host tools:
 | `passt`              | the guest network, `2026_10_02`+      | `JATSZOTER_AGENT_PASST`     |
 | OVMF                 | UEFI firmware the VMs boot through    | `JATSZOTER_AGENT_OVMF_CODE` |
 
-KVM is optional: without a usable `/dev/kvm` the VMs run under TCG, many
-times slower. Give the agent's user access to `/dev/kvm`, usually through
-the `kvm` group.
+KVM is required: without a usable `/dev/kvm` the agent refuses to start a
+VM. Give the agent's user access to `/dev/kvm`, usually through the `kvm`
+group. On a dev stand without KVM, set `JATSZOTER_AGENT_ALLOW_TCG=true` to
+run the VMs under TCG, many times slower and not a security boundary.
 
 On Debian or Ubuntu:
 

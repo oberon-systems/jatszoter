@@ -41,6 +41,7 @@ pub struct Config {
     pub image_download_deadline: Duration,
     pub image_internal_cidrs: Vec<IpNet>,
     pub image_use_proxy: bool,
+    pub allow_tcg: bool,
     pub qemu: PathBuf,
     pub qemu_img: PathBuf,
     pub xorriso: PathBuf,
@@ -62,6 +63,7 @@ pub struct RawConfig {
     pub image_download_minutes: Option<u32>,
     pub image_internal_cidrs: Option<String>,
     pub image_use_proxy: Option<bool>,
+    pub allow_tcg: Option<bool>,
     pub qemu: Option<PathBuf>,
     pub qemu_img: Option<PathBuf>,
     pub xorriso: Option<PathBuf>,
@@ -138,6 +140,7 @@ impl Config {
                 .as_deref()
                 .map_or(Ok(Vec::new()), parse_cidrs)?,
             image_use_proxy: raw.image_use_proxy.unwrap_or(false),
+            allow_tcg: raw.allow_tcg.unwrap_or(false),
             qemu: raw.qemu.unwrap_or_else(|| DEFAULT_QEMU.into()),
             qemu_img: raw.qemu_img.unwrap_or_else(|| DEFAULT_QEMU_IMG.into()),
             xorriso: raw.xorriso.unwrap_or_else(|| DEFAULT_XORRISO.into()),

@@ -15,11 +15,13 @@ use serde_json::{json, Value};
 use tokio::process::Command;
 use tokio::time::{sleep, timeout, Instant};
 
-use crate::libs::api::Seed;
+use crate::libs::api::{Accelerator, Seed};
 use crate::libs::config::prepare_private_dir;
 use crate::libs::error::AgentError;
 use crate::libs::qmp::Qmp;
 
+pub const KVM_DEVICE: &str = "/dev/kvm";
+const NO_ACCELERATOR: &str = "KVM is not usable and TCG is not allowed";
 const RECORD: &str = "vm.json";
 const DISK: &str = "disk.qcow2";
 const PID_FILE: &str = "qemu.pid";
@@ -66,6 +68,27 @@ pub struct Tools {
     pub passt: PathBuf,
     pub ovmf_code: PathBuf,
     pub ovmf_vars: PathBuf,
+    pub kvm_device: PathBuf,
+    pub allow_tcg: bool,
+}
+
+impl Tools {
+    pub fn accelerator(&self) -> Accelerator {
+        if kvm_usable(&self.kvm_device) {
+            Accelerator::Kvm
+        } else if self.allow_tcg {
+            Accelerator::Tcg
+        } else {
+            Accelerator::None
+        }
+    }
+
+    pub fn require_accelerator(&self) -> Result<Accelerator, AgentError> {
+        match self.accelerator() {
+            Accelerator::None => Err(AgentError::Vm(NO_ACCELERATOR.into())),
+            usable => Ok(usable),
+        }
+    }
 }
 
 /// The contents of `vm.json`.
@@ -222,11 +245,11 @@ pub(crate) fn passt_args(dir: &Path) -> Vec<OsString> {
     args
 }
 
-pub fn kvm_usable() -> bool {
+fn kvm_usable(device: &Path) -> bool {
     OpenOptions::new()
         .read(true)
         .write(true)
-        .open("/dev/kvm")
+        .open(device)
         .is_ok()
 }
 
@@ -247,6 +270,7 @@ pub async fn create(root: &Path, spec: &VmSpec, tools: &Tools) -> Result<Vm, Age
             )));
         }
     }
+    let accelerator = tools.require_accelerator()?;
     prepare_private_dir(root)?;
     match DirBuilder::new().mode(0o700).create(&dir) {
         Err(err) if err.kind() == ErrorKind::AlreadyExists => {
@@ -261,7 +285,8 @@ pub async fn create(root: &Path, spec: &VmSpec, tools: &Tools) -> Result<Vm, Age
             .duration_since(UNIX_EPOCH)
             .map_or(0, |elapsed| elapsed.as_secs()),
     };
-    if let Err(err) = start(&dir, spec, &record, tools).await {
+    tracing::info!(?accelerator, "starting the VM");
+    if let Err(err) = start(&dir, spec, &record, tools, accelerator).await {
         if let Err(cleanup) = destroy(&dir).await {
             tracing::warn!(dir = %dir.display(), error = %cleanup, "cleanup after a failed start");
         }
@@ -275,6 +300,7 @@ async fn start(
     spec: &VmSpec,
     record: &Record,
     tools: &Tools,
+    accelerator: Accelerator,
 ) -> Result<(), AgentError> {
     write_private(
         &dir.join(RECORD),
@@ -305,7 +331,8 @@ async fn start(
         .arg(format!("{}G", spec.disk_gib)))
     .await?;
     run(Command::new(&tools.passt).args(passt_args(dir))).await?;
-    let args = qemu_args(spec, dir, kvm_usable(), &tools.ovmf_code);
+    let kvm = accelerator == Accelerator::Kvm;
+    let args = qemu_args(spec, dir, kvm, &tools.ovmf_code);
     run(Command::new(&tools.qemu).args(args)).await?;
 
     let socket = dir.join(QMP);

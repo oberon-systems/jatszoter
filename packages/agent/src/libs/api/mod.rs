@@ -55,6 +55,15 @@ pub enum Event {
     Fail,
 }
 
+/// What a VM started now would run under; `None` means the start is refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Accelerator {
+    Kvm,
+    Tcg,
+    None,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct ScenarioRef {
     pub id: String,
@@ -200,6 +209,7 @@ pub(crate) trait Api {
         agent_id: &str,
         credential: &Credential,
         capacity: u32,
+        accelerator: Accelerator,
     ) -> Result<Signed<Lease>, AgentError>;
     async fn refresh(
         &self,
@@ -279,6 +289,7 @@ struct ClaimOut {
 #[derive(Serialize)]
 struct HeartbeatIn {
     capacity: u32,
+    accelerator: Accelerator,
 }
 
 #[derive(Serialize)]
@@ -409,9 +420,13 @@ impl Api for HttpApi {
         agent_id: &str,
         credential: &Credential,
         capacity: u32,
+        accelerator: Accelerator,
     ) -> Result<Signed<Lease>, AgentError> {
-        let body = serde_json::to_vec(&HeartbeatIn { capacity })
-            .map_err(|err| AgentError::Api(err.to_string()))?;
+        let body = serde_json::to_vec(&HeartbeatIn {
+            capacity,
+            accelerator,
+        })
+        .map_err(|err| AgentError::Api(err.to_string()))?;
         let response = self
             .signed(Method::POST, agent_id, credential, "heartbeat", body)
             .await?;

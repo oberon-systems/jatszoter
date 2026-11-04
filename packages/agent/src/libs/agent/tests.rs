@@ -6,7 +6,9 @@ use tempfile::TempDir;
 use url::Url;
 
 use super::{Agent, Auth, Runtime, CLAIM_POLL};
-use crate::libs::api::{unix_now, Api, Claim, Desired, Event, Lease, Moved, Signed, Status};
+use crate::libs::api::{
+    unix_now, Accelerator, Api, Claim, Desired, Event, Lease, Moved, Signed, Status,
+};
 use crate::libs::config::Config;
 use crate::libs::error::AgentError;
 use crate::libs::state::{Credential, State, StateStore};
@@ -17,6 +19,7 @@ type Transition = (String, Event, Status, Option<String>);
 struct FakeApi {
     claims: Mutex<VecDeque<Claim>>,
     beats: Mutex<VecDeque<Signed<Lease>>>,
+    accelerators: Mutex<Vec<Accelerator>>,
     refreshes: Mutex<VecDeque<Signed<Credential>>>,
     registered: Mutex<Vec<Option<String>>>,
     known_ids: Mutex<Vec<String>>,
@@ -59,7 +62,9 @@ impl Api for FakeApi {
         _agent_id: &str,
         credential: &Credential,
         capacity: u32,
+        accelerator: Accelerator,
     ) -> Result<Signed<Lease>, AgentError> {
+        self.accelerators.lock().unwrap().push(accelerator);
         self.signed_with
             .lock()
             .unwrap()
@@ -135,6 +140,10 @@ struct CountingRuntime {
 }
 
 impl Runtime for CountingRuntime {
+    fn accelerator(&self) -> Accelerator {
+        Accelerator::Tcg
+    }
+
     fn reconcile(&mut self, _auth: &Auth, desired: Vec<Desired>) {
         self.reconciled.push(desired);
     }
@@ -165,6 +174,7 @@ fn agent(dir: &TempDir, api: FakeApi, state: State) -> Agent<FakeApi, CountingRu
         image_download_deadline: std::time::Duration::from_secs(60),
         image_internal_cidrs: Vec::new(),
         image_use_proxy: false,
+        allow_tcg: false,
         qemu: "qemu-system-x86_64".into(),
         qemu_img: "qemu-img".into(),
         xorriso: "xorriso".into(),
@@ -182,6 +192,19 @@ fn enrolled() -> State {
         claim_code: None,
         credential: Some(credential("current:1:1", 3600)),
     }
+}
+
+#[tokio::test]
+async fn a_heartbeat_carries_the_accelerator_of_the_runtime() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut agent = agent(&dir, FakeApi::default(), enrolled());
+
+    agent.cycle().await.unwrap();
+
+    assert_eq!(
+        *agent.api.accelerators.lock().unwrap(),
+        vec![Accelerator::Tcg]
+    );
 }
 
 #[tokio::test]

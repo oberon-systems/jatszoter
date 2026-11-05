@@ -4,6 +4,9 @@ PROJECT := jatszoter
 VENV    := .venv
 PIP     := $(VENV)/bin/pip
 
+IMAGE_PREFIX ?= $(PROJECT)
+IMAGE_TAG    ?= dev
+
 # lint reads NUL-separated names with `read -d`, which dash's read lacks.
 SHELL := /bin/bash
 
@@ -11,7 +14,7 @@ SHELL := /bin/bash
 export PRE_COMMIT_HOME := $(CURDIR)/.pre-commit
 
 .DEFAULT_GOAL := shell
-.PHONY: install lock shell test test-api test-web test-agent smoke lint lint-all run-api run-web vendor
+.PHONY: install lock shell test test-api test-web test-agent smoke lint lint-all run-api run-web vendor images
 
 
 # common targets
@@ -61,6 +64,15 @@ run-web:
 # vendored browser code and fonts, versions from packages/web/vendor/package-lock.json
 vendor:
 	cd packages/web/vendor && npm ci --ignore-scripts --no-audit --no-fund && python3 sync.py
+
+
+# images, as CI builds them; the revision label gets -dirty when the tree differs from HEAD.
+images:
+	@rev=$$(git rev-parse HEAD); git diff --quiet HEAD || rev=$$rev-dirty; \
+	for pkg in api web; do \
+		docker build -f docker/$$pkg/Dockerfile -t $(IMAGE_PREFIX)-$$pkg:$(IMAGE_TAG) \
+			--label org.opencontainers.image.revision=$$rev . || exit 1; \
+	done
 
 
 # defaults

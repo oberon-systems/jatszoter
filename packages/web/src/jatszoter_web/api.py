@@ -3,6 +3,7 @@ import hmac
 import json
 import secrets
 import time
+from http.cookiejar import CookieJar, DefaultCookiePolicy
 from typing import Any
 
 import httpx
@@ -67,12 +68,17 @@ def signed_headers(operator: Operator, method: str, path: str, body: bytes) -> d
 
 
 class Api:
-    """The HTTP client `web` reaches the API with; it never follows a redirect."""
+    """The HTTP client `web` reaches the API with; it never follows a redirect and never keeps
+    a cookie, since a relayed Set-Cookie belongs to one browser alone."""
 
     def __init__(self, base: str, transport: httpx.AsyncBaseTransport | None = None) -> None:
         self.base = base
         self.http = httpx.AsyncClient(
-            base_url=base, timeout=TIMEOUT_SECONDS, transport=transport, follow_redirects=False
+            base_url=base,
+            timeout=TIMEOUT_SECONDS,
+            transport=transport,
+            follow_redirects=False,
+            cookies=CookieJar(DefaultCookiePolicy(allowed_domains=[])),
         )
 
     async def send(self, request: httpx.Request) -> httpx.Response:

@@ -4,9 +4,11 @@ from collections.abc import Callable
 
 import httpx
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from jatszoter_web.cookies import CSRF_COOKIE, LINK_COOKIE, SESSION_COOKIE, Operator
+from jatszoter_web.settings import Settings, b64url_encode
 
 Routes = dict[tuple[str, str], Callable[[httpx.Request], httpx.Response]]
 
@@ -52,6 +54,34 @@ def test_a_link_open_is_relayed_and_redacted_in_the_log(
     assert calls[0].headers["host"] == HOST
     assert "GET /s/<redacted> 303" in caplog.text
     assert TOKEN not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        Settings(
+            api_url="https://api.example.com",
+            cookie_keys={"k1": b64url_encode(bytes(range(32)))},
+            cookie_kid="k1",
+        )
+    ],
+)
+def test_a_relayed_link_cookie_is_never_sent_for_another_browser(
+    app: FastAPI, client: TestClient, routes: Routes, calls: list[httpx.Request]
+) -> None:
+    link = f"{LINK_COOKIE}=s1; HttpOnly; Secure; Path=/api/v1/deployments/{DEPLOYMENT}"
+    routes[("GET", f"/s/{TOKEN}")] = lambda _: httpx.Response(
+        303, headers=[("location", f"/t/{DEPLOYMENT}"), ("set-cookie", link)]
+    )
+    routes[("GET", TASK)] = lambda _: httpx.Response(200, json={"status": "READY"})
+
+    client.get(f"/s/{TOKEN}")
+    client.cookies.clear()
+    response = client.get(TASK)
+
+    assert response.status_code == 200
+    assert "cookie" not in calls[1].headers
+    assert not app.state.api.http.cookies
 
 
 def test_a_link_call_passes_the_allow_listed_headers_alone(

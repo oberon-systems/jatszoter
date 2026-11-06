@@ -80,6 +80,7 @@ fn run() -> Result<(), AgentError> {
 }
 
 async fn serve(config: Config) -> Result<(), AgentError> {
+    netcheck::preflight(&config.passt, nix::unistd::geteuid().as_raw())?;
     config.prepare()?;
     let api = HttpApi::new(config.api_url.clone())?;
     let runtime = QemuRuntime::new(&config, api.clone())?;

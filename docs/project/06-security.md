@@ -141,9 +141,10 @@ operator has not taken control.
 
 - The guest is not a security boundary. A trainee has root in the VM, and a
   QEMU escape is out of scope.
-- QEMU runs as the agent's unprivileged user with KVM. VM directories are
-  0700, which keeps everyone but that user away from the sockets, logs and
-  disks inside them, whatever modes those files have.
+- QEMU runs as the agent's unprivileged user with KVM, and the agent
+  refuses to start as root. VM directories are 0700, which keeps everyone
+  but that user away from the sockets, logs and disks inside them, whatever
+  modes those files have.
 - A VM starts only with KVM, because QEMU supports hardware virtualization
   as a security boundary and does not support its TCG emulator as one.
   Without a usable `/dev/kvm` a deployment on that agent fails with the code
@@ -162,8 +163,9 @@ operator has not taken control.
   local user of the agent host can connect to such a port for as long as
   the VM runs.
 - passt older than `2026_10_02` forwards a guest packet sent to
-  `127.0.0.1` to the host's loopback. `jatszoter-agent check-network`
-  refuses such a host; see [09](09-guest-network.md).
+  `127.0.0.1` to the host's loopback. The agent refuses to start with
+  such a passt, and `jatszoter-agent check-network` refuses such a host;
+  see [09](09-guest-network.md).
 - Services the agent host binds to its other addresses stay reachable from
   the guest, as from any client on the network; firewall them accordingly.
 - The agent never passes scenario text or trainee input to a host shell;

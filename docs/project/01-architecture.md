@@ -323,8 +323,9 @@ WS   /api/v1/agents/{agent_id}/deployments/{id}/console   signed
   loopback, unlike QEMU's own user-mode network. It runs with `--one-off`
   and exits when QEMU does; destroy also kills the pid in `passt.pid` when
   its command line names the VM's `net.sock`.
-- passt must be `2026_10_02` or newer; `jatszoter-agent check-network`
-  starts it as above, plays the guest and fails when the host is not safe.
+- passt must be `2026_10_02` or newer, and the agent refuses to start with
+  an older one or as root. `jatszoter-agent check-network` starts passt as
+  above, plays the guest and fails when the host is not safe.
   Installing it is [09](09-guest-network.md).
 - The trainee's shell is the guest's serial console `ttyS0`; no SSH and no
   port forwarding are involved in it.

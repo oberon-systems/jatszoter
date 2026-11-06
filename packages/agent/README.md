@@ -7,7 +7,8 @@ a [QEMU](https://www.qemu.org/) VM bootstrapped with
 
 ## Requirements
 
-The agent runs as an unprivileged user and spawns these host tools:
+The agent runs as an unprivileged user, refuses to start as root, and spawns
+these host tools:
 
 | Tool                 | Used for                              | Setting                     |
 | -------------------- | ------------------------------------- | --------------------------- |

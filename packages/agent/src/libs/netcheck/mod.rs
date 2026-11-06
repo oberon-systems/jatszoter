@@ -13,6 +13,7 @@ use nix::unistd::Pid;
 use tempfile::TempDir;
 
 use crate::libs::config::{prepare_private_dir, NetConfig};
+use crate::libs::error::AgentError;
 use crate::libs::vm::{passt_args, NET, PASST_PID};
 
 pub const MIN_VERSION: &str = "2026_10_02";
@@ -91,6 +92,16 @@ fn silent() -> String {
     "passt took the connection but answered no ARP request; is its AppArmor or SELinux \
      profile in place?"
         .into()
+}
+
+/// What `serve` needs before it starts a VM: an agent that is not root, and a passt new enough.
+pub fn preflight(passt: &Path, euid: u32) -> Result<(), AgentError> {
+    if euid == 0 {
+        return Err(AgentError::Config(
+            "the agent runs as root, and so would QEMU; run it as an unprivileged user".into(),
+        ));
+    }
+    version(passt).map_err(|why| AgentError::Config(format!("passt: {why}; see {RUNBOOK}")))
 }
 
 fn version(passt: &Path) -> Result<(), String> {

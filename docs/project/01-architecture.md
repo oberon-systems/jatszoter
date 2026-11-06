@@ -53,9 +53,11 @@ API.
   in [02](02-domain-model.md#storage-rules). Migrations:
   [Alembic](https://alembic.sqlalchemy.org/).
 - Files: the [SeaweedFS](https://github.com/seaweedfs/seaweedfs) filer at
-  `JATSZOTER_SEAWEED_URL`. Without it the API writes the same layout under
-  `data/storage/` in its working directory, the way fakeredis stands in for
-  Valkey; where that directory lives is the environment's concern.
+  `JATSZOTER_SEAWEED_URL`, called with a JWT under
+  `JATSZOTER_SEAWEED_JWT_KEY`; see [06](06-security.md#seaweedfs-filer).
+  Without a filer URL the API writes the same layout under `data/storage/`
+  in its working directory, the way fakeredis stands in for Valkey; where
+  that directory lives is the environment's concern.
 - Ephemeral state: [Valkey](https://valkey.io/), or an in-memory
   [fakeredis](https://github.com/cunla/fakeredis-py) when none is configured;
   see [02](02-domain-model.md#ephemeral-state).

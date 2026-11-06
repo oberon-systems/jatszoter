@@ -15,6 +15,7 @@ operator has not taken control.
 - [Answer headers](#answer-headers)
 - [Images](#images)
 - [Valkey](#valkey)
+- [SeaweedFS filer](#seaweedfs-filer)
 - [Scenario secrecy](#scenario-secrecy)
 - [Check verdicts](#check-verdicts)
 - [Web](#web)
@@ -290,6 +291,38 @@ code or link session of the writer's choosing.
   signed value of the same entry.
 
 Keep Valkey private, with a password.
+
+## SeaweedFS filer
+
+The filer holds every scenario bundle, with its break step and check script,
+and every console log and recording. Who reads it learns every scenario's
+answer; who writes it alters exam evidence.
+
+- Set `JATSZOTER_SEAWEED_JWT_KEY` to a random value of 32 bytes or more. The
+  API then signs every filer call with a JWT under that key, valid for 60
+  seconds. Without it the API logs a warning at start and calls the filer
+  without a token.
+- Give the filer the same key for writes and for reads, in its
+  `security.toml`:
+
+```toml
+[jwt.filer_signing]
+key = "<the value of JATSZOTER_SEAWEED_JWT_KEY>"
+
+[jwt.filer_signing.read]
+key = "<the value of JATSZOTER_SEAWEED_JWT_KEY>"
+```
+
+- Keep the filer, the master and the volume servers private: reachable from
+  the API alone, never from agent hosts or guest networks. The token guards
+  the filer's port only.
+- Check it from a guest of a deployment on the stand:
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' http://filer.example.com:8888/scenarios/
+```
+
+A safe stand answers with a connection error or with `401`.
 
 ## Scenario secrecy
 

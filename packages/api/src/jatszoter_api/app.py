@@ -8,6 +8,7 @@ from sqlmodel import Session, create_engine
 
 from jatszoter_api.answers import HANDLERS, LINK_PATH
 from jatszoter_api.console_hub import ConsoleHub
+from jatszoter_api.file import File
 from jatszoter_api.middleware import BODY_LIMIT, AnswerHeaders, BodyLimit
 from jatszoter_api.models import Role, State, User
 from jatszoter_api.models._cache import Cached
@@ -67,6 +68,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.master_keys,
         settings.master_kid,
     )
+    key = settings.seaweed_jwt_key
+    File.connect(None if key is None else key.get_secret_value())
+    if settings.seaweed_url is not None and key is None:
+        log.warning("JATSZOTER_SEAWEED_JWT_KEY is unset: the filer is called without a token")
     # The same filter instance every time, so a second app adds nothing.
     logging.getLogger("uvicorn.access").addFilter(_REDACT_LINKS)
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, redirect_slashes=False)

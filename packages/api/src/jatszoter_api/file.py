@@ -1,11 +1,18 @@
+import base64
+import hashlib
+import hmac
+import json
 import os
 import tempfile
+import time
 from pathlib import Path
+from typing import ClassVar
 from urllib.parse import quote
 
 import httpx
 
 TIMEOUT = 30.0
+TOKEN_SECONDS = 60
 DATA_DIR = Path("data/storage")
 # Where the disk filer answers; its transport never opens a connection.
 DISK_BASE = "http://files.invalid/"
@@ -16,6 +23,17 @@ def _segments(path: str) -> list[str]:
     if any(segment in ("", ".", "..") for segment in segments):
         raise ValueError(f"not a relative file path: {path!r}")
     return segments
+
+
+def _b64(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def filer_token(key: bytes, now: int) -> str:
+    """An HS256 JWT the filer accepts under `jwt.filer_signing` and `jwt.filer_signing.read`."""
+    claims = json.dumps({"exp": now + TOKEN_SECONDS}).encode()
+    signed = _b64(b'{"alg":"HS256","typ":"JWT"}') + "." + _b64(claims)
+    return signed + "." + _b64(hmac.new(key, signed.encode(), hashlib.sha256).digest())
 
 
 class DiskFiler(httpx.BaseTransport):
@@ -72,6 +90,14 @@ class DiskFiler(httpx.BaseTransport):
 class File:
     """One file the API keeps under `path`, on the filer or on local disk."""
 
+    _jwt_key: ClassVar[bytes | None] = None
+
+    @classmethod
+    def connect(cls, jwt_key: str | None) -> None:
+        """Sign every call to the filer with `jwt_key`, the filer's own signing key; none
+        without one."""
+        cls._jwt_key = None if jwt_key is None else jwt_key.encode()
+
     def __init__(self, path: str, data: bytes = b"", filer_url: str | None = None) -> None:
         transport: httpx.BaseTransport | None = None
         if filer_url is not None:
@@ -81,24 +107,32 @@ class File:
         _segments(path)
         self.url = base + quote(path)
         self.data = data
+        self._key = None if filer_url is None else self._jwt_key
         self._client = httpx.Client(transport=transport, timeout=TIMEOUT)
 
+    def _headers(self) -> dict[str, str]:
+        if self._key is None:
+            return {}
+        return {"authorization": f"Bearer {filer_token(self._key, int(time.time()))}"}
+
     def put(self) -> None:
-        self._client.put(self.url, content=self.data).raise_for_status()
+        self._client.put(self.url, content=self.data, headers=self._headers()).raise_for_status()
 
     def append(self) -> None:
-        self._client.post(self.url, params={"op": "append"}, content=self.data).raise_for_status()
+        self._client.post(
+            self.url, params={"op": "append"}, content=self.data, headers=self._headers()
+        ).raise_for_status()
 
     def size(self) -> int:
-        response = self._client.head(self.url)
+        response = self._client.head(self.url, headers=self._headers())
         if response.status_code == 404:
             return 0
         return int(response.raise_for_status().headers["Content-Length"])
 
     def get(self) -> None:
-        self.data = self._client.get(self.url).raise_for_status().content
+        self.data = self._client.get(self.url, headers=self._headers()).raise_for_status().content
 
     def delete(self) -> None:
-        response = self._client.delete(self.url)
+        response = self._client.delete(self.url, headers=self._headers())
         if response.status_code != 404:
             response.raise_for_status()

@@ -1,10 +1,15 @@
+import base64
+import hashlib
+import hmac
+import json
 import stat
+import time
 from pathlib import Path
 
 import httpx
 import pytest
 
-from jatszoter_api.file import DISK_BASE, DiskFiler, File
+from jatszoter_api.file import DISK_BASE, TOKEN_SECONDS, DiskFiler, File
 
 FILER = "http://filer.example.com:8888/buckets/"
 BAD_PATHS = [
@@ -203,3 +208,45 @@ def test_a_filer_error_other_than_404_raises_from_size(
 
     with pytest.raises(httpx.HTTPStatusError):
         File("alpha.log", filer_url=FILER).size()
+
+
+def test_every_filer_call_carries_a_fresh_token_signed_with_the_filer_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests = filer(monkeypatch)
+    monkeypatch.setattr(File, "_jwt_key", None)
+    File.connect("filer-key-alpha")
+    file = File("alpha/beta.cast", b"gamma", FILER)
+
+    file.put()
+    file.append()
+    file.size()
+    file.get()
+    file.delete()
+
+    assert len(requests) == 5
+    for request in requests:
+        scheme, token = request.headers["authorization"].split(" ")
+        header, claims, signature = token.split(".")
+        expected = hmac.new(b"filer-key-alpha", f"{header}.{claims}".encode(), hashlib.sha256)
+        assert scheme == "Bearer"
+        assert base64.urlsafe_b64encode(expected.digest()).rstrip(b"=").decode() == signature
+        assert json.loads(base64.urlsafe_b64decode(header + "==")) == {
+            "alg": "HS256",
+            "typ": "JWT",
+        }
+        expires = json.loads(base64.urlsafe_b64decode(claims + "=="))["exp"]
+        assert 0 < expires - time.time() <= TOKEN_SECONDS
+
+
+def test_no_token_goes_to_a_filer_without_a_key_or_to_the_disk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests = filer(monkeypatch)
+    monkeypatch.setattr(File, "_jwt_key", None)
+
+    File("alpha.cast", b"beta", FILER).put()
+    File.connect("filer-key-alpha")
+    assert File("alpha.cast")._headers() == {}
+
+    assert "authorization" not in requests[0].headers

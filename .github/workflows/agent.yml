@@ -38,10 +38,11 @@ jobs:
       - name: Guest network
         env:
           PASST_TAG: 2026_10_02.cba3570
+          PASST_COMMIT: cba357068dc586e7540971eb40bb56c5e62c4de1
         run: |
           src=$RUNNER_TEMP/passt
           git clone --quiet --depth 1 --branch "$PASST_TAG" https://passt.top/passt "$src"
-          test "$(git -C "$src" rev-parse --short=7 HEAD)" = "${PASST_TAG#*.}"
+          test "$(git -C "$src" rev-parse HEAD)" = "$PASST_COMMIT"
           make -C "$src"
           sudo install -m 0755 "$src/passt" "$src/passt.avx2" /usr/local/bin/
           sed 's#/usr/bin/passt.avx2#/usr/local/bin/passt.avx2#' \

@@ -64,3 +64,22 @@ architecture; propose the change in `docs/` first.
 
 Never implement host execution as `/bin/sh -c <scenario or trainee input>`.
 Never log tokens or links.
+
+## Branches and releases
+
+The model in [CONTRIBUTING.md](CONTRIBUTING.md#branches-and-releases) binds
+from the moment tag `1.0.0` exists (`git tag -l 1.0.0`). Before that, work
+stays on `main`.
+
+- Work happens on `dev`, and pull requests target `dev`. Never commit or push
+  to `main`; when the current branch is `main`, stop and ask the user.
+- `main` moves only at a release: `dev` is merged with a merge commit, then
+  the bump and the tag land on `main`, then `dev` is fast-forwarded to
+  `main`. Never rebase or force-push `main`, `dev` or a stable branch.
+- Minor and patch releases come straight from `main`. Only a major first
+  branches `N.x.x-stable` off `main`.
+- A patch to an older major is made on its `N.x.x-stable` branch and tagged
+  there.
+- The packages `api-`, `web-` and `agent-X.Y.Z` keep their own versions, but
+  their major follows the release major.
+- Releases, bumps and tags happen only when the user asks for them.

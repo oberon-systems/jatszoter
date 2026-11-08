@@ -81,13 +81,21 @@ class Cached:
     def _delete(self, key: str) -> bool:
         return bool(self._client().delete(key))
 
-    def _count(self, key: str) -> int:
-        """Read a counter `_increment` wrote: a bare number, not a sealed entry."""
-        raw = self._client().get(key)
-        return int(raw) if isinstance(raw, bytes) else 0
-
     def _increment(self, key: str, ttl: int) -> int:
         """Count one more under `key`, in a `ttl` window the first count opens."""
-        count = self._client().incr(key)
-        self._client().expire(key, ttl, nx=True)
+        with self._client().pipeline(transaction=True) as pipe:
+            pipe.incr(key)
+            pipe.expire(key, ttl, nx=True)
+            count, _ = pipe.execute()  # type: ignore[no-untyped-call]  # valkey leaves it untyped
         return count if isinstance(count, int) else 0
+
+    def _decrement(self, key: str) -> None:
+        """Take one count back; a counter that reaches zero is dropped."""
+        count = self._client().decr(key)
+        if not isinstance(count, int) or count <= 0:
+            self._client().delete(key)
+
+    def _seconds_left(self, key: str) -> int:
+        """Seconds until `key` expires, 0 when it has no TTL or is gone."""
+        seconds = self._client().ttl(key)
+        return seconds if isinstance(seconds, int) and seconds > 0 else 0

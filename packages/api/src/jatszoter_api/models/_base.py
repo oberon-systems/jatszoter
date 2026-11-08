@@ -54,10 +54,10 @@ class Base(SQLModel, Cached):
             raise
 
     def _get(self, key: str, load: Callable[[], Any] | None = None, ttl: int = 10) -> Any | None:
-        """`<key>:<id>` from the cache, renewed for `ttl` s on a hit; a miss stores `load()`."""
+        """`<key>:<id>` from the cache; a miss stores `load()` for `ttl` s."""
+        # Never renewed on a hit: a stale value a racing miss wrote back ends within `ttl`.
         value = super()._get(f"{key}:{self.id}")
         if value is not None:
-            super()._ttl(f"{key}:{self.id}", ttl)
             return value
         if load is None:
             return None

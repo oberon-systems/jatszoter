@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import ipaddress
+import re
 import secrets
 import time
 from enum import StrEnum
@@ -29,8 +30,10 @@ WEAK = (
 UNCHANGED = "must differ from the current password"
 LOGIN_FAILURES = 10
 NAME_FAILURES = 100
+ADDRESS_FAILURES = LOGIN_FAILURES
 LOGIN_WINDOW_SECONDS = 15 * 60
 DEVICE_SECONDS = 90 * 24 * 60 * 60
+EXPIRES_AT = re.compile(r"[0-9]{1,12}")
 ADMIN = "admin"
 # Checked against for an unknown name, so it costs one scrypt like a real user.
 _DECOY = f"scrypt${SCRYPT_N}${SCRYPT_R}${SCRYPT_P}${'00' * 16}${'00' * 32}"
@@ -120,8 +123,10 @@ class User(SecretOwner, table=True):
 
     def login(self, password: str, client: str, device: str | None, keys: dict[str, str]) -> None:
         """Check `password` and the state of this user. Failures are throttled per device for
-        a valid device token, otherwise per client address and, higher, per name."""
+        a valid device token, otherwise per client address and name, per client address
+        across names and, higher, per name."""
         nonce = self._device(device, keys) if device else None
+        address: list[tuple[str, int]] = []
         if nonce is not None:
             counters = [(_hashed_key(self.name, "device", nonce), LOGIN_FAILURES)]
         else:
@@ -129,14 +134,22 @@ class User(SecretOwner, table=True):
                 (_hashed_key(self.name, "client", _client(client)), LOGIN_FAILURES),
                 (_hashed_key(self.name), NAME_FAILURES),
             ]
-        if any(self._count(key) >= limit for key, limit in counters):
-            raise ThrottledError("too many attempts", code="login-throttled")
+            address = [(_hashed_key("address", _client(client)), ADDRESS_FAILURES)]
+        over = [
+            key
+            for key, limit in counters + address
+            if self._increment(key, LOGIN_WINDOW_SECONDS) > limit
+        ]
+        if over:
+            retry_after = max(self._seconds_left(key) for key in over)
+            raise ThrottledError("too many attempts", "login-throttled", retry_after)
         if not self.check_password(password) or self.state is not State.ENABLED:
-            for key, _ in counters:
-                self._increment(key, LOGIN_WINDOW_SECONDS)
             raise NotAuthorizedError("not authorized")
         for key, _ in counters:
             Cached._delete(self, key)
+        # The address counter spans names, so a login to one name must not clear it.
+        for key, _ in address:
+            self._decrement(key)
 
     def device_token(self, kid: str, keys: dict[str, str]) -> str:
         """`kid.expires_at.nonce.mac`: what marks a browser this user logged in from."""
@@ -150,7 +163,7 @@ class User(SecretOwner, table=True):
         parts = token.rsplit(".", 3)
         if len(parts) != 4 or parts[0] not in keys:
             return None
-        if not (parts[1].isascii() and parts[1].isdigit()):
+        if not EXPIRES_AT.fullmatch(parts[1]):
             return None
         kid, expires_at, nonce, mac = parts
         if int(expires_at) <= time.time():

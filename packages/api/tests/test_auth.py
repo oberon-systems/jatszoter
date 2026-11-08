@@ -17,7 +17,13 @@ from jatszoter_api.auth import require_operator
 from jatszoter_api.models import Role, State, User
 from jatszoter_api.models import user as user_model
 from jatszoter_api.models.secret import SIGNATURE_WINDOW_SECONDS
-from jatszoter_api.models.user import LOGIN_FAILURES, UNCHANGED, WEAK, _device_mac
+from jatszoter_api.models.user import (
+    LOGIN_FAILURES,
+    LOGIN_WINDOW_SECONDS,
+    UNCHANGED,
+    WEAK,
+    _device_mac,
+)
 from jatszoter_api.settings import Settings
 
 PASSWORD = "Correct horse battery"
@@ -85,14 +91,19 @@ class Operator:
         self.key = credential["key"]
 
     def call(
-        self, method: str, path: str, signed_path: str | None = None, skew: int = 0
+        self,
+        method: str,
+        path: str,
+        signed_path: str | None = None,
+        skew: int = 0,
+        signature: bytes | None = None,
     ) -> Response:
         timestamp = str(int(time.time()) + skew)
         nonce = secrets.token_hex(16)
         message = "\n".join(
             (timestamp, nonce, method, signed_path or path, hashlib.sha256(b"").hexdigest())
         )
-        headers = {
+        headers: dict[str, str | bytes] = {
             "X-Owner": self.id,
             "X-Credential": self.credential,
             "X-Timestamp": timestamp,
@@ -101,6 +112,8 @@ class Operator:
                 self.key.encode(), message.encode(), hashlib.sha256
             ).hexdigest(),
         }
+        if signature is not None:
+            headers["X-Signature"] = signature
         response: Response = self.client.request(method, path, headers=headers)
         return response
 
@@ -205,7 +218,10 @@ def test_too_many_failures_are_throttled_even_with_the_right_password(
     assert login(client, "alpha", PASSWORD).status_code == 429
 
 
-def test_a_success_clears_the_failures(client: TestClient, session: Session) -> None:
+def test_a_success_clears_the_failures(
+    client: TestClient, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(user_model, "ADDRESS_FAILURES", 100)
     add_user(session)
     for _ in range(LOGIN_FAILURES - 1):
         login(client, "alpha", "not the password")
@@ -259,6 +275,68 @@ def test_a_device_has_a_limit_of_its_own(
 
     assert login(browser, "alpha", PASSWORD, device=device).status_code == 429
     assert login(browser, "alpha", PASSWORD).status_code == 200
+
+
+def test_one_address_failing_across_names_is_throttled(
+    session: Session, from_address: Callable[[str], TestClient]
+) -> None:
+    add_user(session)
+    attacker = from_address("192.0.2.1")
+    for number in range(LOGIN_FAILURES):
+        assert login(attacker, f"name-{number}", PASSWORD).status_code == 401
+
+    throttled = login(attacker, "alpha", PASSWORD)
+
+    assert throttled.status_code == 429
+    assert 0 < int(throttled.headers["Retry-After"]) <= LOGIN_WINDOW_SECONDS
+    assert login(from_address("192.0.2.2"), "alpha", PASSWORD).status_code == 200
+
+
+def test_logins_that_succeed_leave_the_address_counter_alone(
+    session: Session, from_address: Callable[[str], TestClient]
+) -> None:
+    for name in ("alpha", "beta"):
+        add_user(session, name)
+    office = from_address("192.0.2.1")
+    for _ in range(2 * LOGIN_FAILURES):
+        assert login(office, "alpha", PASSWORD).status_code == 200
+
+    fail(office, LOGIN_FAILURES)
+    assert login(office, "beta", PASSWORD).status_code == 429
+
+
+def test_a_throttled_login_says_when_to_try_again(client: TestClient, session: Session) -> None:
+    add_user(session)
+    fail(client)
+
+    throttled = login(client, "alpha", PASSWORD)
+
+    assert throttled.status_code == 429
+    assert 0 < int(throttled.headers["Retry-After"]) <= LOGIN_WINDOW_SECONDS
+
+
+def test_an_overlong_device_token_is_refused_without_a_500(
+    client: TestClient, session: Session, settings: Settings
+) -> None:
+    add_user(session)
+    kid = next(iter(settings.master_keys))
+
+    long_expiry = login(client, "alpha", PASSWORD, device=f"{kid}.{'9' * 200}.x.y")
+    too_long = login(client, "alpha", PASSWORD, device=f"{kid}.{'9' * 5000}.x.y")
+
+    assert long_expiry.status_code == 200
+    assert too_long.status_code == 422
+
+
+def test_a_signature_with_a_byte_above_ascii_is_refused_without_a_500(
+    client: TestClient, session: Session
+) -> None:
+    add_user(session)
+    operator = logged_in(client)
+
+    assert operator.call("GET", PROBE, signature=b"\xe9" * 64).status_code == 401
+    assert operator.call("GET", PROBE, signature=b"A" * 64).status_code == 401
+    assert operator.call("GET", PROBE).status_code == 200
 
 
 def tokens(user: User, other: str, keys: dict[str, str]) -> list[str]:

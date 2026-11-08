@@ -20,7 +20,7 @@ class LoginIn(StrictModel):
     name: Annotated[str, Field(min_length=1, max_length=64)]
     password: Password
     new_password: Password | None = None
-    device: str | None = None
+    device: Annotated[str, Field(max_length=256)] | None = None
 
 
 class LoginOut(BaseModel):

@@ -108,7 +108,7 @@ class File:
         self.url = base + quote(path)
         self.data = data
         self._key = None if filer_url is None else self._jwt_key
-        self._client = httpx.Client(transport=transport, timeout=TIMEOUT)
+        self._client = httpx.Client(transport=transport, timeout=TIMEOUT, trust_env=False)
 
     def _headers(self) -> dict[str, str]:
         if self._key is None:

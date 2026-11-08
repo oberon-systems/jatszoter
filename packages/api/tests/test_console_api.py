@@ -543,7 +543,9 @@ def test_a_revoked_link_or_a_disabled_user_is_refused(
     assert refused(join(api, ready.id, other)) == 1008
 
 
-@pytest.mark.parametrize("origin", ["https://example.com", "http://testserver.example.com", "null"])
+@pytest.mark.parametrize(
+    "origin", ["https://example.com", "http://testserver.example.com", "null", "http://[::1"]
+)
 def test_a_link_with_a_foreign_origin_is_refused(
     api: TestClient, session: Session, deploy: Callable[..., Deployment], origin: str
 ) -> None:
@@ -812,7 +814,9 @@ def test_control_is_403_for_a_trainee_or_viewer_link(
     assert ready.console.control() is Holder.TRAINEE
 
 
-@pytest.mark.parametrize("origin", ["https://example.com", "http://testserver.example.com", "null"])
+@pytest.mark.parametrize(
+    "origin", ["https://example.com", "http://testserver.example.com", "null", "http://[::1"]
+)
 def test_control_with_a_foreign_origin_is_refused(
     api: TestClient, session: Session, deploy: Callable[..., Deployment], origin: str
 ) -> None:

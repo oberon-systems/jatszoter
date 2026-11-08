@@ -88,7 +88,10 @@ async def answer(
 async def domain_error(conn: HTTPConnection, exc: Exception) -> Response | None:
     if not isinstance(exc, DomainError):
         return await server_error(conn, exc)
-    return await answer(conn, _DOMAIN_STATUS.get(type(exc), 400), exc.code, str(exc))
+    headers = None
+    if isinstance(exc, ThrottledError) and exc.retry_after > 0:
+        headers = {"Retry-After": str(exc.retry_after)}
+    return await answer(conn, _DOMAIN_STATUS.get(type(exc), 400), exc.code, str(exc), headers)
 
 
 async def http_error(conn: HTTPConnection, exc: Exception) -> Response | None:

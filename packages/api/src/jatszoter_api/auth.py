@@ -16,6 +16,7 @@ LINK_COOKIE = "jatszoter_link"
 # Not isdigit: it passes a superscript and any length, and int() refuses both.
 TIMESTAMP = re.compile(r"[0-9]{1,12}")
 NONCE = re.compile(r"[0-9a-f]{32}")
+SIGNATURE = re.compile(r"[0-9a-f]{64}")
 
 
 def unauthorized() -> HTTPException:
@@ -62,7 +63,12 @@ def _signed[T: SecretOwner](
 ) -> T:
     """The owner `owner_id` names, once its signed request checks out and its nonce is new."""
     credential = _credential(owner_id, x_credential)
-    if credential is None or not TIMESTAMP.fullmatch(x_timestamp) or not NONCE.fullmatch(x_nonce):
+    well_formed = (
+        TIMESTAMP.fullmatch(x_timestamp)
+        and NONCE.fullmatch(x_nonce)
+        and SIGNATURE.fullmatch(x_signature)
+    )
+    if credential is None or not well_formed:
         raise unauthorized()
     try:
         owner = model(session=session).load(id=owner_id)
@@ -179,7 +185,13 @@ def socket_operator(websocket: WebSocket, session: Session, keys: dict[str, str]
 def _foreign(headers: Headers) -> bool:
     """Whether an `Origin` was sent and names another host than the request's own."""
     origin = headers.get("origin")
-    return origin is not None and urlsplit(origin).netloc.lower() != headers.get("host", "").lower()
+    if origin is None:
+        return False
+    try:
+        netloc = urlsplit(origin).netloc
+    except ValueError:
+        return True
+    return netloc.lower() != headers.get("host", "").lower()
 
 
 def _resumed(session: Session, token: str | None) -> tuple[Link, User]:

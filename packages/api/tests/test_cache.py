@@ -101,14 +101,51 @@ def test_a_miss_without_a_loader_stores_nothing(session: Session) -> None:
     assert not Cached._client().exists(f"alpha:{user.id}")
 
 
-def test_a_hit_extends_the_ttl(session: Session) -> None:
+def test_a_hit_keeps_the_ttl_so_a_stale_entry_ends_on_time(session: Session) -> None:
     user = viewer(session)
     user._set("alpha", 1, 60)
-    Cached._client().expire(f"alpha:{user.id}", 1)
+    Cached._client().expire(f"alpha:{user.id}", 5)
 
-    assert user._get("alpha", ttl=60) == 1
+    for _ in range(3):
+        assert user._get("alpha", ttl=60) == 1
 
-    assert ttl(f"alpha:{user.id}") > 50
+    assert 0 < ttl(f"alpha:{user.id}") <= 5
+
+
+def test_a_counter_gets_its_window_with_the_first_count() -> None:
+    cache = Cached()
+
+    assert cache._increment("alpha", 60) == 1
+    assert cache._increment("alpha", 60) == 2
+    assert 0 < ttl("alpha") <= 60
+
+
+def test_a_counter_whose_expire_fails_is_not_left_without_a_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline = type(Cached._client().pipeline())
+
+    def broken(*args: Any, **kwargs: Any) -> None:
+        raise ConnectionError("alpha")
+
+    monkeypatch.setattr(pipeline, "expire", broken)
+    with pytest.raises(ConnectionError):
+        Cached()._increment("alpha", 60)
+
+    assert not Cached._client().exists("alpha") or ttl("alpha") > 0
+
+
+def test_a_counter_taken_back_to_zero_is_dropped() -> None:
+    cache = Cached()
+    cache._increment("alpha", 60)
+    cache._increment("alpha", 60)
+
+    cache._decrement("alpha")
+    assert 0 < ttl("alpha") <= 60
+    cache._decrement("alpha")
+    assert not Cached._client().exists("alpha")
+    cache._decrement("alpha")
+    assert not Cached._client().exists("alpha")
 
 
 def test_delete_drops_the_owner_entry(session: Session) -> None:

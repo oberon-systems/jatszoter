@@ -44,6 +44,10 @@ class ThrottledError(DomainError):
 
     CODE = "throttled"
 
+    def __init__(self, message: str = "", code: str | None = None, retry_after: int = 0) -> None:
+        super().__init__(message, code)
+        self.retry_after = retry_after
+
 
 class ConflictError(DomainError):
     """The request collides with what is already registered."""

@@ -3,7 +3,11 @@ import hashlib
 import hmac
 import json
 import stat
+import threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import httpx
@@ -250,3 +254,46 @@ def test_no_token_goes_to_a_filer_without_a_key_or_to_the_disk(
     assert File("alpha.cast")._headers() == {}
 
     assert "authorization" not in requests[0].headers
+
+
+@contextmanager
+def listener() -> Iterator[tuple[str, list[str]]]:
+    """A local HTTP server answering 201 to anything; its URL and the paths it was asked."""
+    seen: list[str] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_PUT(self) -> None:
+            seen.append(self.path)
+            self.rfile.read(int(self.headers.get("Content-Length", "0")))
+            self.send_response(201)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        do_GET = do_PUT
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/", seen
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_the_filer_is_reached_directly_whatever_proxy_the_environment_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with listener() as (proxy, through_proxy), listener() as (filer_url, at_filer):
+        for name in ("HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"):
+            monkeypatch.setenv(name, proxy)
+        for name in ("NO_PROXY", "no_proxy"):
+            monkeypatch.delenv(name, raising=False)
+
+        File("alpha/beta.cast", b"gamma", filer_url).put()
+
+    assert at_filer == ["/alpha/beta.cast"]
+    assert through_proxy == []

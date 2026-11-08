@@ -261,3 +261,38 @@ def test_a_bundle_unpacking_past_four_times_the_limit_is_refused(pack: Pack) -> 
     assert len(data) < limit
     with pytest.raises(TooLargeError, match="unpacks"):
         bundles.read(data, limit)
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        VALID.replace(b"id: nginx-502", b'id: "nginx-502\\n"'),
+        VALID + b'tags: ["alpha\\n"]\n',
+        VALID.replace(b"image: rocky-9", b'image: "rocky-9\\n"'),
+        VALID + b'trainee: {user: "alpha\\n"}\n',
+        VALID.replace(b"check: check.sh", b'check: "check.sh\\n"'),
+        VALID + b'outside: {network: [{port: 80, http: {path: "/alpha\\n"}}]}\n',
+        VALID + b'outside: {network: [{port: 80, http: {contains: "alpha\\n"}}]}\n',
+        VALID + b'outside: {disk: [{path: "/etc/alpha\\n"}]}\n',
+        VALID + b'outside: {disk: [{path: "/etc/alpha", contains: "beta\\n"}]}\n',
+    ],
+)
+def test_a_trailing_newline_is_refused_in_every_patterned_field(
+    pack: Pack, document: bytes
+) -> None:
+    with pytest.raises(InvalidBundleError) as refused:
+        bundles.read(pack(changes={"scenario.yaml": document}), LIMIT)
+
+    assert refused.value.code == "scenario-invalid"
+
+
+def test_the_patterned_fields_without_a_newline_still_read(pack: Pack) -> None:
+    document = VALID + (
+        b"tags: [alpha]\ntrainee: {user: alpha}\n"
+        b"outside: {network: [{port: 80, http: {path: /alpha, contains: beta}}],"
+        b" disk: [{path: /etc/alpha, contains: beta}]}\n"
+    )
+
+    assert bundles.read(pack(changes={"scenario.yaml": document}), LIMIT).document["tags"] == [
+        "alpha"
+    ]

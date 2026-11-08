@@ -69,7 +69,7 @@ jatszoter-agent check-network
 ## Install
 
 ```bash
-cargo install jatszoter-agent
+cargo install --locked jatszoter-agent
 ```
 
 A prebuilt `x86_64-linux-gnu` binary and its `SHA256SUMS` are attached to

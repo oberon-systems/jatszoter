@@ -10,18 +10,18 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
-  "cryptography",
-  "fastapi",
-  "httpx",
-  "jinja2",
-  "pydantic-settings",
-  "python-multipart",
-  "websockets",
+  "cryptography>=50.0.2",
+  "fastapi>=0.149.0",
+  "httpx>=0.28.1",
+  "jinja2>=3.1.6",
+  "pydantic-settings>=2.16.0",
+  "python-multipart>=0.0.32",
+  "websockets>=17.3",
 ]
 
 [project.optional-dependencies]
 # What serves the app in a container; the library itself needs neither.
-server = ["uvicorn[standard]"]
+server = ["uvicorn[standard]>=0.54.0"]
 
 [tool.setuptools.package-data]
 jatszoter_web = ["py.typed", "templates/*.html", "static/*.css", "static/*.js", "static/vendor/*/*"]

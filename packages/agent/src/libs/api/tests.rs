@@ -836,3 +836,60 @@ fn the_debug_of_a_disk_result_shows_no_path() {
 
     assert!(!format!("{result:?}").contains("secret"));
 }
+
+async fn redirecting_to(target: &MockServer) -> MockServer {
+    let server = MockServer::start().await;
+    Mock::given(any())
+        .respond_with(
+            ResponseTemplate::new(307)
+                .insert_header("Location", format!("{}/elsewhere", target.uri()).as_str()),
+        )
+        .mount(&server)
+        .await;
+    server
+}
+
+#[tokio::test]
+async fn a_redirect_carries_neither_the_claim_code_nor_a_signed_call_elsewhere() {
+    let elsewhere = MockServer::start().await;
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&elsewhere)
+        .await;
+    let server = redirecting_to(&elsewhere).await;
+
+    let claimed = api(&server).claim("delta").await;
+    let beat = api(&server)
+        .heartbeat("gamma", &credential(), 2, Accelerator::Kvm)
+        .await;
+
+    assert!(!matches!(claimed, Ok(Claim::Granted { .. })), "{claimed:?}");
+    assert!(!matches!(beat, Ok(Signed::Accepted(_))), "{beat:?}");
+    assert!(elsewhere.received_requests().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_claim_answer_that_does_not_decode_keeps_its_content_out_of_the_error() {
+    let server = MockServer::start().await;
+    let body = json!({"agent_id": "gamma", "credential": {
+        "credential": "current:1:1790000000", "expires_at": 1_790_000_000,
+        "key": {"sentinel": "omega-key-sentinel"}
+    }})
+    .to_string();
+    let mut signer = mac(b"delta").unwrap();
+    signer.update(body.as_bytes());
+    let signature = hex::encode(signer.finalize().into_bytes());
+    Mock::given(method("POST"))
+        .and(path("/api/v1/agents/claim"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("X-Signature", signature.as_str())
+                .set_body_raw(body, "application/json"),
+        )
+        .mount(&server)
+        .await;
+
+    let err = api(&server).claim("delta").await.unwrap_err();
+
+    assert!(!err.to_string().contains("omega-key-sentinel"), "{err}");
+}

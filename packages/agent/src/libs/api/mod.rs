@@ -2,6 +2,7 @@ use std::io::Read;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use hmac::{Hmac, KeyInit, Mac};
+use reqwest::redirect::Policy;
 use reqwest::{Client, Method, Response, StatusCode};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -374,10 +375,13 @@ pub struct HttpApi {
 
 impl HttpApi {
     pub fn new(base: Url) -> Result<Self, AgentError> {
-        Ok(Self {
-            client: Client::builder().timeout(TIMEOUT).build()?,
-            base,
-        })
+        // A redirect would carry the signing headers or the claim code to wherever it points.
+        let client = Client::builder()
+            .timeout(TIMEOUT)
+            .redirect(Policy::none())
+            .https_only(base.scheme() == "https")
+            .build()?;
+        Ok(Self { client, base })
     }
 
     fn url(&self, path: &str) -> Result<Url, AgentError> {
@@ -469,7 +473,7 @@ impl Api for HttpApi {
             .verify_slice(&signature)
             .map_err(|_| AgentError::Api("the claim response signature does not match".into()))?;
         let out: ClaimOut = serde_json::from_slice(&body)
-            .map_err(|err| AgentError::Api(format!("claim response: {err}")))?;
+            .map_err(|_| AgentError::Api("the claim response does not decode".into()))?;
         Ok(Claim::Granted {
             agent_id: out.agent_id,
             credential: out.credential,

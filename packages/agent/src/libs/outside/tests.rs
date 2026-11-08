@@ -251,3 +251,37 @@ fn a_quote_cannot_leave_its_string() {
 
     assert!(seed.user_data.contains(r"'a'\''b'"));
 }
+
+fn coded(answer: Result<(), String>, code: &str) {
+    let text = answer.unwrap_err();
+    let rest = text
+        .strip_prefix(&format!("port 80: {code} (error "))
+        .unwrap_or_else(|| panic!("{text}"));
+    let id = rest.strip_suffix(')').unwrap_or_else(|| panic!("{text}"));
+    assert!(uuid::Uuid::parse_str(id).is_ok(), "{text}");
+    assert!(!text.contains("os error"), "{text}");
+}
+
+async fn closed_port() -> u16 {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+    port
+}
+
+#[tokio::test]
+async fn a_refused_tcp_probe_shows_a_code_and_an_error_id_only() {
+    let port = closed_port().await;
+
+    coded(network(&aimed(Some(port), None)).await, "probe-refused");
+}
+
+#[tokio::test]
+async fn a_refused_http_probe_shows_a_code_and_an_error_id_only() {
+    let port = closed_port().await;
+
+    coded(
+        network(&aimed(Some(port), http(200, None))).await,
+        "probe-refused",
+    );
+}

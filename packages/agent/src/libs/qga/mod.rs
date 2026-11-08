@@ -18,6 +18,7 @@ const STATUS: &str = "guest-exec-status";
 const CHUNK: usize = 64 * 1024;
 const MISSING: &str = "No such file or directory";
 const EXEC_POLL: Duration = Duration::from_millis(100);
+const MAX_DESC: usize = 256;
 /// How the error of a reply over the message limit ends.
 pub const TRUNCATED: &str = "truncated message";
 
@@ -300,8 +301,16 @@ fn returned(command: &str, mut reply: Value) -> Result<Value, AgentError> {
     if let Some(value) = reply.get_mut("return") {
         return Ok(value.take());
     }
-    let desc = desc(&reply).unwrap_or("unexpected reply");
+    let desc = clean(desc(&reply).unwrap_or("unexpected reply"));
     Err(AgentError::Qga(format!("{command}: {desc}")))
+}
+
+// Root in the guest writes this text, and it lands in the agent's log.
+fn clean(desc: &str) -> String {
+    desc.chars()
+        .filter(|c| !c.is_control())
+        .take(MAX_DESC)
+        .collect()
 }
 
 fn exit_code(status: &Value) -> Result<i64, AgentError> {

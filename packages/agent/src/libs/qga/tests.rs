@@ -435,3 +435,17 @@ fn the_debug_of_a_run_shows_no_output() {
     assert!(shown.contains('3'), "{shown}");
     assert!(!shown.contains("109"), "{shown}");
 }
+
+#[tokio::test]
+async fn a_huge_error_desc_is_cut_and_loses_its_control_characters() {
+    let dir = TempDir::new().unwrap();
+    let desc = format!("alpha\u{1b}[2J\nforged line {}", "x".repeat(600 * 1024));
+    let (path, _server) = serve(&dir, b"", vec![error(&desc)]);
+
+    let mut qga = Qga::connect(&path, TIMEOUT).await.unwrap();
+    let err = qga.ping().await.unwrap_err().to_string();
+
+    assert!(err.len() < 512, "{} bytes", err.len());
+    assert!(!err.chars().any(char::is_control), "{err}");
+    assert!(err.contains("alpha[2Jforged line"), "{err}");
+}

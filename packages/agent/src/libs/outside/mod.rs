@@ -1,3 +1,5 @@
+use std::fmt::Display;
+use std::io::ErrorKind;
 use std::net::Ipv4Addr;
 use std::time::Duration;
 
@@ -6,6 +8,7 @@ use reqwest::Client;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
+use uuid::Uuid;
 
 use crate::libs::api::{CheckStatus, DiskAssert, DiskResult, HttpProbe, NetworkProbe, Seed};
 
@@ -47,7 +50,7 @@ async fn ask_http(port: u16, http: &HttpProbe) -> Result<(), String> {
         .redirect(Policy::none())
         .timeout(PROBE_WAIT)
         .build()
-        .map_err(|err| err.without_url().to_string())?;
+        .map_err(|err| failed("probe-failed", port, &err.without_url()))?;
     let mut response = client
         .get(format!(
             "http://{}:{port}{}",
@@ -56,7 +59,7 @@ async fn ask_http(port: u16, http: &HttpProbe) -> Result<(), String> {
         ))
         .send()
         .await
-        .map_err(|err| err.without_url().to_string())?;
+        .map_err(|err| failed(http_code(&err), port, &err.without_url()))?;
     let status = response.status().as_u16();
     if status != http.status {
         return Err(format!("answered {status}, not {}", http.status));
@@ -69,7 +72,7 @@ async fn ask_http(port: u16, http: &HttpProbe) -> Result<(), String> {
         let Some(chunk) = response
             .chunk()
             .await
-            .map_err(|err| err.without_url().to_string())?
+            .map_err(|err| failed(http_code(&err), port, &err.without_url()))?
         else {
             break;
         };
@@ -86,13 +89,36 @@ async fn ask_http(port: u16, http: &HttpProbe) -> Result<(), String> {
 async fn ask_tcp(port: u16) -> Result<(), String> {
     let mut stream = timeout(PROBE_WAIT, TcpStream::connect((Ipv4Addr::LOCALHOST, port)))
         .await
-        .map_err(|_| "the connection timed out".to_owned())?
-        .map_err(|err| err.to_string())?;
+        .map_err(|err| failed("probe-timeout", port, &err))?
+        .map_err(|err| {
+            let code = match err.kind() {
+                ErrorKind::ConnectionRefused => "probe-refused",
+                _ => "probe-failed",
+            };
+            failed(code, port, &err)
+        })?;
     let mut byte = [0_u8; 1];
     match timeout(TCP_SETTLE, stream.read(&mut byte)).await {
         Ok(Ok(0) | Err(_)) => Err("the guest closed the connection".into()),
         Ok(Ok(_)) | Err(_) => Ok(()),
     }
+}
+
+fn http_code(err: &reqwest::Error) -> &'static str {
+    if err.is_timeout() {
+        "probe-timeout"
+    } else if err.is_connect() {
+        "probe-refused"
+    } else {
+        "probe-failed"
+    }
+}
+
+// The operator sees a fixed code and an error id; the library's own text goes to the log only.
+fn failed(code: &str, port: u16, err: &dyn Display) -> String {
+    let error_id = Uuid::new_v4();
+    tracing::warn!(%error_id, code, port, error = %err, "a check from outside failed");
+    format!("{code} (error {error_id})")
 }
 
 fn holds(body: &[u8], wanted: &[u8]) -> bool {

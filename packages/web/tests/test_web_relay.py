@@ -249,3 +249,27 @@ def test_a_failure_the_api_did_not_shape_is_rebuilt_with_an_id_of_web(
     assert response.json()["error"] == "internal-error"
     assert "alpha" not in response.text and "beta" not in response.text
     assert str(uuid.UUID(response.json()["error_id"])) in caplog.text
+
+
+def test_no_log_line_at_info_carries_a_link_token(
+    client: TestClient, routes: Routes, caplog: pytest.LogCaptureFixture
+) -> None:
+    routes[("GET", f"/s/{TOKEN}")] = lambda _: httpx.Response(303, headers={"location": "/"})
+    caplog.set_level(logging.INFO)
+
+    client.get(f"/s/{TOKEN}")
+
+    assert caplog.records
+    assert TOKEN not in caplog.text
+
+
+def test_a_logged_path_has_its_control_characters_escaped(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO, logger="jatszoter_web.access")
+
+    client.get("/alpha%0Abeta%1B")
+
+    lines = [record.getMessage() for record in caplog.records if record.name.endswith("access")]
+    assert any("/alpha\\x0abeta\\x1b" in line for line in lines)
+    assert not any("\n" in line or "\x1b" in line for line in lines)

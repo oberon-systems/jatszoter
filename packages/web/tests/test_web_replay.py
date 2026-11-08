@@ -1,3 +1,5 @@
+import json
+import threading
 from collections.abc import Callable
 from typing import Any
 
@@ -5,8 +7,10 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from jatszoter_web import replay
 from jatszoter_web.cookies import LINK_COOKIE, Operator
 from jatszoter_web.middleware import SECURITY_HEADERS, WASM_POLICY
+from jatszoter_web.pages import render as page
 from jatszoter_web.replay import markers
 
 Answer = Callable[..., None]
@@ -246,3 +250,49 @@ def test_the_api_cast_route_is_not_relayed(
 
     assert response.status_code == 404
     assert calls == []
+
+
+def test_the_recording_is_parsed_off_the_event_loop(
+    client: TestClient,
+    sign_in: SignIn,
+    recorded: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sign_in()
+    parsed_in: list[threading.Thread] = []
+
+    def spied(cast: bytes) -> list[tuple[float, str]]:
+        parsed_in.append(threading.current_thread())
+        return markers(cast)
+
+    monkeypatch.setattr(replay, "markers", spied)
+    loop_thread: list[threading.Thread] = []
+
+    def render(*args: Any, **kwargs: Any) -> Any:
+        loop_thread.append(threading.current_thread())
+        return page(*args, **kwargs)
+
+    monkeypatch.setattr(replay, "render", render)
+
+    assert client.get(recorded).status_code == 200
+    assert len(parsed_in) == 1
+    assert parsed_in[0] is not loop_thread[0]
+
+
+def test_lines_without_a_marker_are_skipped_before_they_are_parsed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loaded: list[bytes] = []
+    original = json.loads
+
+    def counting(line: bytes) -> Any:
+        loaded.append(line)
+        return original(line)
+
+    monkeypatch.setattr(json, "loads", counting)
+
+    assert markers(CAST) == [
+        (9.87, "control operator"),
+        (61.2, "check failed: nginx still does not serve the app page"),
+    ]
+    assert len(loaded) == 2

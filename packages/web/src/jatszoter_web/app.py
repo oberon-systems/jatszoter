@@ -45,6 +45,9 @@ def create_app(
 
     # The same filter instance every time, so a second app adds nothing.
     logging.getLogger("uvicorn.access").addFilter(_DROP_UVICORN_ACCESS)
+    # httpx logs every URL it fetches at INFO, link tokens of relayed /s/ pages among them.
+    for name in ("httpx", "httpcore"):
+        logging.getLogger(name).setLevel(logging.WARNING)
     app = FastAPI(
         docs_url=None, redoc_url=None, openapi_url=None, redirect_slashes=False, lifespan=lifespan
     )

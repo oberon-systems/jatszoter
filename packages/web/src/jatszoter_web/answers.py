@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 log = logging.getLogger(__name__)
 
 LINK_PATH = re.compile(r"/s/[^/?#\s]+")
+CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 STATUS_CODES = {
     401: "not-authorized",
@@ -23,7 +24,9 @@ STATUS_CODES = {
 
 
 def redacted(path: str) -> str:
-    return LINK_PATH.sub("/s/<redacted>", path)
+    """`path` fit for a log line: no link token, and control characters escaped."""
+    hidden = LINK_PATH.sub("/s/<redacted>", path)
+    return CONTROL.sub(lambda char: f"\\x{ord(char.group()):02x}", hidden)
 
 
 def logged_error(

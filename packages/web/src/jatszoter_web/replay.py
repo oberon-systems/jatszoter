@@ -1,3 +1,4 @@
+import asyncio
 import json
 import uuid
 from typing import Any
@@ -21,6 +22,8 @@ def markers(cast: bytes) -> list[tuple[float, str]]:
     """The `m` events of an asciicast v2 file, in order; any other line is skipped."""
     found: list[tuple[float, str]] = []
     for line in cast.splitlines()[1:]:
+        if b'"m"' not in line:
+            continue
         try:
             event = json.loads(line)
         except ValueError:
@@ -73,7 +76,8 @@ async def replay(
         flash = NOT_FOUND if response.status_code == 404 else refused(response)[0]
         return render(request, "replay.html", {**context, "flashes": [flash]}, response.status_code)
     allow_wasm(request)
-    context.update(player=True, markers=markers(response.content))
+    # A recording can be tens of MiB; parsed on the loop it would stall every other page.
+    context.update(player=True, markers=await asyncio.to_thread(markers, response.content))
     return render(request, "replay.html", context)
 
 

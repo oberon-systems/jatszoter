@@ -1,0 +1,64 @@
+name: Bug report
+description: Something in jatszoter does not work as documented.
+title: "[bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A vulnerability is not a bug report: follow SECURITY.md and report it
+        privately. Never paste tokens, trainee links or cookies here.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - api
+        - web
+        - agent
+        - scenario
+        - docs
+        - install or release
+        - not sure
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The release (api-X.Y.Z, web-X.Y.Z, agent-X.Y.Z, X.Y.Z) or the commit.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start a deployment of nginx-502
+        2. Open the trainee link
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The relevant lines of the api, web or agent log, with secrets removed.
+      render: text
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Host OS, QEMU version, how the stack runs (compose, from source).

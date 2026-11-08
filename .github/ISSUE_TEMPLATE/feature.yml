@@ -1,0 +1,38 @@
+name: Feature request
+description: A new capability or a change to how jatszoter works.
+title: "[feat]: "
+labels: [enhancement]
+body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - api
+        - web
+        - agent
+        - scenario format
+        - docs
+        - install or release
+        - not sure
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What an operator or a trainee cannot do today, and why it matters.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: How it could work. A change to the architecture is agreed in docs first.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other ways you considered, and workarounds in use today.

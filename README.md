@@ -13,6 +13,7 @@ fixed the problem. Every terminal session is recorded for replay.
 - [Repository layout](#repository-layout)
 - [Requirements](#requirements)
 - [Development](#development)
+- [Contributing](#contributing)
 
 ## Demo
 
@@ -72,3 +73,9 @@ make lint
 pre-commit hook over the tree.
 
 The Web UI is designed before it is built: see [dev/web/README.md](dev/web/README.md).
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before you open a pull request, and
+follow the [Code of Conduct](CODE_OF_CONDUCT.md). Vulnerabilities go through
+[SECURITY.md](SECURITY.md), never through a public issue.

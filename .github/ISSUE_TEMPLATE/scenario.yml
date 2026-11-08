@@ -1,0 +1,54 @@
+name: Scenario request
+description: A new troubleshooting scenario for the catalog.
+title: "[scenario]: "
+labels: [scenario]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The scenario format is in docs/project/03-scenario-format.md. Describe
+        the task, not the answer: the issue is public.
+  - type: input
+    id: program
+    attributes:
+      label: Program
+      description: What the scenario is about.
+      placeholder: nginx, systemd, PostgreSQL, DNS, disk
+    validations:
+      required: true
+  - type: dropdown
+    id: level
+    attributes:
+      label: Level
+      options:
+        - Junior
+        - Middle
+        - Senior
+    validations:
+      required: true
+  - type: textarea
+    id: symptom
+    attributes:
+      label: What the trainee sees
+      description: The symptom on the VM, as the task text would state it.
+    validations:
+      required: true
+  - type: textarea
+    id: breakage
+    attributes:
+      label: What is broken
+      description: What the break step changes on the VM.
+    validations:
+      required: true
+  - type: textarea
+    id: check
+    attributes:
+      label: How the check decides
+      description: What check.sh tests to tell a fixed VM from a broken one.
+    validations:
+      required: true
+  - type: input
+    id: image
+    attributes:
+      label: Image
+      placeholder: rocky-9

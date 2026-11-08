@@ -56,16 +56,16 @@ body,
   background: none;
 }
 
-/* No logo yet: put it at assets/logo.svg and drop `display: none`. */
+/* The logo is docs/project/img/logo.svg, the same file the README shows. */
 .wy-side-nav-search > a.icon-home::before,
 .wy-nav-top > a::before {
-  display: none;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 32px;
   height: 32px;
   content: "";
-  background: url("logo.svg") center / contain no-repeat;
+  background: url("../img/logo.svg") center / contain no-repeat;
 }
 
 .wy-side-nav-search .version {

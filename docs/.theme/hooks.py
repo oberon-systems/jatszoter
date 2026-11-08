@@ -10,6 +10,7 @@ from mkdocs.structure.pages import Page
 ROOT = Path(__file__).resolve().parents[2]
 SITE = "docs/project/"
 LINK = re.compile(r"\]\((?!https?://|#)([^)]+)\)")
+SOURCE = re.compile(r'src="' + re.escape(SITE))
 
 
 def _blob(config: MkDocsConfig) -> str:
@@ -44,7 +45,7 @@ def on_files(files: Files, config: MkDocsConfig) -> Files:
         return f"]({blob}{target})"
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    page = "---\ntitle: Home\n---\n\n" + LINK.sub(link, readme)
+    page = "---\ntitle: Home\n---\n\n" + SOURCE.sub('src="', LINK.sub(link, readme))
     home = File.generated(config, "index.md", content=page)
     # edit_uri is relative to docs/project/, and "Edit on GitHub" has to open the README.
     home.edit_uri = "../../README.md"

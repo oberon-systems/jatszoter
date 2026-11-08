@@ -1,3 +1,5 @@
+<img src="docs/project/img/logo.svg" alt="jatszoter logo" width="128">
+
 # jatszoter
 
 jatszoter is a self-hosted, open-source training and exam stand for Linux

@@ -9,6 +9,9 @@ stamped_agent=
 repo="${JATSZOTER_REPO:-oberon-systems/jatszoter}"
 runbook="https://github.com/$repo/blob/main/docs/project/09-guest-network.md"
 unit_name=jatszoter-agent.service
+passt_tag=2026_10_02.cba3570
+passt_commit=cba357068dc586e7540971eb40bb56c5e62c4de1
+passt_marker=/usr/local/share/jatszoter/passt
 
 usage() {
     cat <<EOF
@@ -24,6 +27,8 @@ asked on the terminal; --yes, or no terminal, turns a missing value into an erro
   --name NAME                 agent name (default: the host name)
   --capacity N                VMs at once (default 1)
   --labels A,B                labels
+  --passt | --no-passt        build passt $passt_tag into /usr/local/bin with its AppArmor profile
+                              (default: ask when passt is missing or older than 2026_10_02)
   --systemd | --no-systemd    install the systemd unit (default: yes)
   --linger | --no-linger      keep the user unit running without a login (xdg)
   --yes                       never ask
@@ -103,6 +108,7 @@ capacity=''
 labels=''
 systemd=''
 linger=''
+build_passt=''
 yes=''
 force=''
 while [ $# -gt 0 ]; do
@@ -119,6 +125,8 @@ while [ $# -gt 0 ]; do
     --no-systemd) systemd=no ;;
     --linger) linger=yes ;;
     --no-linger) linger=no ;;
+    --passt) build_passt=yes ;;
+    --no-passt) build_passt=no ;;
     --yes) yes=1 ;;
     --force) force=1 ;;
     *) fail "unknown argument $1, see --help" ;;
@@ -208,8 +216,13 @@ put() {
     if [ "$layout" = system ]; then as_root "$@"; else "$@"; fi
 }
 
+# A shell from sudo -iu or su - has no XDG_RUNTIME_DIR, and systemctl --user finds no bus without it.
 systemctl_unit() {
-    if [ "$layout" = system ]; then as_root systemctl "$@"; else systemctl --user "$@"; fi
+    if [ "$layout" = system ]; then
+        as_root systemctl "$@"
+    else
+        XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" systemctl --user "$@"
+    fi
 }
 
 setting() {
@@ -221,6 +234,16 @@ setting() {
 tool() {
     value="$(setting "JATSZOTER_AGENT_$1")"
     printf '%s\n' "${value:-$2}"
+}
+
+# passt_date BINARY: the release date of a passt as YYYYMMDD, empty for a build of no release.
+passt_date() {
+    "$1" --version 2>/dev/null | head -n 1 |
+        sed -n 's/^passt \([0-9]\{4\}\)_\([0-9][0-9]\)_\([0-9][0-9]\).*/\1\2\3/p'
+}
+
+passt_current() {
+    command -v "$1" >/dev/null && [ "$(passt_date "$1")" -ge 20261002 ] 2>/dev/null
 }
 
 problems=0
@@ -260,10 +283,25 @@ doctor() {
         fi
     done
     passt="$(tool PASST passt)"
-    if command -v "$passt" >/dev/null; then
-        good "$passt: $(command -v "$passt")"
+    if [ "$build_passt" = yes ]; then
+        good "passt $passt_tag is built into /usr/local/bin with its AppArmor profile"
+        for binary in git gcc make; do
+            if command -v "$binary" >/dev/null; then
+                good "$binary: $(command -v "$binary"), building passt needs it"
+            else
+                bad "$binary is missing, building passt needs it" "sudo apt install git gcc make"
+            fi
+        done
+        if [ "$(id -u)" != 0 ] && ! command -v sudo >/dev/null; then
+            bad "installing passt needs sudo" "install sudo, or pass --no-passt and follow $runbook"
+        fi
+    elif ! command -v "$passt" >/dev/null; then
+        bad "$passt is missing" "run the installer with --passt, or follow $runbook"
+    elif passt_current "$passt"; then
+        good "$passt: $(command -v "$passt"), $("$passt" --version | head -n 1)"
     else
-        bad "$passt is missing" "$runbook (passt 2026_10_02 or newer, AppArmor profile on Ubuntu)"
+        bad "$passt is \"$("$passt" --version 2>/dev/null | head -n 1)\", older than 2026_10_02" \
+            "run the installer with --passt, or follow $runbook"
     fi
     for file in "$(tool OVMF_CODE /usr/share/OVMF/OVMF_CODE_4M.fd)" "$(tool OVMF_VARS /usr/share/OVMF/OVMF_VARS_4M.fd)"; do
         if [ -r "$file" ]; then good "$file"; else bad "$file is missing" "install the OVMF package"; fi
@@ -315,6 +353,45 @@ download() {
     rm -rf "$tmp"
 }
 
+# The steps of "Install on Ubuntu" in docs/project/09-guest-network.md.
+install_passt() {
+    [ "$build_passt" = yes ] || return 0
+    say "building passt $passt_tag from passt.top"
+    tmp="$(mktemp -d)"
+    git -c advice.detachedHead=false clone -q --depth 1 --branch "$passt_tag" https://passt.top/passt "$tmp/passt" ||
+        fail "cannot clone passt $passt_tag from passt.top"
+    [ "$(git -C "$tmp/passt" rev-parse HEAD)" = "$passt_commit" ] ||
+        fail "passt $passt_tag is not the commit $passt_commit"
+    make -s -C "$tmp/passt" >/dev/null || fail "building passt failed"
+    as_root install -m 0755 "$tmp/passt/passt" "$tmp/passt/passt.avx2" /usr/local/bin/
+    if [ -d /etc/apparmor.d ]; then
+        sed 's#/usr/bin/passt.avx2#/usr/local/bin/passt.avx2#' \
+            "$tmp/passt/contrib/apparmor/abstractions/passt" |
+            as_root tee /etc/apparmor.d/abstractions/jatszoter-passt >/dev/null
+        sed -e 's#^profile passt /usr/bin/passt{,.avx2}#profile passt-local /usr/local/bin/passt{,.avx2}#' \
+            -e 's#include <abstractions/passt>#include <abstractions/jatszoter-passt>#' \
+            -e 's#^\( *\)/usr/bin/passt r,#\1/usr/local/bin/passt r,#' \
+            -e 's#^}#  owner @{HOME}/.cache/jatszoter/** rw,\n  owner /var/lib/jatszoter-agent/** rw,\n}#' \
+            "$tmp/passt/contrib/apparmor/usr.bin.passt" |
+            as_root tee /etc/apparmor.d/usr.local.bin.passt >/dev/null
+        as_root apparmor_parser -r /etc/apparmor.d/usr.local.bin.passt
+    fi
+    as_root install -d -m 0755 "${passt_marker%/*}"
+    echo "$passt_tag" | as_root tee "$passt_marker" >/dev/null
+    rm -rf "$tmp"
+    say "passt $passt_tag is in /usr/local/bin"
+}
+
+uninstall_passt() {
+    [ -f "$passt_marker" ] || return 0
+    if [ -f /etc/apparmor.d/usr.local.bin.passt ]; then
+        as_root apparmor_parser -R /etc/apparmor.d/usr.local.bin.passt 2>/dev/null || true
+    fi
+    as_root rm -f /etc/apparmor.d/usr.local.bin.passt /etc/apparmor.d/abstractions/jatszoter-passt \
+        /usr/local/bin/passt /usr/local/bin/passt.avx2 "$passt_marker"
+    as_root rmdir "${passt_marker%/*}" 2>/dev/null || true
+}
+
 build() {
     cargo build --release --locked -p jatszoter-agent --manifest-path "$source_dir/Cargo.toml" ||
         fail "cargo build failed"
@@ -354,7 +431,7 @@ configure() {
 check_network() {
     output="$(JATSZOTER_AGENT_ENV_FILE="$env_file" "$link" check-network 2>&1)" && return 0
     printf '%s\n' "$output" >&2
-    fail "the guest network is not safe; follow $runbook (passt 2026_10_02 or newer, AppArmor profile on Ubuntu)"
+    fail "the guest network is not safe; run the installer with --passt, or follow $runbook"
 }
 
 linger_on() {
@@ -415,8 +492,11 @@ uninstall() {
     detect_layout
     [ -n "$layout" ] || { say "no agent is installed" && return 0; }
     paths
+    extra=
+    [ ! -f "$passt_marker" ] || extra="
+It also removes passt $(cat "$passt_marker") from /usr/local/bin with its AppArmor profile."
     confirm "This removes the jatszoter agent: $unit_name, $link, the binaries in $bin_dir,
-the settings in $env_file and the state in $state_dir."
+the settings in $env_file and the state in $state_dir.$extra"
     if [ -f "$unit_dir/$unit_name" ]; then
         systemctl_unit disable --now "$unit_name" >/dev/null 2>&1 || true
         put rm -f "$unit_dir/$unit_name"
@@ -425,6 +505,7 @@ the settings in $env_file and the state in $state_dir."
     put rm -f "$link"
     put rm -rf "$bin_dir" "$env_file"
     put rm -rf "$state_dir" 2>/dev/null || as_root rm -rf "$state_dir"
+    uninstall_passt
     if [ "$layout" = system ]; then
         as_root rm -rf "$conf_dir"
         as_root rmdir "${conf_dir%/*}" 2>/dev/null || true
@@ -467,9 +548,13 @@ if command -v systemctl >/dev/null; then
 else
     systemd="${systemd:-no}"
 fi
+if [ -z "$build_passt" ] && [ "$(tool PASST passt)" = passt ] && ! passt_current passt; then
+    ask_yes build_passt "passt is missing or older than 2026_10_02: build $passt_tag into /usr/local/bin with its AppArmor profile (sudo)?"
+fi
 
 doctor || fail "fix the problems above, nothing was installed"
 
+install_passt
 if [ -n "$source_dir" ]; then build; else download; fi
 configure
 check_network

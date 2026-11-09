@@ -64,11 +64,13 @@ with the password `admin`. The web UI asks for a new password at once.
 ## Install an agent
 
 An agent host needs Linux on x86_64 with KVM, QEMU 7.2 or newer, `qemu-img`,
-`xorriso`, OVMF and passt `2026_10_02` or newer with its AppArmor profile, as
-[09](09-guest-network.md) sets up. On Debian or Ubuntu:
+`xorriso`, OVMF and passt `2026_10_02` or newer with its AppArmor profile. The
+passt of Debian and Ubuntu is older, so the installer offers to build that
+release into `/usr/local/bin`, as [09](09-guest-network.md) does by hand; the
+build needs `git`, `gcc` and `make`. On Debian or Ubuntu:
 
 ```bash
-sudo apt install qemu-system-x86 qemu-utils xorriso ovmf
+sudo apt install qemu-system-x86 qemu-utils xorriso ovmf git gcc make
 ```
 
 Run the installer as the user the agent runs as, never as root:
@@ -97,6 +99,7 @@ systemd unit `jatszoter-agent.service`.
 | `--name NAME`                | the agent's name, the host name by default           |
 | `--capacity N`               | VMs at once, 1 by default                            |
 | `--labels A,B`               | labels deployments can be pinned by                  |
+| `--passt`, `--no-passt`      | build passt, asked when it is missing or older       |
 | `--systemd`, `--no-systemd`  | install the unit, yes by default                     |
 | `--linger`, `--no-linger`    | keep a user unit running after you log out           |
 | `--yes`                      | never ask: a value it lacks is an error              |
@@ -174,8 +177,8 @@ and its directory with `.env`:
 curl -fsSL https://github.com/oberon-systems/jatszoter/releases/latest/download/install-stack.sh | sh -s -- uninstall
 ```
 
-For an agent it is the unit, the link, the binaries, `agent.env` and the
-state:
+For an agent it is the unit, the link, the binaries, `agent.env`, the state
+and the passt it built, with its AppArmor profile:
 
 ```bash
 curl -fsSL https://github.com/oberon-systems/jatszoter/releases/latest/download/install-agent.sh | sh -s -- uninstall

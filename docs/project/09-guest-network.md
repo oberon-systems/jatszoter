@@ -49,10 +49,11 @@ that host until the check passes.
 
 ## Install on Ubuntu
 
-The Ubuntu 24.04 package is too old, see the
+The Ubuntu 24.04 and 26.04 packages are too old, see the
 [known issue](#known-issue-passt-from-ubuntu-2404). Build the release from
 upstream and put it in `/usr/local/bin`, out of dpkg's way and ahead of
-`/usr/bin` on `PATH`.
+`/usr/bin` on `PATH`. `install-agent.sh --passt` runs these steps itself, see
+[11](11-install.md#install-an-agent).
 
 Remove the old package, so nothing falls back to it:
 
@@ -206,7 +207,8 @@ example `failed configure 1`. `check-network` prints
 `FAIL  passt starts and answers a guest`.
 
 Trigger: the Ubuntu 24.04 package `passt 0.0~git20240220.1e6f92b-1`,
-which prints `passt unknown version`.
+which prints `passt unknown version`. The Ubuntu 26.04 package,
+`passt 0.0~git20260120.386b5f5-1`, fails the same check.
 
 Blast radius:
 

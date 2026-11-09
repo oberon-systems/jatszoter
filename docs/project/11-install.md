@@ -60,6 +60,10 @@ with the password `admin`. The web UI asks for a new password at once.
 - `JATSZOTER_SUBNET` in `.env` is the stack's own network. Change it, and
   `JATSZOTER_WEB_FORWARDED_ALLOW_IPS` with it, when the subnet is taken on
   the host.
+- A scenario bundle registered by URL is fetched from public addresses only.
+  For a bundle server on an internal network, list its networks in
+  `JATSZOTER_SCENARIO_FETCH_INTERNAL_CIDRS` in `.env`, see
+  [06](06-security.md#bundle-downloads).
 
 ## Install an agent
 

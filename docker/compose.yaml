@@ -1,0 +1,112 @@
+# The whole stack for a test run and for a deployment alike: the images come from
+# the registry, everything host-specific comes from .env (see .env.example).
+name: jatszoter
+
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${JATSZOTER_DB_NAME:-jatszoter}
+      POSTGRES_USER: ${JATSZOTER_DB_USER:-jatszoter}
+      POSTGRES_PASSWORD: ${JATSZOTER_DB_PASSWORD:?set JATSZOTER_DB_PASSWORD in .env}
+    volumes:
+      - db:/var/lib/postgresql
+    healthcheck:
+      test: pg_isready -U ${JATSZOTER_DB_USER:-jatszoter} -d ${JATSZOTER_DB_NAME:-jatszoter}
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  valkey:
+    image: valkey/valkey:9-alpine
+    restart: unless-stopped
+    # Leases, nonces and counters only: nothing here outlives a restart on purpose.
+    command:
+      - valkey-server
+      - --requirepass
+      - ${JATSZOTER_VALKEY_PASSWORD:?set JATSZOTER_VALKEY_PASSWORD in .env}
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+    environment:
+      REDISCLI_AUTH: ${JATSZOTER_VALKEY_PASSWORD:?set JATSZOTER_VALKEY_PASSWORD in .env}
+    healthcheck:
+      test: valkey-cli ping | grep -q PONG
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.50
+    restart: unless-stopped
+    command: server -dir=/data -filer
+    environment:
+      # SeaweedFS reads security.toml keys from WEED_* variables as well.
+      WEED_JWT_FILER_SIGNING_KEY: ${JATSZOTER_SEAWEED_JWT_KEY:?set JATSZOTER_SEAWEED_JWT_KEY in .env}
+      WEED_JWT_FILER_SIGNING_READ_KEY: ${JATSZOTER_SEAWEED_JWT_KEY:?set JATSZOTER_SEAWEED_JWT_KEY in .env}
+    volumes:
+      - seaweedfs:/data
+    healthcheck:
+      test: wget -q -O /dev/null http://127.0.0.1:8888/healthz
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  api:
+    image: ${JATSZOTER_API_IMAGE:-ghcr.io/oberon-systems/jatszoter-api:latest}
+    restart: unless-stopped
+    environment:
+      JATSZOTER_DATABASE_DSN: postgresql+psycopg://${JATSZOTER_DB_USER:-jatszoter}:${JATSZOTER_DB_PASSWORD:?set JATSZOTER_DB_PASSWORD in .env}@db:5432/${JATSZOTER_DB_NAME:-jatszoter}
+      JATSZOTER_VALKEY_DSN: redis://:${JATSZOTER_VALKEY_PASSWORD:?set JATSZOTER_VALKEY_PASSWORD in .env}@valkey:6379/0
+      JATSZOTER_SEAWEED_URL: http://seaweedfs:8888
+      JATSZOTER_SEAWEED_JWT_KEY: ${JATSZOTER_SEAWEED_JWT_KEY:?set JATSZOTER_SEAWEED_JWT_KEY in .env}
+      JATSZOTER_MASTER_KEYS: ${JATSZOTER_MASTER_KEYS:?set JATSZOTER_MASTER_KEYS in .env}
+      JATSZOTER_MASTER_KID: ${JATSZOTER_MASTER_KID:?set JATSZOTER_MASTER_KID in .env}
+      JATSZOTER_AUTO_REGISTER_AGENTS: ${JATSZOTER_AUTO_REGISTER_AGENTS:-false}
+      # web passes the browser's address on, and a proxy on the host comes in from the gateway.
+      FORWARDED_ALLOW_IPS: ${JATSZOTER_SUBNET:-172.31.250.0/24}
+    ports:
+      - "${JATSZOTER_BIND:-127.0.0.1}:${JATSZOTER_API_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+    healthcheck:
+      test: python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz')"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    image: ${JATSZOTER_WEB_IMAGE:-ghcr.io/oberon-systems/jatszoter-web:latest}
+    restart: unless-stopped
+    environment:
+      JATSZOTER_WEB_API_URL: http://api:8080
+      JATSZOTER_WEB_COOKIE_KEYS: ${JATSZOTER_WEB_COOKIE_KEYS:?set JATSZOTER_WEB_COOKIE_KEYS in .env}
+      JATSZOTER_WEB_COOKIE_KID: ${JATSZOTER_WEB_COOKIE_KID:?set JATSZOTER_WEB_COOKIE_KID in .env}
+      FORWARDED_ALLOW_IPS: ${JATSZOTER_WEB_FORWARDED_ALLOW_IPS:-172.31.250.1}
+    ports:
+      - "${JATSZOTER_BIND:-127.0.0.1}:${JATSZOTER_WEB_PORT:-8000}:8000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${JATSZOTER_SUBNET:-172.31.250.0/24}
+
+volumes:
+  db:
+  seaweedfs:

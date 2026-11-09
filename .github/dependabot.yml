@@ -65,6 +65,18 @@ updates:
       docker:
         update-types: [minor, patch]
 
+  - package-ecosystem: docker-compose
+    directory: /docker
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+    commit-message:
+      prefix: "[build][docker]"
+    groups:
+      docker-compose:
+        update-types: [minor, patch]
+
   # web.yml copies an update into static/vendor and commits it to the pull request.
   - package-ecosystem: npm
     directory: /packages/web/vendor

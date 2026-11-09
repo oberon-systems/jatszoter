@@ -1,4 +1,4 @@
-# Disposable local stand: api, web, an agent and a file server for images and bundles.
+# Disposable local stand: Postgres, api, web, an agent and a file server for images and bundles.
 
 .PHONY: up down logs
 

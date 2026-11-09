@@ -15,6 +15,9 @@ web=http://127.0.0.1:8000
 www=http://127.0.0.1:8081
 state="$ROOT/dev/stack/local"
 images="${XDG_CACHE_HOME:-$HOME/.cache}/jatszoter/smoke"
+db=jatszoter-stand-db
+db_image=postgres:18-alpine
+db_port=5433
 parts=(agent web api files)
 
 wait_for() {
@@ -53,6 +56,10 @@ up() {
             exit 1
         fi
     done
+    if docker container inspect "$db" >/dev/null 2>&1; then
+        echo "the container $db already exists: run down first" >&2
+        exit 1
+    fi
     mkdir -m 700 "$state"
     trap 'echo "the stand did not come up, bringing it down" >&2; down' EXIT
 
@@ -66,8 +73,16 @@ up() {
     done
     start files "$VENV/bin/python" -m http.server --bind 127.0.0.1 8081 --directory "$state/www"
 
+    # The cluster lives in a tmpfs, so every stand starts on an empty database.
+    local db_password
+    db_password="$(secret 'token_hex(24)')"
+    docker run -d --rm --name "$db" --tmpfs /var/lib/postgresql \
+        -e POSTGRES_DB=jatszoter -e POSTGRES_USER=jatszoter -e POSTGRES_PASSWORD="$db_password" \
+        -p "127.0.0.1:$db_port:5432" "$db_image" >/dev/null
+    wait_for 60 docker exec "$db" pg_isready -q -h 127.0.0.1 -U jatszoter -d jatszoter
+
     # The API's local file store is data/storage under its working directory.
-    JATSZOTER_DATABASE_DSN="sqlite:///$state/jatszoter.db" \
+    JATSZOTER_DATABASE_DSN="postgresql+psycopg://jatszoter:$db_password@127.0.0.1:$db_port/jatszoter" \
         JATSZOTER_MASTER_KEYS="{\"dev\": \"$(secret 'token_hex(32)')\"}" \
         JATSZOTER_MASTER_KID=dev \
         JATSZOTER_AUTO_REGISTER_AGENTS="$auto_register" \
@@ -117,6 +132,7 @@ up() {
 
 # QEMU daemonizes out of the agent's process group, so its pids are killed one by one.
 down() {
+    docker rm -f "$db" >/dev/null 2>&1 || true
     if [ ! -d "$state" ]; then
         echo "the stand is not up"
         return

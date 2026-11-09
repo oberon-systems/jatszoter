@@ -18,6 +18,7 @@ Without a command it installs or upgrades the agent; uninstall removes all of it
 asked on the terminal; --yes, or no terminal, turns a missing value into an error.
 
   --release X.Y.Z             jatszoter release to install (default: the latest)
+  --from-source               build the agent of this checkout with cargo instead
   --layout xdg|system         xdg: your home, no sudo; system: /opt/jatszoter/agent
   --api-url URL               jatszoter api the agent leases from
   --name NAME                 agent name (default: the host name)
@@ -70,17 +71,29 @@ delegate() {
 }
 
 wanted=
+source_dir=
 previous=
 for arg in "$@"; do
-    case "$arg" in -h | --help) usage && exit 0 ;; esac
+    case "$arg" in
+    -h | --help) usage && exit 0 ;;
+    --from-source) source_dir="$(cd "$(dirname "$0")/.." && pwd)" ;;
+    esac
     [ "$previous" != --release ] || wanted="$arg"
     previous="$arg"
 done
 for needed in curl sha256sum; do
     command -v "$needed" >/dev/null || fail "$needed is required"
 done
-target="${wanted:-$(latest_release)}"
-[ "$target" = "$stamped_release" ] || delegate "$target" "$@"
+if [ -n "$source_dir" ]; then
+    [ -z "$wanted" ] || fail "--release and --from-source exclude each other"
+    [ -f "$source_dir/packages/agent/Cargo.toml" ] ||
+        fail "--from-source runs from a jatszoter checkout: sh release/install-agent.sh --from-source"
+    stamped_release=source
+    stamped_agent="$(sed -n 's/^version = "\(.*\)"$/\1/p' "$source_dir/packages/agent/Cargo.toml" | head -n 1)"
+else
+    target="${wanted:-$(latest_release)}"
+    [ "$target" = "$stamped_release" ] || delegate "$target" "$@"
+fi
 
 command=install
 layout=''
@@ -96,6 +109,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
     doctor | uninstall) command="$1" ;;
     --release) need_value "$1" $# && shift ;;
+    --from-source) ;;
     --layout) need_value "$1" $# && layout="$2" && shift ;;
     --api-url) need_value "$1" $# && api_url="$2" && shift ;;
     --name) need_value "$1" $# && name="$2" && shift ;;
@@ -148,8 +162,8 @@ paths() {
     xdg)
         bin_dir="${XDG_DATA_HOME:-$HOME/.local/share}/jatszoter/bin"
         conf_dir="${XDG_CONFIG_HOME:-$HOME/.config}/jatszoter"
-        # The passt AppArmor profile of docs/project/09-guest-network.md allows these two.
-        state_dir="$HOME/.cache/jatszoter"
+        # The passt AppArmor profile of docs/project/09-guest-network.md allows writes below ~/.cache/jatszoter.
+        state_dir="$HOME/.cache/jatszoter/agent"
         link="$bin_dir/jatszoter-agent"
         unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
         ;;
@@ -178,7 +192,7 @@ choose_layout() {
     cat >/dev/tty <<EOF
 Where should the agent live?
   xdg     ${XDG_DATA_HOME:-$HOME/.local/share}/jatszoter/bin, ${XDG_CONFIG_HOME:-$HOME/.config}/jatszoter,
-          $HOME/.cache/jatszoter, a systemd user unit; no sudo
+          $HOME/.cache/jatszoter/agent, a systemd user unit; no sudo
   system  /opt/jatszoter/agent, /var/lib/jatszoter-agent, /usr/local/bin/jatszoter-agent,
           a system unit that runs as $(id -un); needs sudo
 EOF
@@ -209,43 +223,81 @@ tool() {
     printf '%s\n' "${value:-$2}"
 }
 
-problems=
+problems=0
 
-problem() {
-    problems="$problems
-  - $1
-    fix: $2"
+good() {
+    printf '  [ok]   %s\n' "$1"
+}
+
+bad() {
+    problems=$((problems + 1))
+    printf '  [FAIL] %s\n         fix: %s\n' "$1" "$2"
 }
 
 doctor() {
-    problems=
-    [ "$(uname -s)/$(uname -m)" = Linux/x86_64 ] ||
-        problem "the agent is built for Linux on x86_64, this is $(uname -s)/$(uname -m)" "use an x86_64 Linux host"
-    [ "$(id -u)" != 0 ] ||
-        problem "running as root; the agent refuses to run as root" "run the installer as the agent's user, sudo is used where needed"
-    { [ -r /dev/kvm ] && [ -w /dev/kvm ]; } ||
-        problem "no read and write access to /dev/kvm" "enable KVM and add $(id -un) to the kvm group"
+    problems=0
+    say "doctor:"
+    if [ "$(uname -s)/$(uname -m)" = Linux/x86_64 ]; then
+        good "Linux on x86_64"
+    else
+        bad "this is $(uname -s)/$(uname -m), the agent is built for Linux on x86_64" "use an x86_64 Linux host"
+    fi
+    if [ "$(id -u)" != 0 ]; then
+        good "runs as $(id -un), not root"
+    else
+        bad "runs as root, the agent refuses to" "run the installer as the agent's user, sudo is used where needed"
+    fi
+    if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+        good "/dev/kvm is readable and writable"
+    else
+        bad "no read and write access to /dev/kvm" "enable KVM and add $(id -un) to the kvm group"
+    fi
     for binary in "$(tool QEMU qemu-system-x86_64)" "$(tool QEMU_IMG qemu-img)" "$(tool XORRISO xorriso)"; do
-        command -v "$binary" >/dev/null || problem "$binary is missing" "install the package that provides it"
+        if command -v "$binary" >/dev/null; then
+            good "$binary: $(command -v "$binary")"
+        else
+            bad "$binary is missing" "install the package that provides it"
+        fi
     done
     passt="$(tool PASST passt)"
-    command -v "$passt" >/dev/null ||
-        problem "$passt is missing" "$runbook (passt 2026_10_02 or newer, AppArmor profile on Ubuntu)"
+    if command -v "$passt" >/dev/null; then
+        good "$passt: $(command -v "$passt")"
+    else
+        bad "$passt is missing" "$runbook (passt 2026_10_02 or newer, AppArmor profile on Ubuntu)"
+    fi
     for file in "$(tool OVMF_CODE /usr/share/OVMF/OVMF_CODE_4M.fd)" "$(tool OVMF_VARS /usr/share/OVMF/OVMF_VARS_4M.fd)"; do
-        [ -r "$file" ] || problem "$file is missing" "install the OVMF package"
+        if [ -r "$file" ]; then good "$file"; else bad "$file is missing" "install the OVMF package"; fi
     done
-    if [ -n "$api_url" ]; then
-        curl -fsS --max-time 10 -o /dev/null "${api_url%/}/healthz" ||
-            problem "the api does not answer at ${api_url%/}/healthz" "check --api-url and that the stack is up"
+    if [ -z "$api_url" ]; then
+        good "api: no --api-url given, not checked"
+    elif curl -fsS --max-time 10 -o /dev/null "${api_url%/}/healthz"; then
+        good "the api answers at ${api_url%/}/healthz"
+    else
+        bad "the api does not answer at ${api_url%/}/healthz" "check --api-url and that the stack is up"
+    fi
+    if [ -n "$source_dir" ]; then
+        if command -v cargo >/dev/null; then
+            good "cargo: $(command -v cargo)"
+        else
+            bad "cargo is missing, --from-source builds with it" "install Rust, see https://rustup.rs"
+        fi
     fi
     if [ "$systemd" = yes ]; then
-        command -v systemctl >/dev/null || problem "no systemctl" "pass --no-systemd and start the agent yourself"
+        if command -v systemctl >/dev/null; then
+            good "systemctl: $(command -v systemctl)"
+        else
+            bad "no systemctl" "pass --no-systemd and start the agent yourself"
+        fi
     fi
     if [ "$layout" = system ] && [ "$(id -u)" != 0 ]; then
-        command -v sudo >/dev/null || problem "the system layout needs sudo" "install sudo or use --layout xdg"
+        if command -v sudo >/dev/null; then
+            good "sudo, the system layout needs it"
+        else
+            bad "the system layout needs sudo" "install sudo or use --layout xdg"
+        fi
     fi
-    if [ -n "$problems" ]; then
-        echo "install-agent: doctor found problems:$problems" >&2
+    if [ "$problems" -gt 0 ]; then
+        echo "install-agent: doctor: $problems problem(s)" >&2
         return 1
     fi
     say "doctor: the host can run the agent"
@@ -259,9 +311,19 @@ download() {
     curl -fsSL -o "$tmp/SHA256SUMS" "$url/SHA256SUMS" || fail "cannot download SHA256SUMS"
     (cd "$tmp" && grep " $asset\$" SHA256SUMS | sha256sum -c - >/dev/null) ||
         fail "$asset does not match its SHA256SUMS"
-    put install -d -m 0755 "$bin_dir"
-    put install -m 0755 "$tmp/$asset" "$bin_dir/jatszoter-agent-$stamped_agent"
+    place "$tmp/$asset"
     rm -rf "$tmp"
+}
+
+build() {
+    cargo build --release --locked -p jatszoter-agent --manifest-path "$source_dir/Cargo.toml" ||
+        fail "cargo build failed"
+    place "${CARGO_TARGET_DIR:-$source_dir/target}/release/jatszoter-agent"
+}
+
+place() {
+    put install -d -m 0755 "$bin_dir"
+    put install -m 0755 "$1" "$bin_dir/jatszoter-agent-$stamped_agent"
     if [ "$layout" = system ]; then
         as_root ln -sfn "$bin_dir/jatszoter-agent-$stamped_agent" "$bin_dir/jatszoter-agent"
         as_root ln -sfn "$bin_dir/jatszoter-agent" "$link"
@@ -367,7 +429,7 @@ the settings in $env_file and the state in $state_dir."
         as_root rm -rf "$conf_dir"
         as_root rmdir "${conf_dir%/*}" 2>/dev/null || true
     else
-        rmdir "$conf_dir" "${bin_dir%/*}" 2>/dev/null || true
+        rmdir "$conf_dir" "${bin_dir%/*}" "${state_dir%/*}" 2>/dev/null || true
     fi
     say "removed the agent"
     [ "$layout" = system ] || ! linger_on || say "linger stays on, turn it off with: loginctl disable-linger"
@@ -406,9 +468,9 @@ else
     systemd="${systemd:-no}"
 fi
 
-doctor || exit 1
+doctor || fail "fix the problems above, nothing was installed"
 
-download
+if [ -n "$source_dir" ]; then build; else download; fi
 configure
 check_network
 install_unit

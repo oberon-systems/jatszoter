@@ -65,7 +65,7 @@ Build and install the binaries:
 ```bash
 sudo apt install git gcc make
 git clone --depth 1 --branch 2026_10_02.cba3570 https://passt.top/passt
-test "$(git -C passt rev-parse --short=7 HEAD)" = cba3570
+test "$(git -C passt rev-parse HEAD)" = cba357068dc586e7540971eb40bb56c5e62c4de1
 make -C passt
 sudo install -m 0755 passt/passt passt/passt.avx2 /usr/local/bin/
 ```
@@ -136,7 +136,7 @@ Otherwise build the release and install it to `/usr/local/bin`:
 ```bash
 sudo dnf install git gcc make
 git clone --depth 1 --branch 2026_10_02.cba3570 https://passt.top/passt
-test "$(git -C passt rev-parse --short=7 HEAD)" = cba3570
+test "$(git -C passt rev-parse HEAD)" = cba357068dc586e7540971eb40bb56c5e62c4de1
 make -C passt
 sudo install -m 0755 passt/passt passt/passt.avx2 /usr/local/bin/
 ```

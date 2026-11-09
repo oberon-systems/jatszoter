@@ -11,6 +11,7 @@ control back at any moment, and a check script decides whether the trainee
 fixed the problem. Every terminal session is recorded for replay.
 
 - [Demo](#demo)
+- [Install](#install)
 - [Components](#components)
 - [Repository layout](#repository-layout)
 - [Requirements](#requirements)
@@ -25,6 +26,28 @@ fixed the problem. Every terminal session is recorded for replay.
 `nginx-502` scenario: a trainee and a deployment are created, the VM
 bootstraps, the trainee fixes the 502 in the terminal and the check passes,
 then the operator stops the deployment and purges its logs.
+
+## Install
+
+A jatszoter release installs in two steps: the stack with compose on one
+host, an agent on every host that runs VMs.
+[docs/project/11-install.md](docs/project/11-install.md) covers `.env`, the
+installer's flags and layouts, upgrades, backups and uninstalling.
+
+```bash
+base=https://github.com/oberon-systems/jatszoter/releases/latest/download
+curl -fsSLO "$base/compose.yaml" -O "$base/env.example" -O "$base/SHA256SUMS"
+sha256sum -c --ignore-missing SHA256SUMS
+cp env.example .env
+docker compose up -d --wait
+```
+
+```bash
+curl -fsSL https://github.com/oberon-systems/jatszoter/releases/latest/download/install-agent.sh | sh -s -- --api-url https://api.example.com
+```
+
+Fill in the secrets of `.env` before `docker compose up`; compose names
+every one that is missing.
 
 ## Components
 

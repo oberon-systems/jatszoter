@@ -145,9 +145,9 @@ repos:
     rev: 3.0.0
     hooks:
       - id: forbid-binary
-        # Vendored web fonts beside their licence, and the docs favicon. Types, not
-        # paths: a path exclude trips check-useless-excludes while they are untracked.
-        exclude_types: [woff2, icon]
+        # Vendored web fonts, each beside its licence. A type, not a path: the
+        # path exclude trips check-useless-excludes while the fonts are untracked.
+        exclude_types: [woff2]
       - id: require-ascii
       - id: shellcheck
         args: [-e, SC2086]

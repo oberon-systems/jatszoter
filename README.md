@@ -1,4 +1,4 @@
-<img src="docs/project/img/logo.svg" alt="jatszoter logo" width="128">
+<p align="center"><img src="docs/project/img/logo.svg" alt="jatszoter logo" width="96"></p>
 
 # jatszoter
 

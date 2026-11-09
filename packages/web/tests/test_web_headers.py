@@ -52,9 +52,11 @@ def test_a_page_loads_nothing_from_another_host_and_runs_no_inline_code(
     page = client.get("/login").text
 
     assert re.findall(r'(?:src|href)="([^"]+)"', page) == [
+        "/static/logo.svg",
         "/static/app.css",
         "/static/vendor/htmx-2.0.11/htmx.min.js",
         "/static/app.js",
+        "/static/logo.svg",
     ]
     assert "<style" not in page and "style=" not in page
     assert re.search(r"<script(?![^>]*\bsrc=)", page) is None

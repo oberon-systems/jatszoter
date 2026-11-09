@@ -3,6 +3,7 @@ fakeredis
 fastapi
 httpx
 jsonschema
+psycopg[binary]
 pydantic-settings
 python-multipart
 python-statemachine

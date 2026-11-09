@@ -30,6 +30,7 @@ const PID_FILE: &str = "qemu.pid";
 pub(crate) const PASST_PID: &str = "passt.pid";
 const QMP: &str = "qmp.sock";
 pub(crate) const NET: &str = "net.sock";
+const RESOLV_CONF: &str = "/etc/resolv.conf";
 pub const SERIAL: &str = "serial.sock";
 pub const CONSOLE_LOG: &str = "console.log";
 pub const QGA: &str = "qga.sock";
@@ -238,6 +239,26 @@ pub(crate) fn passt_args(dir: &Path) -> Vec<OsString> {
 // A forward binds the host's loopback only: the network gains no way in, and --no-map-gw keeps
 // the guest itself from reaching it.
 pub(crate) fn forwarding_passt_args(dir: &Path, forwards: &BTreeMap<u16, u16>) -> Vec<OsString> {
+    let resolv_conf = fs::read_to_string(RESOLV_CONF).unwrap_or_default();
+    passt_args_with(dir, forwards, dns_host(&resolv_conf))
+}
+
+// With --no-map-gw passt drops a loopback resolver, such as the 127.0.0.53 of systemd-resolved,
+// and forwards the guest's DNS to 0.0.0.0 instead; naming the host resolver keeps it.
+pub(crate) fn dns_host(resolv_conf: &str) -> Option<Ipv4Addr> {
+    resolv_conf.lines().find_map(|line| {
+        let mut words = line.split_whitespace();
+        (words.next() == Some("nameserver"))
+            .then(|| words.next()?.parse().ok())
+            .flatten()
+    })
+}
+
+pub(crate) fn passt_args_with(
+    dir: &Path,
+    forwards: &BTreeMap<u16, u16>,
+    dns_host: Option<Ipv4Addr>,
+) -> Vec<OsString> {
     let mut args: Vec<OsString> = [
         "--one-off",
         "--no-map-gw",
@@ -256,6 +277,9 @@ pub(crate) fn forwarding_passt_args(dir: &Path, forwards: &BTreeMap<u16, u16>) -
     .iter()
     .map(OsString::from)
     .collect();
+    if let Some(host) = dns_host {
+        args.extend(["--dns-host".into(), host.to_string().into()]);
+    }
     if forwards.is_empty() {
         args.extend(["--tcp-ports".into(), "none".into()]);
     }

@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fs;
 use std::io;
+use std::net::Ipv4Addr;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::{Path, PathBuf};
@@ -16,9 +17,9 @@ use tokio::net::UnixListener;
 use tokio::task::JoinHandle;
 
 use super::{
-    base_format, create, destroy, eject_seed, forwarding_passt_args, free_ports, inspect_args,
-    list, passt_args, power_off, qemu_args, Record, Tools, VmSpec, ANSWERS_SERIAL, DISK_SERIAL,
-    GIB,
+    base_format, create, destroy, dns_host, eject_seed, forwarding_passt_args, free_ports,
+    inspect_args, list, passt_args_with, power_off, qemu_args, Record, Tools, VmSpec,
+    ANSWERS_SERIAL, DISK_SERIAL, GIB,
 };
 use crate::libs::api::{Accelerator, Seed};
 use crate::libs::config::prepare_private_dir;
@@ -233,7 +234,11 @@ fn the_argv_for_tcg() {
 
 #[test]
 fn passt_keeps_the_gateway_off_the_host_loopback() {
-    let args = strings(passt_args(Path::new("/state/vms/alpha")));
+    let args = strings(passt_args_with(
+        Path::new("/state/vms/alpha"),
+        &BTreeMap::new(),
+        Some(Ipv4Addr::new(127, 0, 0, 53)),
+    ));
 
     assert_eq!(
         args,
@@ -251,6 +256,8 @@ fn passt_keeps_the_gateway_off_the_host_loopback() {
             "10.0.2.3",
             "--dns-forward",
             "10.0.2.3",
+            "--dns-host",
+            "127.0.0.53",
             "--tcp-ports",
             "none",
             "--udp-ports",
@@ -261,6 +268,14 @@ fn passt_keeps_the_gateway_off_the_host_loopback() {
             "/state/vms/alpha/passt.pid",
         ]
     );
+}
+
+#[test]
+fn the_dns_host_is_the_first_ipv4_nameserver() {
+    let resolv_conf = "# resolved\nnameserver ::1\nnameserver 127.0.0.53\nnameserver 192.0.2.53\n";
+
+    assert_eq!(dns_host(resolv_conf), Some(Ipv4Addr::new(127, 0, 0, 53)));
+    assert_eq!(dns_host("search example.com\n"), None);
 }
 
 #[test]

@@ -73,6 +73,9 @@ jobs:
             release/install-agent.sh > dist/install-agent.sh
           grep -q "^stamped_release=$GITHUB_REF_NAME\$" dist/install-agent.sh
           grep -q "^stamped_agent=$AGENT\$" dist/install-agent.sh
+          sed -e "s/^stamped_release=\$/stamped_release=$GITHUB_REF_NAME/" \
+            release/install-stack.sh > dist/install-stack.sh
+          grep -q "^stamped_release=$GITHUB_REF_NAME\$" dist/install-stack.sh
       - name: Bring the stack up
         run: |
           hex() { openssl rand -hex "$1"; }
@@ -94,7 +97,7 @@ jobs:
           curl -fsS http://127.0.0.1:8080/healthz && curl -fsS http://127.0.0.1:8000/healthz
           stack down --volumes
       - name: Checksums
-        run: cd dist && sha256sum compose.yaml env.example install-agent.sh > SHA256SUMS
+        run: cd dist && sha256sum compose.yaml env.example install-agent.sh install-stack.sh > SHA256SUMS
       - name: Publish release
         run: |
           changes="$(awk -v head="## $GITHUB_REF_NAME " \
@@ -113,7 +116,7 @@ jobs:
             *) flags="--latest=false" ;;
           esac
           gh release create "$GITHUB_REF_NAME" \
-            dist/compose.yaml dist/env.example dist/install-agent.sh dist/SHA256SUMS \
+            dist/compose.yaml dist/env.example dist/install-agent.sh dist/install-stack.sh dist/SHA256SUMS \
             --title "jatszoter $GITHUB_REF_NAME" \
             --notes "$notes" \
             $flags

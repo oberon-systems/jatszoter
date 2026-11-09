@@ -1,0 +1,119 @@
+name: jatszoter
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+      - '[0-9]+.[0-9]+.[0-9]+-rc[0-9]+'
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      OWNER: ${{ github.repository_owner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check the tag against release/.cz.yaml
+        run: |
+          test "$GITHUB_REF_NAME" = "$(sed -n 's/^  version: //p' release/.cz.yaml)"
+      - name: Check the tag is on main or a stable branch
+        run: |
+          git branch -r --contains "$GITHUB_SHA" | sed 's/^ *//' |
+            grep -Eqx 'origin/(main|[0-9]+\.x\.x-stable)'
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Take the newest release of every component of this major
+        run: |
+          major="${GITHUB_REF_NAME%%.*}"
+          newest() {
+            gh release list --limit 300 --json tagName --jq '.[].tagName' |
+              sed -n "s/^$1\($major\.[0-9]*\.[0-9]*\)\$/\1/p" | sort -V | tail -n 1
+          }
+          digest() {
+            docker buildx imagetools inspect "$1" --format '{{.Manifest.Digest}}'
+          }
+          api="$(newest api-)"
+          web="$(newest web-)"
+          agent="$(newest agent-)"
+          for value in "$api" "$web" "$agent"; do test -n "$value"; done
+          gh release view "agent-$agent" >/dev/null
+          api_ref="ghcr.io/$OWNER/jatszoter-api:$api"
+          web_ref="ghcr.io/$OWNER/jatszoter-web:$web"
+          {
+            echo "API=$api"
+            echo "WEB=$web"
+            echo "AGENT=$agent"
+            echo "API_REF=$api_ref@$(digest "$api_ref")"
+            echo "WEB_REF=$web_ref@$(digest "$web_ref")"
+          } >> "$GITHUB_ENV"
+      - name: Render the release files
+        run: |
+          mkdir dist
+          sed -e "s|\${JATSZOTER_API_IMAGE[^}]*}|$API_REF|" \
+            -e "s|\${JATSZOTER_WEB_IMAGE[^}]*}|$WEB_REF|" \
+            docker/compose.yaml > dist/compose.yaml
+          grep -q "$API_REF" dist/compose.yaml && grep -q "$WEB_REF" dist/compose.yaml
+          cp docker/.env.example dist/env.example
+          sed -e "s/^stamped_release=\$/stamped_release=$GITHUB_REF_NAME/" \
+            -e "s/^stamped_agent=\$/stamped_agent=$AGENT/" \
+            release/install-agent.sh > dist/install-agent.sh
+          grep -q "^stamped_release=$GITHUB_REF_NAME\$" dist/install-agent.sh
+          grep -q "^stamped_agent=$AGENT\$" dist/install-agent.sh
+      - name: Bring the stack up
+        run: |
+          hex() { openssl rand -hex "$1"; }
+          cookie="$(openssl rand 32 | basenc --base64url | tr -d '=')"
+          {
+            echo "JATSZOTER_DB_PASSWORD=$(hex 24)"
+            echo "JATSZOTER_VALKEY_PASSWORD=$(hex 24)"
+            echo "JATSZOTER_SEAWEED_JWT_KEY=$(hex 32)"
+            echo "JATSZOTER_MASTER_KEYS='{\"k1\": \"$(hex 32)\"}'"
+            echo "JATSZOTER_MASTER_KID=k1"
+            echo "JATSZOTER_WEB_COOKIE_KEYS='{\"c1\": \"$cookie\"}'"
+            echo "JATSZOTER_WEB_COOKIE_KID=c1"
+          } > "$RUNNER_TEMP/stack.env"
+          stack() { docker compose -f dist/compose.yaml --env-file "$RUNNER_TEMP/stack.env" "$@"; }
+          if ! stack up -d --wait --wait-timeout 300; then
+            stack logs
+            exit 1
+          fi
+          curl -fsS http://127.0.0.1:8080/healthz && curl -fsS http://127.0.0.1:8000/healthz
+          stack down --volumes
+      - name: Checksums
+        run: cd dist && sha256sum compose.yaml env.example install-agent.sh > SHA256SUMS
+      - name: Publish release
+        run: |
+          changes="$(awk -v head="## $GITHUB_REF_NAME " \
+            'index($0, head) == 1 { keep = 1; next } /^## / { keep = 0 } keep' \
+            release/CHANGELOG.md)"
+          notes="$(printf '%s\n' \
+            "| Component | Release |" "|---|---|" \
+            "| api | api-$API |" "| web | web-$WEB |" "| agent | agent-$AGENT |" \
+            "" "$changes")"
+          # A patch of an older major is published after a newer one and must not take Latest.
+          highest="$(gh release list --limit 300 --json tagName --jq '.[].tagName' |
+            { grep -Ex '[0-9]+\.[0-9]+\.[0-9]+' || true; echo "$GITHUB_REF_NAME"; } | sort -V | tail -n 1)"
+          case "$GITHUB_REF_NAME" in
+            *-rc*) flags="--prerelease --latest=false" ;;
+            "$highest") flags="--latest" ;;
+            *) flags="--latest=false" ;;
+          esac
+          gh release create "$GITHUB_REF_NAME" \
+            dist/compose.yaml dist/env.example dist/install-agent.sh dist/SHA256SUMS \
+            --title "jatszoter $GITHUB_REF_NAME" \
+            --notes "$notes" \
+            $flags

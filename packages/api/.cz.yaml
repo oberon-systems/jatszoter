@@ -12,7 +12,7 @@ commitizen:
   changelog_file: CHANGELOG.md
   changelog_paths:
   - packages/api
-  major_version_zero: true
+  major_version_zero: false
   name: wyld_cz
   tag_format: api-$version
   update_changelog_on_bump: true

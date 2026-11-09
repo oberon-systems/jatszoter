@@ -1,0 +1,27 @@
+# The jatszoter release: one version for the stack, made of the newest api, web
+# and agent releases of its major. Its changelog collects those components.
+commitizen:
+  allowed_prefixes:
+  - Merge
+  - Revert
+  - Pull request
+  - fixup!
+  - squash!
+  - amend!
+  - 'bump:'
+  bump_message: 'bump: jatszoter $current_version -> $new_version'
+  changelog_paths:
+  - packages/api
+  - packages/web
+  - packages/agent
+  - docker
+  - release
+  major_version_zero: false
+  name: wyld_cz
+  pre_bump_hooks:
+  - sh changelog.sh
+  tag_format: $version
+  update_changelog_on_bump: false
+  version: 0.0.0
+  version_provider: commitizen
+  version_scheme: semver

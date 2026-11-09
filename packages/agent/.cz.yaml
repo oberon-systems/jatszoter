@@ -12,7 +12,7 @@ commitizen:
   changelog_file: CHANGELOG.md
   changelog_paths:
   - packages/agent
-  major_version_zero: true
+  major_version_zero: false
   name: wyld_cz
   # cz rewrites this package's Cargo.toml only; the workspace lock is one level
   # up, and the hook runs before the bump commit takes it along.

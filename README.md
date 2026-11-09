@@ -29,25 +29,19 @@ then the operator stops the deployment and purges its logs.
 
 ## Install
 
-A jatszoter release installs in two steps: the stack with compose on one
-host, an agent on every host that runs VMs.
-[docs/project/11-install.md](docs/project/11-install.md) covers `.env`, the
-installer's flags and layouts, upgrades, backups and uninstalling.
+A jatszoter release installs with two scripts: the stack with docker compose
+on one host, an agent on every host that runs VMs. Each checks the host
+first, asks for what no flag gave, and has `doctor` and `uninstall`.
+[docs/project/11-install.md](docs/project/11-install.md) covers the layouts,
+the flags, upgrades, backups and installing from a checkout.
 
 ```bash
-base=https://github.com/oberon-systems/jatszoter/releases/latest/download
-curl -fsSLO "$base/compose.yaml" -O "$base/env.example" -O "$base/SHA256SUMS"
-sha256sum -c --ignore-missing SHA256SUMS
-cp env.example .env
-docker compose up -d --wait
+curl -fsSL https://github.com/oberon-systems/jatszoter/releases/latest/download/install-stack.sh | sh
 ```
 
 ```bash
 curl -fsSL https://github.com/oberon-systems/jatszoter/releases/latest/download/install-agent.sh | sh -s -- --api-url https://api.example.com
 ```
-
-Fill in the secrets of `.env` before `docker compose up`; compose names
-every one that is missing.
 
 ## Components
 

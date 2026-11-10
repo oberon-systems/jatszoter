@@ -20,12 +20,24 @@ fixed the problem. Every terminal session is recorded for replay.
 
 ## Demo
 
-[![Jatszoter Demo #1](https://img.youtube.com/vi/tisheruLtN0/maxresdefault.jpg)](https://youtu.be/tisheruLtN0)
+[![Jatszoter Demo #2](https://img.youtube.com/vi/1Lx9MX-OTjM/maxresdefault.jpg)](https://youtu.be/1Lx9MX-OTjM)
 
-[Demo #1](https://youtu.be/tisheruLtN0) walks one full cycle on the
-`nginx-502` scenario: a trainee and a deployment are created, the VM
-bootstraps, the trainee fixes the 502 in the terminal and the check passes,
-then the operator stops the deployment and purges its logs.
+[Demo #2](https://youtu.be/1Lx9MX-OTjM) installs jatszoter on a bare Ubuntu
+server: the packages, the stack with `install-stack.sh` and the agent with
+`install-agent.sh`, which then waits for an operator to approve it.
+
+[![Jatszoter Demo #3](https://img.youtube.com/vi/9ZFgtnBvWYM/maxresdefault.jpg)](https://youtu.be/9ZFgtnBvWYM)
+
+[Demo #3](https://youtu.be/9ZFgtnBvWYM) sets the stand up in the web UI: the
+first login, the agent's approval, a trainee, the Rocky Linux 9 base image and
+the `nginx-502` scenario uploaded as a bundle.
+
+[![Jatszoter Demo #4](https://img.youtube.com/vi/5a0pXOhpPdM/maxresdefault.jpg)](https://youtu.be/5a0pXOhpPdM)
+
+[Demo #4](https://youtu.be/5a0pXOhpPdM) walks one full cycle on the
+`nginx-502` scenario: a deployment and its trainee link, the trainee fixes the
+502 in the terminal and the check passes, then the operator revokes the link,
+stops the deployment, replays the session and purges its logs.
 
 ## Install
 

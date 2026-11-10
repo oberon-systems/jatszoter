@@ -99,8 +99,13 @@ main          --1.0.0---M--1.1.0-------M--1.2.0------M--2.0.0-->
 
 - One topic per pull request, branched from `dev`, or from `N.x.x-stable`
   for a patch to an older major.
+- The title follows the commit format, `[type][scope]: subject`: it becomes
+  the title of the merge commit. CI checks it with `cz check`.
 - Fill in the template: what changed, why, and the linked issue.
-- `make lint` and `make test` pass, and CI is green.
+- `make lint` and `make test` pass, and CI is green. A pull request into
+  `main` also runs `make lint-all`, `make test` and `make smoke`, and cannot
+  be merged until they pass.
+- Pull requests are merged with a merge commit, never squashed or rebased.
 - A maintainer reviews and merges it.
 
 ## Scenarios

@@ -67,7 +67,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
+      - name: Check the tag is on main or a stable branch
+        run: |
+          git branch -r --contains "$GITHUB_SHA" | sed 's/^ *//' |
+            grep -Eqx 'origin/(main|[0-9]+\.x\.x-stable)'
       - name: Check the tag against Cargo.toml
         id: check
         run: |

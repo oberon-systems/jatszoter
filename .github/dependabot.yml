@@ -6,6 +6,7 @@ version: 2
 
 updates:
   - package-ecosystem: pip
+    target-branch: dev
     directories:
       - /
       - /packages/api
@@ -25,6 +26,7 @@ updates:
         update-types: [version-update:semver-major]
 
   - package-ecosystem: pre-commit
+    target-branch: dev
     directory: /
     schedule:
       interval: weekly
@@ -40,6 +42,7 @@ updates:
         update-types: [version-update:semver-major]
 
   - package-ecosystem: cargo
+    target-branch: dev
     directory: /
     schedule:
       interval: weekly
@@ -52,6 +55,7 @@ updates:
         update-types: [minor, patch]
 
   - package-ecosystem: docker
+    target-branch: dev
     directories:
       - /docker/api
       - /docker/web
@@ -66,6 +70,7 @@ updates:
         update-types: [minor, patch]
 
   - package-ecosystem: docker-compose
+    target-branch: dev
     directory: /docker
     schedule:
       interval: weekly
@@ -79,6 +84,7 @@ updates:
 
   # web.yml copies an update into static/vendor and commits it to the pull request.
   - package-ecosystem: npm
+    target-branch: dev
     directory: /packages/web/vendor
     schedule:
       interval: weekly
@@ -91,6 +97,7 @@ updates:
         update-types: [minor, patch]
 
   - package-ecosystem: github-actions
+    target-branch: dev
     directory: /
     schedule:
       interval: weekly

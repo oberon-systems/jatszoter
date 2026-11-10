@@ -57,8 +57,8 @@ docker ps --format 'table {{.Names}}\t{{.Status}}'
 # Install the agent into /opt: answer system, then Enter for the rest.
 curl -fsSL https://github.com/oberon-systems/jatszoter/releases/latest/download/install-agent.sh | sh -s -- --api-url http://127.0.0.1:8080
 
-# The agent runs as a system unit and waits for an operator to approve it.
-systemctl status jatszoter-agent --no-pager
+# The agent runs as a user unit and waits for an operator to approve it.
+XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user status jatszoter-agent --no-pager
 ```
 
 **Stop recording here.**

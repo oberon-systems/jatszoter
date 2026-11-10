@@ -3,7 +3,9 @@
 A jatszoter release, tagged `X.Y.Z`, is the whole stack as one version: a
 compose file with Postgres, Valkey, the SeaweedFS filer, `api` and `web`, the
 two images pinned by digest, and two installers, `install-stack.sh` and
-`install-agent.sh`, which know the files and the agent of that release. It is
+`install-agent.sh`, which know the files and the agent of that release. Each
+scenario of the tree ships with it as a bundle, `<slug>.tar.gz`, listed in
+`SHA256SUMS` and ready to upload under Scenarios in the web UI. A release is
 made of the newest `api-`, `web-` and `agent-` releases of its major. This
 page installs, upgrades, backs up and removes a stack and its agents.
 

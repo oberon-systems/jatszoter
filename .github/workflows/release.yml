@@ -76,6 +76,10 @@ jobs:
           sed -e "s/^stamped_release=\$/stamped_release=$GITHUB_REF_NAME/" \
             release/install-stack.sh > dist/install-stack.sh
           grep -q "^stamped_release=$GITHUB_REF_NAME\$" dist/install-stack.sh
+          for dir in scenarios/*/; do
+            slug="$(basename "$dir")"
+            tar -czf "dist/$slug.tar.gz" -C scenarios "$slug"
+          done
       - name: Bring the stack up
         run: |
           hex() { openssl rand -hex "$1"; }
@@ -97,7 +101,7 @@ jobs:
           curl -fsS http://127.0.0.1:8080/healthz && curl -fsS http://127.0.0.1:8000/healthz
           stack down --volumes
       - name: Checksums
-        run: cd dist && sha256sum compose.yaml env.example install-agent.sh install-stack.sh > SHA256SUMS
+        run: cd dist && sha256sum -- compose.yaml env.example install-agent.sh install-stack.sh *.tar.gz > SHA256SUMS
       - name: Publish release
         run: |
           changes="$(awk -v head="## $GITHUB_REF_NAME " \
@@ -116,7 +120,7 @@ jobs:
             *) flags="--latest=false" ;;
           esac
           gh release create "$GITHUB_REF_NAME" \
-            dist/compose.yaml dist/env.example dist/install-agent.sh dist/install-stack.sh dist/SHA256SUMS \
+            dist/compose.yaml dist/env.example dist/install-agent.sh dist/install-stack.sh dist/*.tar.gz dist/SHA256SUMS \
             --title "jatszoter $GITHUB_REF_NAME" \
             --notes "$notes" \
             $flags

@@ -95,7 +95,12 @@ release() {
         "$ROOT/release/install-agent.sh" >"$out/install-agent.sh"
     sed -e "s/^stamped_release=\$/stamped_release=$version/" \
         "$ROOT/release/install-stack.sh" >"$out/install-stack.sh"
-    (cd "$out" && sha256sum compose.yaml env.example install-agent.sh install-stack.sh >SHA256SUMS)
+    for dir in "$ROOT"/scenarios/*/; do
+        local slug
+        slug="$(basename "$dir")"
+        tar -czf "$out/$slug.tar.gz" -C "$ROOT/scenarios" "$slug"
+    done
+    (cd "$out" && sha256sum -- compose.yaml env.example install-agent.sh install-stack.sh *.tar.gz >SHA256SUMS)
     chmod -R a+rX "$cache/www"
 
     docker run -d --name "$nginx" --network "$network" -p 127.0.0.1:443:443 \

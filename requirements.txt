@@ -18,11 +18,11 @@ psycopg[binary]==3.3.6
 pydantic==2.14.2
 pydantic-settings==2.16.2
 pytest==9.2.0
-python-multipart==0.0.32
+python-multipart==0.0.33
 python-statemachine==3.2.2
 PyYAML==6.0.3
 sqlmodel==0.0.48
 uvicorn==0.54.0
 valkey==6.2.0
-websockets==17.3
+websockets==17.4
 wyld-cz==0.5.0

@@ -53,7 +53,7 @@ repos:
       - id: black
 
   - repo: https://github.com/PyCQA/flake8
-    rev: 7.4.1
+    rev: 7.5.0
     hooks:
       - id: flake8
 
@@ -71,7 +71,7 @@ repos:
           - Jinja2==3.1.6
           - jsonschema==4.26.0
           - mkdocs==1.6.1
-          - pydantic==2.14.1
+          - pydantic==2.14.2
           - pydantic-settings==2.16.2
           - pytest==9.2.0
           - python-statemachine==3.2.2
@@ -79,7 +79,7 @@ repos:
           - types-jsonschema==4.26.0.20261006
           - types-PyYAML==6.0.12.20260906
           - valkey==6.2.0
-          - websockets==17.3
+          - websockets==17.4
 
   - repo: https://github.com/djlint/djLint
     rev: v1.47.0

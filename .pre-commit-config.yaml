@@ -77,7 +77,7 @@ repos:
           - python-statemachine==3.2.2
           - sqlmodel==0.0.48
           - types-jsonschema==4.26.0.20261006
-          - types-PyYAML==6.0.12.20261030
+          - types-PyYAML==6.0.12.20261103
           - valkey==6.2.0
           - websockets==17.4
 

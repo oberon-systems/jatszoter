@@ -83,7 +83,7 @@ def test_a_recording_plays_with_its_markers_as_jump_points(
         "00:59:51, 1.8 MiB",
         '<span class="body-strong">beta</span>',
         f'data-cast="{recorded}.cast"',
-        "/static/vendor/asciinema-player-3.17.0/asciinema-player.min.js",
+        "/static/vendor/asciinema-player-3.18.0/asciinema-player.min.js",
         "/static/replay.js",
         'data-seek="9.87"',
         "00:00:09",

@@ -4,12 +4,12 @@
 {% block styles %}
     {% if player %}
         <link rel="stylesheet"
-              href="{{ url_for('static', path='vendor/asciinema-player-3.17.0/asciinema-player.css').path }}">
+              href="{{ url_for('static', path='vendor/asciinema-player-3.18.0/asciinema-player.css').path }}">
     {% endif %}
 {% endblock %}
 {% block scripts %}
     {% if player %}
-        <script src="{{ url_for('static', path='vendor/asciinema-player-3.17.0/asciinema-player.min.js').path }}"
+        <script src="{{ url_for('static', path='vendor/asciinema-player-3.18.0/asciinema-player.min.js').path }}"
                 defer></script>
         <script src="{{ url_for('static', path='replay.js').path }}" defer></script>
     {% endif %}
